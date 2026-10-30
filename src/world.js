@@ -35,6 +35,13 @@ const SHADOW_MODES = {
   off: null,
 };
 
+// Оси теневой камеры: по ним удобно привязывать её к сетке текселей.
+const LIGHT_DIR = SUN_DIR.scale(-1);
+const LIGHT_RIGHT = Vector3.Cross(Vector3.Up(), LIGHT_DIR).normalize();
+const LIGHT_UP = Vector3.Cross(LIGHT_DIR, LIGHT_RIGHT).normalize();
+// Babylon расширяет фиксированный ортобокс на shadowOrthoScale (10% с каждой стороны).
+const SHADOW_HALF_EXTENT = SHADOW_EXTENT * 1.2;
+
 export class World {
   constructor(scene, factory, map) {
     this.scene = scene;
@@ -480,6 +487,25 @@ export class World {
     this.dust.maxEmitPower = 0.5;
     this.dust.updateSpeed = 0.01;
     this.dust.start();
+  }
+
+  /** Держит теневой объём над точкой, куда смотрит камера. */
+  update(dt, camera) {
+    if (!this.shadow || !camera) return;
+    const focus = camera.target;
+    const texel = (2 * SHADOW_HALF_EXTENT) / this.shadow.mapSize;
+    const lx = focus.x * LIGHT_RIGHT.x + focus.z * LIGHT_RIGHT.z;
+    const ly = focus.x * LIGHT_UP.x + focus.z * LIGHT_UP.z;
+    // Привязка к текселям убирает дрожание теней при панорамировании.
+    const sx = (Math.floor(lx / texel) + 0.5) * texel;
+    const sy = (Math.floor(ly / texel) + 0.5) * texel;
+    const ox = (sx - lx) * LIGHT_RIGHT.x + (sy - ly) * LIGHT_UP.x;
+    const oz = (sx - lx) * LIGHT_RIGHT.z + (sy - ly) * LIGHT_UP.z;
+    this.sun.position.set(
+      focus.x + ox + SUN_DIR.x * SUN_DISTANCE,
+      SUN_DIR.y * SUN_DISTANCE,
+      focus.z + oz + SUN_DIR.z * SUN_DISTANCE,
+    );
   }
 
   _createShadow(quality) {

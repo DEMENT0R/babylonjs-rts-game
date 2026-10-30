@@ -114,6 +114,8 @@ function boot() {
   const ui = new UI(game);
   const input = new Input(game);
 
+  world.update(0, camera);
+
   const resize = () => engine.resize();
   window.addEventListener('resize', resize);
 
@@ -125,6 +127,7 @@ function boot() {
 
     if (game.started && !game.paused && !game.over) game.update(dt);
     input.update(dt);
+    world.update(dt, camera);
     ui.tick(dt);
     scene.render();
 
