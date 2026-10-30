@@ -131,16 +131,37 @@ export class ModelFactory {
     const root = template.root.clone(`model_${key}_${(Math.random() * 1e9) | 0}`, null);
     root.position.y = 0;
     root.setEnabled(true);
+    // Babylon добавляет к именам клонированных детей префикс корня и путь
+    // родителей (`root.turret.barrelgroup.muzzle`). Сопоставляем части по
+    // относительному пути, иначе анимации и дула указывали на шаблон,
+    // который стоит под землёй на y = -500.
     const byName = new Map();
+    const byPath = new Map();
+    const prefix = `${root.name}.`;
     for (const node of root.getDescendants(false)) {
-      if (node.name) byName.set(node.name, node);
+      if (!node.name) continue;
+      byName.set(node.name, node);
+      byPath.set(node.name.startsWith(prefix) ? node.name.slice(prefix.length) : node.name, node);
     }
+    const pathOf = (node) => {
+      const path = [];
+      let current = node;
+      while (current && current !== template.root) {
+        path.unshift(current.name);
+        current = current.parent;
+      }
+      return path.join('.');
+    };
+    const resolve = (node) => {
+      if (!node || !node.name) return node;
+      return byPath.get(pathOf(node)) ?? byName.get(node.name) ?? node;
+    };
     const parts = {};
     for (const [name, value] of Object.entries(template.parts)) {
       if (Array.isArray(value)) {
-        parts[name] = value.map((v) => byName.get(v.name) ?? v);
+        parts[name] = value.map((v) => resolve(v));
       } else if (value && value.name) {
-        parts[name] = byName.get(value.name) ?? value;
+        parts[name] = resolve(value);
       } else {
         parts[name] = value;
       }
