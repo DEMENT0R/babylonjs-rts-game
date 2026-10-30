@@ -1593,6 +1593,77 @@ body.mode-attack #scene {
   color: rgba(120, 147, 161, 0.55);
 }
 
+.map-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 1px;
+  margin-top: 18px;
+  background: var(--line-soft);
+  border: 1px solid var(--line-soft);
+}
+
+.map-strip-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  background: rgba(8, 20, 27, 0.82);
+  min-width: 0;
+}
+
+.map-strip-item span {
+  font-size: 6.5px;
+  letter-spacing: 0.18em;
+  color: var(--dim);
+}
+
+.map-strip-item b {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: #c8e4ee;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-map {
+  border: none;
+  border-left: 1px solid rgba(79, 210, 255, 0.2);
+  background: rgba(79, 210, 255, 0.06);
+  font-size: 8px;
+  padding: 0 16px;
+  white-space: nowrap;
+}
+
+.end-map {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  background: rgba(8, 20, 27, 0.55);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  color: var(--dim);
+}
+
+.end-map b {
+  color: var(--cyan);
+  font-weight: 500;
+}
+
+@media (max-width: 760px) {
+  .map-strip {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .map-strip .btn-map {
+    grid-column: 1 / -1;
+    padding: 10px 12px;
+  }
+}
+
 .overlay--pause .overlay-card {
   width: min(700px, 92vw);
 }

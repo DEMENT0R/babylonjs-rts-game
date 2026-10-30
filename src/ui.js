@@ -11,6 +11,7 @@ import {
   MAP,
 } from './config.js';
 import { icon } from './icons.js';
+import { randomSeed, seedUrl } from './mapgen.js';
 import { clamp, formatTime, plural, mulberry32, esc } from './utils.js';
 
 const BUILD_HOTKEYS = ['Z', 'X', 'C'];
@@ -32,6 +33,8 @@ export class UI {
     this.overlayOpen = true;
     this.minimapBg = null;
     this.buildMinimapBackground();
+    this.el.mmSector.textContent = this.game.map.label;
+    this.el.mmSector.title = `Карта ${this.game.map.label} · ${this.game.map.style.name}`;
     this.showStart();
     this.renderHeader();
     this.drawMinimap();
@@ -78,6 +81,7 @@ export class UI {
       if (action === 'start') this.startGame();
       else if (action === 'resume') this.resume();
       else if (action === 'restart') window.location.reload();
+      else if (action === 'newmap') this.newMap();
     });
     this.el.commands.addEventListener('click', (e) => {
       const btn = e.target.closest('.cmd');
@@ -118,15 +122,22 @@ export class UI {
 
   // --------------------------------------------------------------- overlays
   showStart() {
+    const map = this.game.map;
     const html = `
       <div class="overlay-top">
-        <div class="eyebrow"><i></i> СЕКТОР 7Г · ПУСТОШЬ МАРСА · 04:17 UTC</div>
+        <div class="eyebrow"><i></i> СЕКТОР ${map.label} · ПУСТОШЬ МАРСА · ${map.style.name}</div>
         <h1>ГЕЛИОС<span>-7</span></h1>
         <p class="tagline">Последняя колония на краю сектора. Удержите её любой ценой.</p>
       </div>
+      <div class="map-strip">
+        <div class="map-strip-item"><span>СИД КАРТЫ</span><b>#${map.label}</b></div>
+        <div class="map-strip-item"><span>СИММЕТРИЯ</span><b>${map.symmetry.name} · ${map.symmetry.tag}</b></div>
+        <div class="map-strip-item"><span>ЛАНДШАФТ</span><b>${map.style.name}</b></div>
+        <button class="btn-ghost btn-map" data-action="newmap">СГЕНЕРИРОВАТЬ ДРУГУЮ</button>
+      </div>
       <div class="brief-grid">
         <div class="brief-copy">
-          <p>Сенсоры зафиксировали выход Роя ксенов у северо-восточной границы. Связь с Землёй потеряна. В вашем распоряжении командный центр, энергосеть и одна нефтяная вышка.</p>
+          <p>Сенсоры зафиксировали выход Роя ксенов на противоположном краю сектора. ${map.symmetry.hint} Рельеф и месторождения у обеих сторон одинаковые.</p>
           <p class="accent-copy">Развивайте экономику, собирайте армию и уничтожьте улей, пока он не добрался до колонии.</p>
         </div>
         <div class="objectives">
@@ -154,11 +165,11 @@ export class UI {
       </div>
       <div class="overlay-actions">
         <button class="btn-primary" data-action="start">НАЧАТЬ ОПЕРАЦИЮ <span>→</span></button>
-        <div class="overlay-note">Совет: дефицит энергии замедляет производство втрое. Следите за сетью.</div>
+        <div class="overlay-note">Каждая карта строится из сида: ссылку вида <b>?seed=${map.label}</b> можно сохранить и сыграть на той же карте снова.</div>
       </div>
       <div class="overlay-footer">
-        <span>ГЕЛИОС-7 // ТАКТИЧЕСКАЯ КОМАНДНАЯ СЕТЬ</span>
-        <span>ВЕРСИЯ 1.0 · BABYLON.JS</span>
+        <span>ГЕЛИОС-7 // КАРТА #${map.label}</span>
+        <span>${map.symmetry.name.toUpperCase()} · ${map.style.name} · BABYLON.JS</span>
       </div>
     `;
     this.setOverlay(html, 'overlay--start');
@@ -167,13 +178,14 @@ export class UI {
   showEnd(result) {
     const victory = result === 'victory';
     const s = this.game.stats;
+    const map = this.game.map;
     const html = `
       <div class="end-head ${victory ? 'win' : 'lose'}">
         <div class="eyebrow"><i></i> ${victory ? 'ОПЕРАЦИЯ ЗАВЕРШЕНА' : 'СИГНАЛ ПОТЕРЯН'}</div>
         <h1>${victory ? 'СЕКТОР УДЕРЖАН' : 'КОЛОНИЯ ПОТЕРЯНА'}</h1>
         <p class="tagline">${victory
           ? 'Командный центр Роя уничтожен. Колония «Гелиос-7» получает шанс на жизнь.'
-          : 'Улей прорвал оборону. Командный центр пал. Сектор 7Г потерян.'}</p>
+          : 'Улей прорвал оборону. Командный центр пал. Сектор потерян.'}</p>
       </div>
       <div class="end-stats">
         <div><b>${formatTime(s.time ?? this.game.elapsed)}</b><span>ВРЕМЯ ОПЕРАЦИИ</span></div>
@@ -181,11 +193,13 @@ export class UI {
         <div><b>${s.losses}</b><span>ПОТЕРЯНО</span></div>
         <div><b>${Math.floor(s.gathered)}</b><span>ДОБЫТО КРЕДИТОВ</span></div>
       </div>
+      <div class="end-map">КАРТА <b>#${map.label}</b> · ${map.symmetry.name.toUpperCase()} ${map.symmetry.tag} · ${map.style.name}</div>
       <div class="end-note">${victory
         ? 'Рой отступил в пустошь. Но сенсоры уже фиксируют новые сигнатуры...'
         : 'В следующий раз начните с вышек и не оставляйте казармы без прикрытия.'}</div>
       <div class="overlay-actions">
-        <button class="btn-primary" data-action="restart">НОВАЯ ОПЕРАЦИЯ <span>↻</span></button>
+        <button class="btn-primary" data-action="newmap">НОВАЯ КАРТА <span>↻</span></button>
+        <button class="btn-ghost" data-action="restart">ПОВТОРИТЬ ЭТУ КАРТУ</button>
       </div>
       <div class="overlay-footer">
         <span>ГЕЛИОС-7 // ИТОГИ</span>
@@ -204,6 +218,7 @@ export class UI {
   openPause() {
     if (!this.game.started || this.game.over) return;
     this.game.setPaused(true);
+    const map = this.game.map;
     const html = `
       <div class="overlay-top">
         <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // ПАУЗА</div>
@@ -228,10 +243,11 @@ export class UI {
       </div>
       <div class="overlay-actions">
         <button class="btn-primary" data-action="resume">ПРОДОЛЖИТЬ <span>→</span></button>
-        <button class="btn-ghost" data-action="restart">НАЧАТЬ ЗАНОВО</button>
+        <button class="btn-ghost" data-action="restart">ЗАНОВО</button>
+        <button class="btn-ghost" data-action="newmap">НОВАЯ КАРТА</button>
       </div>
       <div class="overlay-footer">
-        <span>ГЕЛИОС-7 // ПАУЗА</span>
+        <span>ГЕЛИОС-7 // ПАУЗА · КАРТА #${map.label}</span>
         <span>СИМУЛЯЦИЯ ОСТАНОВЛЕНА</span>
       </div>
     `;
@@ -254,6 +270,12 @@ export class UI {
     this.renderHeader();
     this.renderCommands();
     this.drawMinimap();
+  }
+
+  /** Перезагружает игру с новым случайным сидом карты. */
+  newMap() {
+    document.activeElement?.blur?.();
+    window.location.assign(seedUrl(randomSeed()));
   }
 
   hideOverlay() {
@@ -749,11 +771,12 @@ export class UI {
   // --------------------------------------------------------------- minimap
   buildMinimapBackground() {
     const size = 512;
+    const map = this.game.map;
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
     const ctx = canvas.getContext('2d');
-    const rng = mulberry32(0x51c70);
+    const rng = mulberry32((map.seed ^ 0x51c70) >>> 0);
     ctx.fillStyle = '#060d12';
     ctx.fillRect(0, 0, size, size);
 
@@ -761,9 +784,9 @@ export class UI {
     const margin = 10;
     const w = size - margin * 2;
     const field = ctx.createRadialGradient(size / 2, size / 2, 30, size / 2, size / 2, w * 0.72);
-    field.addColorStop(0, '#172624');
-    field.addColorStop(0.65, '#101d1d');
-    field.addColorStop(1, '#0a1315');
+    field.addColorStop(0, map.style.minimap);
+    field.addColorStop(0.65, map.style.minimap);
+    field.addColorStop(1, map.style.minimapFar);
     ctx.fillStyle = field;
     ctx.fillRect(margin, margin, w, w);
 
@@ -854,7 +877,7 @@ export class UI {
     ctx.fillStyle = 'rgba(79,210,255,0.2)';
     ctx.font = '600 22px monospace';
     ctx.textAlign = 'right';
-    ctx.fillText('СЕКТОР 7Г', size - 26, size - 24);
+    ctx.fillText(`#${map.label}`, size - 26, size - 24);
 
     this.minimapBg = canvas;
   }
