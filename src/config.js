@@ -49,21 +49,11 @@ export const FACTIONS = {
 export const START = {
   credits: 500,
   armyCap: 50,
+  // Стартовые позиции баз и месторождений строит генератор карт (mapgen.js).
   player: {
-    hq: [-38, 30],
-    power: [-47, 39],
-    barracks: null, // казармы игрок строит сам
-    derricks: [[-24, 38]],
     marines: 2,
   },
   enemy: {
-    hq: [38, -30],
-    power: [47, -39],
-    barracks: [31, -39],
-    derricks: [
-      [24, -38],
-      [46, -20],
-    ],
     marines: 3,
   },
 };
@@ -216,16 +206,6 @@ export const COLORS = {
     green: '#63e6a8',
   },
 };
-
-// Позиции нефтяных месторождений. Владелец используется только при старте.
-export const OIL_PATCHES = [
-  { x: -24, z: 38, owner: 'player' },
-  { x: -46, z: 18, owner: 'player' },
-  { x: -4, z: 8, owner: null },
-  { x: 6, z: -8, owner: null },
-  { x: 24, z: -38, owner: 'enemy' },
-  { x: 46, z: -20, owner: 'enemy' },
-];
 
 export const AI = {
   firstWave: 135,

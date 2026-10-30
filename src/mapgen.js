@@ -102,7 +102,7 @@ export const MAP_STYLES = [
     ground: '#6f5c45',
     patchDark: 'rgba(48,39,29,0.30)',
     patchLight: 'rgba(142,120,92,0.20)',
-    crack: 'rgba(36,28,21,0.35)',
+    crack: 'rgba(36,28,21,',
     speckLight: 'rgba(170,148,111,',
     speckDark: 'rgba(38,31,24,',
     edge: '#3d3329',
@@ -113,6 +113,7 @@ export const MAP_STYLES = [
     hemiGround: '#4f3d2d',
     sky: ['#060d17', '#0d1b29', '#243947', '#5b5a5a', '#a1745a', '#3a3a3d', '#0a0f14'],
     glow: 'rgba(255,160,90,0.55)',
+    glowMid: 'rgba(220,110,60,0.18)',
     minimap: '#172624',
     minimapFar: '#0a1315',
   },
@@ -122,7 +123,7 @@ export const MAP_STYLES = [
     ground: '#565a5b',
     patchDark: 'rgba(28,32,34,0.32)',
     patchLight: 'rgba(118,126,128,0.18)',
-    crack: 'rgba(24,27,29,0.40)',
+    crack: 'rgba(24,27,29,',
     speckLight: 'rgba(156,166,168,',
     speckDark: 'rgba(30,34,36,',
     edge: '#2c3236',
@@ -133,6 +134,7 @@ export const MAP_STYLES = [
     hemiGround: '#353c40',
     sky: ['#04080f', '#0a1420', '#1a2b38', '#3a4d58', '#6e7f86', '#2c3539', '#070b0e'],
     glow: 'rgba(150,200,255,0.35)',
+    glowMid: 'rgba(110,150,200,0.16)',
     minimap: '#17202a',
     minimapFar: '#090e14',
   },
@@ -142,7 +144,7 @@ export const MAP_STYLES = [
     ground: '#8a6a3f',
     patchDark: 'rgba(72,50,24,0.30)',
     patchLight: 'rgba(196,160,104,0.20)',
-    crack: 'rgba(60,38,16,0.35)',
+    crack: 'rgba(60,38,16,',
     speckLight: 'rgba(218,184,126,',
     speckDark: 'rgba(56,38,18,',
     edge: '#4a3a22',
@@ -153,6 +155,7 @@ export const MAP_STYLES = [
     hemiGround: '#5a4226',
     sky: ['#0a0704', '#1b120a', '#3a2514', '#6b4a25', '#c08a4a', '#3f2b18', '#0d0906'],
     glow: 'rgba(255,190,100,0.55)',
+    glowMid: 'rgba(220,150,60,0.18)',
     minimap: '#2a2417',
     minimapFar: '#120f08',
   },
@@ -162,7 +165,7 @@ export const MAP_STYLES = [
     ground: '#6a6660',
     patchDark: 'rgba(40,38,36,0.30)',
     patchLight: 'rgba(150,144,136,0.18)',
-    crack: 'rgba(30,28,26,0.38)',
+    crack: 'rgba(30,28,26,',
     speckLight: 'rgba(180,174,164,',
     speckDark: 'rgba(36,34,32,',
     edge: '#35322e',
@@ -173,6 +176,7 @@ export const MAP_STYLES = [
     hemiGround: '#45413c',
     sky: ['#07090b', '#111518', '#232a2e', '#454e52', '#7d7a73', '#33302c', '#08090a'],
     glow: 'rgba(255,170,120,0.30)',
+    glowMid: 'rgba(200,130,90,0.14)',
     minimap: '#1f2224',
     minimapFar: '#0b0d0e',
   },
@@ -365,6 +369,57 @@ function marineSpots(rng, hq, enemyHq, count, power, patches) {
   return spots;
 }
 
+function pickBarracksSpot(rng, hq, enemyHq, power, patches) {
+  const toEnemy = unit(enemyHq.x - hq.x, enemyHq.z - hq.z);
+  let best = null;
+  let bestScore = -Infinity;
+
+  const scoreAt = (x, z) => {
+    let score = Math.min(
+      dist(x, z, hq.x, hq.z) - 10,
+      dist(x, z, power.x, power.z) - 8.5,
+      MAP.half - 7 - Math.abs(x),
+      MAP.half - 7 - Math.abs(z),
+    );
+    for (const p of patches) score = Math.min(score, dist(x, z, p.x, p.z) - 8.5);
+    return score;
+  };
+
+  for (let attempt = 0; attempt < 260; attempt++) {
+    const sign = attempt % 2 === 0 ? 1 : -1;
+    const dir = rotate(toEnemy, sign * range(rng, 0.45, 2.55));
+    const d = range(rng, 9.5, 14.5);
+    const x = hq.x + dir.x * d;
+    const z = hq.z + dir.z * d;
+    if (!inside(x, z, MAP.half - 7)) continue;
+    const score = scoreAt(x, z);
+    if (score > 0.4) return { x, z };
+    if (score > bestScore) {
+      bestScore = score;
+      best = { x, z };
+    }
+  }
+
+  // Систематический обход: если у границы не осталось места для случайных
+  // проб, ищем ближайшее свободное кольцо вокруг базы.
+  for (const radius of [10, 11.5, 13, 14.5]) {
+    for (let step = 0; step < 48; step++) {
+      const angle = (step / 48) * TAU;
+      const x = hq.x + Math.cos(angle) * radius;
+      const z = hq.z + Math.sin(angle) * radius;
+      if (!inside(x, z, MAP.half - 7)) continue;
+      if (scoreAt(x, z) > 0.4) return { x, z };
+    }
+  }
+
+  if (best) return best;
+  const dir = rotate(toEnemy, Math.PI / 2);
+  return {
+    x: Math.max(-MAP.half + 7, Math.min(MAP.half - 7, hq.x + dir.x * 11)),
+    z: Math.max(-MAP.half + 7, Math.min(MAP.half - 7, hq.z + dir.z * 11)),
+  };
+}
+
 // ------------------------------------------------------------------ карта
 
 function makePatch(x, z, owner, role, rotation) {
@@ -384,12 +439,13 @@ function addPatchPair(patches, x, z, symmetry, rng, role = 'natural') {
   return [first, null];
 }
 
-function patchClear(x, z, symmetry, hq, enemyHq, power, enemyPower, patches, opts) {
+function patchClear(x, z, symmetry, hq, enemyHq, power, enemyPower, barracks, patches, opts) {
   if (!inside(x, z, opts.bound ?? MAP.half - 9)) return false;
   if (dist(x, z, hq.x, hq.z) < opts.hqClear) return false;
   if (dist(x, z, enemyHq.x, enemyHq.z) < opts.hqClear) return false;
   if (dist(x, z, power.x, power.z) < opts.powerClear) return false;
   if (dist(x, z, enemyPower.x, enemyPower.z) < opts.powerClear) return false;
+  if (barracks && dist(x, z, barracks.x, barracks.z) < (opts.barracksClear ?? 10)) return false;
   if (patches.some((p) => dist(x, z, p.x, p.z) < opts.patchClear)) return false;
   const [mx, mz] = symmetry.transform(x, z);
   if (dist(x, z, mx, mz) < (opts.selfClear ?? 0)) return false;
@@ -452,8 +508,10 @@ export function createMap(seedInput, options = {}) {
     enemyHomePatches.push(mirror);
   }
 
+  const enemyBarracks = pickBarracksSpot(rng, enemyHq, playerHq, enemyPower, oilPatches);
+
   const patchTest = (x, z, opts) => patchClear(
-    x, z, symmetry, playerHq, enemyHq, playerPower, enemyPower, oilPatches, opts,
+    x, z, symmetry, playerHq, enemyHq, playerPower, enemyPower, enemyBarracks, oilPatches, opts,
   );
 
   // Нейтральные месторождения: две зеркальные пары плюс иногда спорная точка
@@ -492,6 +550,7 @@ export function createMap(seedInput, options = {}) {
     enemy: {
       hq: { ...enemyHq },
       power: { ...enemyPower },
+      barracks: { ...enemyBarracks },
       derricks: enemyHomePatches.slice(0, 2).map((p) => ({ x: p.x, z: p.z })),
       marines: [],
     },
@@ -515,6 +574,7 @@ export function createMap(seedInput, options = {}) {
     if (dist(x, z, enemyHq.x, enemyHq.z) < hqClear) return false;
     if (dist(x, z, playerPower.x, playerPower.z) < powerClear) return false;
     if (dist(x, z, enemyPower.x, enemyPower.z) < powerClear) return false;
+    if (dist(x, z, enemyBarracks.x, enemyBarracks.z) < powerClear + 2) return false;
     return true;
   };
   const oilClear = (x, z, margin) => oilPatches.every((p) => dist(x, z, p.x, p.z) >= margin);
@@ -595,6 +655,8 @@ export function createMap(seedInput, options = {}) {
       // Точка на оси симметрии не образует пару — пропускаем её, чтобы
       // кластеры слева и справа были строго одинаковыми.
       if (dist(x, z, mx, mz) < 0.5) continue;
+      if (crystals.some((c) => dist(x, z, c.x, c.z) < 0.45)) continue;
+      if (crystals.some((c) => dist(mx, mz, c.x, c.z) < 0.45)) continue;
       const props = {
         scaleX: range(rng, 0.7, 1.4),
         scaleY: range(rng, 1.0, 3.4),
@@ -615,6 +677,7 @@ export function createMap(seedInput, options = {}) {
       baseClear(x, z, 7, 6)
       && oilClear(x, z, 5.5)
       && rocks.every((r) => dist(x, z, r.x, r.z) > 4.2)
+      && pebbles.every((p) => dist(x, z, p.x, p.z) > 0.8)
     ));
     if (!spot) continue;
     pushPair(pebbles, spot.x, spot.z, {

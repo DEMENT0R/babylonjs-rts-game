@@ -81,6 +81,18 @@ for (const seed of seeds) {
   }
   check(player.derricks.length === 1, `${label}: у игрока должна быть одна стартовая вышка`);
   check(enemy.derricks.length === 2, `${label}: у врага должны быть две стартовые вышки`);
+  check(player.marines.length === 2, `${label}: у игрока должно быть два стартовых юнита`);
+  check(enemy.marines.length === 3, `${label}: у врага должно быть три стартовых юнита`);
+  check(!!enemy.barracks, `${label}: у врага нет казарм`);
+  if (enemy.barracks) {
+    const b = enemy.barracks;
+    check(Math.abs(b.x) <= 56 && Math.abs(b.z) <= 56, `${label}: казармы за пределами карты`);
+    check(Math.hypot(b.x - enemy.hq.x, b.z - enemy.hq.z) > 9, `${label}: казармы внутри штаба`);
+    check(Math.hypot(b.x - enemy.power.x, b.z - enemy.power.z) > 8, `${label}: казармы внутри электростанции`);
+    for (const patch of map.oilPatches) {
+      check(Math.hypot(b.x - patch.x, b.z - patch.z) > 8, `${label}: казармы на месторождении`);
+    }
+  }
   for (const [faction, list] of [['player', player.derricks], ['enemy', enemy.derricks]]) {
     for (const derrick of list) {
       const patch = patchByKey.get(key(derrick.x, derrick.z));

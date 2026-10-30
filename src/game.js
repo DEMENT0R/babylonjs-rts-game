@@ -9,7 +9,6 @@ import {
   MAP,
   MESSAGES,
   AI,
-  OIL_PATCHES,
 } from './config.js';
 import { clamp, dist, formatTime } from './utils.js';
 import { Unit, Building } from './entities.js';
@@ -23,6 +22,7 @@ export class Game {
     this.camera = camera;
     this.factory = factory;
     this.world = world;
+    this.map = world.map;
     this.fx = fx;
     this.ui = null;
     this.input = null;
@@ -61,39 +61,36 @@ export class Game {
 
   // ------------------------------------------------------------- setup
   setupBases() {
-    const p = START.player;
-    this.createBuilding('player', 'hq', p.hq[0], p.hq[1], { complete: true, silent: true });
-    this.createBuilding('player', 'power', p.power[0], p.power[1], { complete: true, silent: true });
-    for (const [x, z] of p.derricks) {
-      const patch = this.findOilPatch(x, z);
-      const b = this.createBuilding('player', 'derrick', x, z, { complete: true, silent: true, patch });
-      if (patch) patch.derrick = b;
-    }
-    const e = START.enemy;
-    this.createBuilding('enemy', 'hq', e.hq[0], e.hq[1], { complete: true, silent: true });
-    this.createBuilding('enemy', 'power', e.power[0], e.power[1], { complete: true, silent: true });
-    this.createBuilding('enemy', 'barracks', e.barracks[0], e.barracks[1], { complete: true, silent: true });
-    for (const [x, z] of e.derricks) {
-      const patch = this.findOilPatch(x, z);
-      const b = this.createBuilding('enemy', 'derrick', x, z, { complete: true, silent: true, patch });
-      if (patch) patch.derrick = b;
-    }
+    const { player, enemy } = this.map.spawn;
+    const playerHq = player.hq;
+    const enemyHq = enemy.hq;
 
-    const spawnMarines = (faction, positions, faceX, faceZ) => {
-      for (const [x, z] of positions) {
-        const u = this.spawnUnit(faction, 'marine', x, z, { silent: true });
-        if (u) u.root.rotation.y = Math.atan2(faceX - x, faceZ - z);
+    const createBase = (faction, base, faceX, faceZ) => {
+      this.createBuilding(faction, 'hq', base.hq.x, base.hq.z, { complete: true, silent: true });
+      this.createBuilding(faction, 'power', base.power.x, base.power.z, { complete: true, silent: true });
+      for (const spot of base.derricks) {
+        const patch = this.findOilPatch(spot.x, spot.z, 6);
+        const b = this.createBuilding(faction, 'derrick', spot.x, spot.z, {
+          complete: true,
+          silent: true,
+          patch,
+        });
+        if (patch) patch.derrick = b;
+      }
+      for (const spot of base.marines) {
+        const u = this.spawnUnit(faction, 'marine', spot.x, spot.z, { silent: true });
+        if (u) u.root.rotation.y = Math.atan2(faceX - spot.x, faceZ - spot.z);
+      }
+      if (base.barracks) {
+        this.createBuilding(faction, 'barracks', base.barracks.x, base.barracks.z, {
+          complete: true,
+          silent: true,
+        });
       }
     };
-    spawnMarines('player', [
-      [-34.0, 24.0],
-      [-43.0, 23.0],
-    ], 0, 0);
-    spawnMarines('enemy', [
-      [31.5, -24.5],
-      [34.5, -23.5],
-      [29.0, -22.5],
-    ], 0, 0);
+
+    createBase('player', player, enemyHq.x, enemyHq.z);
+    createBase('enemy', enemy, playerHq.x, playerHq.z);
   }
 
   // ------------------------------------------------------------- loop

@@ -15,20 +15,21 @@ import {
   ShadowGenerator,
   ParticleSystem,
 } from './babylon.js';
-import { MAP, OIL_PATCHES, START, COLORS } from './config.js';
+import { MAP } from './config.js';
 import { mulberry32, rngRange, rngPick } from './utils.js';
 
 const SUN_DIR = new Vector3(-0.52, 0.46, 0.54).normalize();
 
 export class World {
-  constructor(scene, factory) {
+  constructor(scene, factory, map) {
     this.scene = scene;
     this.factory = factory;
+    this.map = map;
     this.oilPatches = [];
     this.rocks = [];
     this.obstacles = [];
     this.decor = [];
-    this.rng = mulberry32(0x7e11a5);
+    this.rng = mulberry32((map.seed ^ 0x7e11a5) >>> 0);
     this._buildLights();
     this._buildSky();
     this._buildGround();
@@ -38,17 +39,22 @@ export class World {
     this._buildDust();
   }
 
+  get style() {
+    return this.map.style;
+  }
+
   _buildLights() {
     const scene = this.scene;
+    const style = this.style;
     this.hemi = new HemisphericLight('hemi', new Vector3(0, 1, 0), scene);
     this.hemi.intensity = 0.68;
-    this.hemi.diffuse = Color3.FromHexString('#bdd8e8');
-    this.hemi.groundColor = Color3.FromHexString('#4f3d2d');
+    this.hemi.diffuse = Color3.FromHexString(style.hemi);
+    this.hemi.groundColor = Color3.FromHexString(style.hemiGround);
 
     this.sun = new DirectionalLight('sun', SUN_DIR.scale(-1), scene);
     this.sun.position = SUN_DIR.scale(90);
-    this.sun.diffuse = Color3.FromHexString('#ffd9b2');
-    this.sun.specular = Color3.FromHexString('#4a3524');
+    this.sun.diffuse = Color3.FromHexString(style.sun);
+    this.sun.specular = Color3.FromHexString(style.sunSpecular);
     this.sun.intensity = 1.7;
 
     this.shadow = new ShadowGenerator(1024, this.sun);
@@ -65,26 +71,22 @@ export class World {
 
     scene.fogMode = Scene.FOGMODE_EXP2;
     scene.fogDensity = 0.0046;
-    scene.fogColor = Color3.FromHexString('#22303a');
+    scene.fogColor = Color3.FromHexString(style.fog);
     scene.ambientColor = new Color3(0.15, 0.17, 0.19);
   }
 
   _buildSky() {
+    const style = this.style;
     const tex = new DynamicTexture('skyTexture', { width: 1024, height: 512 }, this.scene, true);
     const ctx = tex.getContext();
     const grad = ctx.createLinearGradient(0, 0, 0, 512);
-    grad.addColorStop(0, '#060d17');
-    grad.addColorStop(0.35, '#0d1b29');
-    grad.addColorStop(0.58, '#243947');
-    grad.addColorStop(0.7, '#5b5a5a');
-    grad.addColorStop(0.76, '#a1745a');
-    grad.addColorStop(0.8, '#3a3a3d');
-    grad.addColorStop(1, '#0a0f14');
+    const stops = style.sky;
+    stops.forEach((color, index) => grad.addColorStop(index / (stops.length - 1), color));
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 1024, 512);
 
     // звёзды
-    const rng = mulberry32(0x51a7);
+    const rng = mulberry32((this.map.seed ^ 0x51a7) >>> 0);
     for (let i = 0; i < 420; i++) {
       const x = rng() * 1024;
       const y = rng() * 260;
@@ -97,8 +99,8 @@ export class World {
 
     // мягкое зарево у горизонта
     const glow = ctx.createRadialGradient(700, 375, 0, 700, 375, 260);
-    glow.addColorStop(0, 'rgba(255,160,90,0.55)');
-    glow.addColorStop(0.4, 'rgba(220,110,60,0.18)');
+    glow.addColorStop(0, style.glow);
+    glow.addColorStop(0.4, style.glowMid);
     glow.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, 1024, 512);
@@ -126,10 +128,11 @@ export class World {
   }
 
   _buildGround() {
+    const style = this.style;
     const tex = new DynamicTexture('groundTexture', { width: 1024, height: 1024 }, this.scene, true);
     const ctx = tex.getContext();
-    const rng = mulberry32(0xc0ffee);
-    ctx.fillStyle = COLORS.ground;
+    const rng = mulberry32((this.map.seed ^ 0xc0ffee) >>> 0);
+    ctx.fillStyle = style.ground;
     ctx.fillRect(0, 0, 1024, 1024);
 
     // большие пятна
@@ -139,7 +142,7 @@ export class World {
       const r = rngRange(rng, 40, 190);
       const g = ctx.createRadialGradient(x, y, 0, x, y, r);
       const dark = rng() > 0.45;
-      g.addColorStop(0, dark ? 'rgba(48,39,29,0.30)' : 'rgba(142,120,92,0.20)');
+      g.addColorStop(0, dark ? style.patchDark : style.patchLight);
       g.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = g;
       ctx.fillRect(x - r, y - r, r * 2, r * 2);
@@ -158,7 +161,7 @@ export class World {
         y += rngRange(rng, -60, 60);
         ctx.lineTo(x, y);
       }
-      ctx.strokeStyle = `rgba(36,28,21,${0.18 + rng() * 0.3})`;
+      ctx.strokeStyle = `${style.crack}${0.18 + rng() * 0.3})`;
       ctx.lineWidth = rngRange(rng, 0.6, 2.2);
       ctx.stroke();
     }
@@ -169,8 +172,8 @@ export class World {
       const y = rng() * 1024;
       const light = rng() > 0.55;
       ctx.fillStyle = light
-        ? `rgba(170,148,111,${0.1 + rng() * 0.3})`
-        : `rgba(38,31,24,${0.1 + rng() * 0.28})`;
+        ? `${style.speckLight}${0.1 + rng() * 0.3})`
+        : `${style.speckDark}${0.1 + rng() * 0.28})`;
       ctx.beginPath();
       ctx.arc(x, y, rngRange(rng, 0.5, 2.4), 0, Math.PI * 2);
       ctx.fill();
@@ -183,7 +186,7 @@ export class World {
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(rng() * Math.PI);
-      ctx.fillStyle = `rgba(33,28,23,${0.25 + rng() * 0.25})`;
+      ctx.fillStyle = `${style.speckDark}${0.25 + rng() * 0.25})`;
       ctx.beginPath();
       ctx.ellipse(0, 0, rngRange(rng, 8, 30), rngRange(rng, 4, 14), 0, 0, Math.PI * 2);
       ctx.fill();
@@ -210,7 +213,7 @@ export class World {
 
     // тёмная кайма за игровой зоной, чтобы карта читалась
     const edgeMat = new StandardMaterial('edgeMat', this.scene);
-    edgeMat.diffuseColor = Color3.FromHexString('#3d3329');
+    edgeMat.diffuseColor = Color3.FromHexString(style.edge);
     edgeMat.specularColor = Color3.Black();
     edgeMat.alpha = 0.55;
     const strip = 7;
@@ -267,65 +270,48 @@ export class World {
   _buildOil() {
     const template = this.factory.buildOilPatch();
     const sources = this._makeSources(template.root);
-    const rng = mulberry32(0x0115);
-    for (const info of OIL_PATCHES) {
+    this.map.oilPatches.forEach((info, index) => {
       const patch = {
         x: info.x,
         z: info.z,
-        radius: 4.4,
-        owner: info.owner,
+        radius: info.radius ?? 4.4,
+        owner: info.owner ?? null,
+        rotation: info.rotation ?? 0,
         derrick: null,
         root: null,
       };
-      const rot = rng() * Math.PI * 2;
       for (const source of sources) {
-        const inst = source.createInstance(`oil_${info.x}_${info.z}_${source.name}`);
+        const inst = source.createInstance(`oil_${index}_${source.name}`);
         inst.position.set(info.x, 0, info.z);
-        inst.rotation.y = rot;
+        inst.rotation.y = patch.rotation;
         inst.isPickable = true;
         inst.receiveShadows = false;
         inst.metadata = { oilPatch: patch };
       }
       this.oilPatches.push(patch);
-    }
+    });
   }
 
   _buildDecor() {
     const rng = this.rng;
-    const keyPoints = [
-      ...Object.values(START.player).flatMap((v) => (Array.isArray(v) && typeof v[0] === 'number' ? [v] : Array.isArray(v) ? v : [])),
-      ...Object.values(START.enemy).flatMap((v) => (Array.isArray(v) && typeof v[0] === 'number' ? [v] : Array.isArray(v) ? v : [])),
-      ...OIL_PATCHES.map((p) => [p.x, p.z]),
-    ];
+    const { rocks, crates, crystals, pebbles } = this.map.decor;
 
-    const tooClose = (x, z, margin) =>
-      keyPoints.some(([kx, kz]) => Math.hypot(x - kx, z - kz) < margin);
-
-    // Камни: несколько базовых форм, дальше — инстансы.
+    // Камни: несколько базовых форм, дальше — инстансы по данным карты.
     const rockSources = [];
     for (let i = 0; i < 4; i++) {
       rockSources.push(this._bakeSource(this.factory.buildRock(rng)));
     }
-    const rocks = [];
-    let tries = 0;
-    while (rocks.length < 30 && tries < 700) {
-      tries++;
-      const x = rngRange(rng, -MAP.half + 5, MAP.half - 5);
-      const z = rngRange(rng, -MAP.half + 5, MAP.half - 5);
-      if (tooClose(x, z, 11)) continue;
-      const source = rngPick(rng, rockSources);
-      const s = rngRange(rng, 0.8, 1.35);
+    rocks.forEach((info, index) => {
+      const source = rockSources[info.source % rockSources.length];
+      const inst = source.createInstance(`rock_${index}`);
+      inst.position.set(info.x, 0.04, info.z);
+      inst.rotation.set(0, info.yaw ?? 0, 0);
+      inst.scaling.set(info.scale, info.scale * (info.squash ?? 1), info.scale);
       const baseRadius = source.getBoundingInfo().boundingSphere.radius;
-      const radius = Math.max(1.1, baseRadius * s * 0.72);
-      if (rocks.some((r) => Math.hypot(r.x - x, r.z - z) < r.radius + radius + 2.4)) continue;
-      const inst = source.createInstance(`rock_${rocks.length}`);
-      inst.position.set(x, 0.04, z);
-      inst.rotation.set(0, rng() * Math.PI * 2, 0);
-      inst.scaling.set(s, s * rngRange(rng, 0.8, 1.15), s);
-      rocks.push({ x, z, radius });
-      this.rocks.push({ x, z, radius });
-      this.obstacles.push({ x, z, radius, kind: 'rock' });
-    }
+      const radius = Math.max(1.1, baseRadius * info.scale * 0.72);
+      this.rocks.push({ x: info.x, z: info.z, radius });
+      this.obstacles.push({ x: info.x, z: info.z, radius, kind: 'rock' });
+    });
 
     // Кристаллы: один источник, инстансы с разной высотой и наклоном.
     const crystalMat = this.factory.mat('crystal', {
@@ -345,51 +331,26 @@ export class World {
     crystalSrc.material = crystalMat;
     this._bakeSource(crystalSrc);
 
-    const crystalSpots = [
-      [-7, 11],
-      [9.5, -11],
-      [-52, -34],
-      [52, 34],
-      [30, 45],
-      [-30, -45],
-    ];
-    let ci = 0;
-    for (const [x, z] of crystalSpots) {
-      const count = 3 + Math.floor(rng() * 4);
-      for (let i = 0; i < count; i++) {
-        const inst = crystalSrc.createInstance(`crystal_${ci++}`);
-        const a = rng() * Math.PI * 2;
-        const r = rng() * 1.1;
-        const h = rngRange(rng, 1.0, 3.4);
-        inst.position.set(x + Math.cos(a) * r, -0.05, z + Math.sin(a) * r);
-        inst.scaling.set(rngRange(rng, 0.7, 1.4), h, rngRange(rng, 0.7, 1.4));
-        inst.rotation.set(rngRange(rng, -0.32, 0.32), rng() * Math.PI, rngRange(rng, -0.32, 0.32));
-        inst.isPickable = false;
-      }
-    }
+    crystals.forEach((info, index) => {
+      const inst = crystalSrc.createInstance(`crystal_${index}`);
+      inst.position.set(info.x, -0.05, info.z);
+      inst.scaling.set(info.scaleX, info.scaleY, info.scaleZ);
+      inst.rotation.set(info.rx, info.ry, info.rz);
+      inst.isPickable = false;
+    });
 
-    // Ящики: 2 источника материалов, 6 инстансов.
+    // Ящики: 2 источника материалов, инстансы по данным карты.
     const crateSources = this._makeSources(this.factory.buildCrateProp(1));
-    const cratePlaces = [
-      [-31, 34],
-      [-33, 37],
-      [-43, 26],
-      [34, -24],
-      [28, -33],
-      [42, -35],
-    ];
-    for (const [x, z] of cratePlaces) {
-      const rot = rng() * Math.PI;
-      const s = rngRange(rng, 0.8, 1.2);
+    crates.forEach((info, index) => {
       for (const source of crateSources) {
-        const inst = source.createInstance(`crate_${x}_${z}_${source.name}`);
-        inst.position.set(x, 0, z);
-        inst.rotation.y = rot;
-        inst.scaling.setAll(s);
+        const inst = source.createInstance(`crate_${index}_${source.name}`);
+        inst.position.set(info.x, 0, info.z);
+        inst.rotation.y = info.yaw ?? 0;
+        inst.scaling.setAll(info.scale);
         inst.isPickable = false;
       }
-      this.obstacles.push({ x, z, radius: 0.75, kind: 'crate' });
-    }
+      this.obstacles.push({ x: info.x, z: info.z, radius: 0.75 * info.scale, kind: 'crate' });
+    });
 
     // Пограничные столбы: 2 источника на весь периметр.
     const postMat = this.factory.mat('post', { color: '#2e3a40', specular: 0.2 });
@@ -431,22 +392,22 @@ export class World {
     pebble.material = pebbleMat;
     pebble.isPickable = false;
     pebble.receiveShadows = false;
-    for (let i = 0; i < 90; i++) {
-      const x = rngRange(rng, -MAP.half, MAP.half);
-      const z = rngRange(rng, -MAP.half, MAP.half);
-      if (tooClose(x, z, 6)) continue;
-      const inst = pebble.createInstance(`pebble_${i}`);
-      const s = rngRange(rng, 0.35, 1.2);
-      inst.scaling.set(s * rngRange(rng, 0.8, 1.5), s * 0.4, s * rngRange(rng, 0.8, 1.4));
-      inst.position.set(x, 0.08, z);
-      inst.rotation.y = rng() * Math.PI;
-    }
+    pebbles.forEach((info, index) => {
+      const inst = pebble.createInstance(`pebble_${index}`);
+      inst.scaling.set(
+        info.scale * info.stretchX,
+        info.scale * 0.4,
+        info.scale * info.stretchZ,
+      );
+      inst.position.set(info.x, 0.08, info.z);
+      inst.rotation.y = info.yaw ?? 0;
+    });
     pebble.position.y = -500;
     pebble.isPickable = false;
   }
 
   _buildHorizon() {
-    const rng = mulberry32(0xdead5);
+    const rng = mulberry32((this.map.seed ^ 0xdead5) >>> 0);
     const mat = this.factory.mat('mountain', { color: '#322d27', specular: 0.02 });
     const sources = [];
     for (let i = 0; i < 3; i++) {

@@ -10,7 +10,7 @@ export class AIController {
     this.credits = AI.credits;
     this.waveTimer = AI.firstWave;
     this.waveIndex = 0;
-    this.rally = new Vector3(28, 0, -22);
+    this.rally = this.baseRally();
     this.defenseTimer = 0;
     this.trainTimer = 2;
     this.lastWaveAt = -999;
@@ -21,6 +21,16 @@ export class AIController {
       barracks.rally = this.rally.clone();
       this.barracks = barracks;
     }
+  }
+
+  /** Точка сбора у базы врага, смещённая в сторону игрока. */
+  baseRally() {
+    const enemyHq = this.game.map.spawn.enemy.hq;
+    const playerHq = this.game.map.spawn.player.hq;
+    const dx = playerHq.x - enemyHq.x;
+    const dz = playerHq.z - enemyHq.z;
+    const len = Math.hypot(dx, dz) || 1;
+    return new Vector3(enemyHq.x + (dx / len) * 13, 0, enemyHq.z + (dz / len) * 13);
   }
 
   update(dt) {
@@ -122,6 +132,6 @@ export class AIController {
       this.game.ui.alert();
       this.game.ui.ping(playerHQ.position.x, playerHQ.position.z, '#ff4b3e');
     }
-    this.rally = new Vector3(28, 0, -22);
+    this.rally = this.baseRally();
   }
 }

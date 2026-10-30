@@ -8,7 +8,8 @@ import {
   Color4,
   GlowLayer,
 } from './babylon.js';
-import { START, CAMERA } from './config.js';
+import { CAMERA } from './config.js';
+import { createMap, formatSeed, randomSeed, seedFromLocation } from './mapgen.js';
 import { ModelFactory } from './models.js';
 import { World } from './world.js';
 import { Effects } from './effects.js';
@@ -34,6 +35,18 @@ function fatal(err) {
 }
 
 function boot() {
+  const params = new URLSearchParams(window.location.search);
+  const requestedSeed = seedFromLocation(window.location.search);
+  const seed = requestedSeed ?? randomSeed();
+  const map = createMap(seed);
+
+  // Сид попадает в адрес: ссылкой можно поделиться, а F5 сохранит ту же карту.
+  if (!params.has('seed')) {
+    params.set('seed', formatSeed(seed));
+    const query = params.toString();
+    window.history.replaceState(null, '', `${window.location.pathname}?${query}${window.location.hash}`);
+  }
+
   const canvas = document.querySelector('#scene');
   const engine = new Engine(canvas, true, {
     preserveDrawingBuffer: true,
@@ -50,13 +63,21 @@ function boot() {
   scene.setRenderingAutoClearDepthStencil(1, true);
   scene.fogEnabled = true;
 
-  const [hx, hz] = START.player.hq;
+  const playerHq = map.spawn.player.hq;
+  const enemyHq = map.spawn.enemy.hq;
+  const toEnemyX = enemyHq.x - playerHq.x;
+  const toEnemyZ = enemyHq.z - playerHq.z;
+  const toEnemyLen = Math.hypot(toEnemyX, toEnemyZ) || 1;
   const camera = new ArcRotateCamera(
     'camera',
-    2.35,
+    Math.atan2(playerHq.z - enemyHq.z, playerHq.x - enemyHq.x),
     0.93,
     64,
-    new Vector3(hx - 9, 0, hz + 8),
+    new Vector3(
+      playerHq.x + (toEnemyX / toEnemyLen) * 5,
+      0,
+      playerHq.z + (toEnemyZ / toEnemyLen) * 5,
+    ),
     scene,
   );
   camera.lowerRadiusLimit = CAMERA.minRadius;
@@ -78,7 +99,7 @@ function boot() {
   glow.intensity = 0.42;
 
   const factory = new ModelFactory(scene);
-  const world = new World(scene, factory);
+  const world = new World(scene, factory, map);
   if (world.sky) glow.addExcludedMesh(world.sky);
   const fx = new Effects(scene);
 
@@ -109,8 +130,9 @@ function boot() {
 
   // Отладочные инструменты доступны только с ?debug и не мешают обычной игре.
   if (new URLSearchParams(window.location.search).has('debug')) {
-    window.__GAME__ = { engine, scene, camera, game, ui, input, world, fx, factory };
+    window.__GAME__ = { engine, scene, camera, game, ui, input, world, map, fx, factory };
     window.game = game;
+    window.__MAP__ = map;
     window.__advance = (seconds = 1) => {
       const wasPaused = game.paused;
       game.paused = false;
