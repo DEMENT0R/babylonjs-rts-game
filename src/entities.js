@@ -8,7 +8,7 @@ import {
   Vector3,
   Color3,
 } from './babylon.js';
-import { UNITS, BUILDINGS, FACTIONS, MAP } from './config.js';
+import { UNITS, BUILDINGS, FACTIONS, MAP, MESSAGES } from './config.js';
 import { clamp, dist, turnTowards, damp, angleDiff } from './utils.js';
 
 let nextId = 1;
@@ -231,6 +231,7 @@ export class Unit extends Entity {
     this.muzzleIndex = 0;
     this.pendingVolley = [];
     this.retaliateTimer = 0;
+    this.workTimer = 0;
     this.stuckTime = 0;
     this.detourTimer = 0;
     this.detourSign = Math.random() < 0.5 ? -1 : 1;
@@ -297,6 +298,7 @@ export class Unit extends Entity {
     if (!this.alive) return;
     this.attackCd = Math.max(0, this.attackCd - dt);
     this.updateVolley(dt);
+    if (this.workTimer > 0) this.workTimer -= dt;
     if (this.retaliateTimer > 0) this.retaliateTimer -= dt;
 
     const order = this.order;
@@ -632,7 +634,7 @@ export class Unit extends Entity {
     this.root.position.z = pos.z;
     const moving = this.moving;
     if (moving) {
-      this.walkPhase += dt * (this.type === 'scout' ? 13 : this.type === 'tank' ? 5 : this.type === 'artillery' ? 6 : 9);
+      this.walkPhase += dt * (this.type === 'scout' ? 13 : this.type === 'tank' ? 5 : this.type === 'artillery' ? 6 : this.type === 'engineer' ? 10 : 9);
       const targetAngle = yawTo(this.lastDirX, this.lastDirZ);
       this.root.rotation.y = turnTowards(this.root.rotation.y, targetAngle, dt * 5.5);
     }
@@ -648,6 +650,20 @@ export class Unit extends Entity {
       this.parts.arms[0].rotation.x = damp(this.parts.arms[0].rotation.x, -swing * 0.5, 10, dt);
       this.parts.arms[1].rotation.x = damp(this.parts.arms[1].rotation.x, swing * 0.35 - 0.05, 10, dt);
       if (this.parts.gun) this.parts.gun.position.z = 0.55 - this.recoil * 0.12;
+    } else if (this.type === 'engineer') {
+      const swing = moving ? Math.sin(this.walkPhase) * 0.5 : 0;
+      this.parts.hips[0].rotation.x = damp(this.parts.hips[0].rotation.x, swing, 12, dt);
+      this.parts.hips[1].rotation.x = damp(this.parts.hips[1].rotation.x, -swing, 12, dt);
+      if (this.workTimer > 0) {
+        const work = this.game.elapsed * 15;
+        this.parts.arms[1].rotation.x = -0.85 + Math.sin(work) * 0.5;
+        this.parts.arms[0].rotation.x = -0.35 + Math.cos(work * 0.7) * 0.18;
+        this.parts.wrench.rotation.z = Math.sin(work * 1.4) * 0.35;
+      } else {
+        this.parts.arms[0].rotation.x = damp(this.parts.arms[0].rotation.x, -swing * 0.45, 10, dt);
+        this.parts.arms[1].rotation.x = damp(this.parts.arms[1].rotation.x, swing * 0.45 - 0.05, 10, dt);
+        this.parts.wrench.rotation.z = damp(this.parts.wrench.rotation.z, 0, 8, dt);
+      }
     } else if (this.type === 'scout') {
       const spin = moving ? 13 * dt : 0;
       for (const wheel of this.parts.wheels) wheel.rotation.y += spin;
@@ -699,6 +715,9 @@ export class Building extends Entity {
     this.forceBar = !this.complete;
     this.repairing = false;
     this.repairFx = 0;
+    this.builderCount = 0;
+    this.stalledTime = 0;
+    this.buildFx = 0;
 
     this.model = game.factory.building(type, faction);
     this.root = this.model.root;
@@ -782,7 +801,10 @@ export class Building extends Entity {
       this.buildRing = null;
     }
     this.game.fx.buildDust(this.position, 1.2 + this.radius * 0.1);
-    this.game.notify(`Строительство завершено: ${this.def.name}`, 'success', `done_${this.id}`);
+    if (this.faction === 'player') {
+      this.game.notify(`Строительство завершено: ${this.def.name}`, 'success', `done_${this.id}`);
+    }
+    this.builderCount = 0;
     this.game.recomputePower();
     this.updateBar();
   }
@@ -873,9 +895,26 @@ export class Building extends Entity {
     const game = this.game;
 
     if (!this.complete) {
-      this.construction = Math.min(1, this.construction + dt / this.def.buildTime);
-      this.applyConstructionVisual();
-      if (this.construction >= 1) this.finishConstruction();
+      const builders = game.buildersNear(this);
+      this.builderCount = builders.length;
+      if (builders.length) {
+        this.stalledTime = 0;
+        const workers = Math.min(builders.length, 4);
+        this.construction = Math.min(1, this.construction + (dt / this.def.buildTime) * workers);
+        for (const unit of builders) unit.workTimer = 0.22;
+        this.buildFx -= dt;
+        if (this.buildFx <= 0) {
+          this.buildFx = 0.24 + Math.random() * 0.18;
+          game.fx.repairSparks(this.position, Math.min(2.4, 0.7 + this.radius * 0.3));
+        }
+        this.applyConstructionVisual();
+        if (this.construction >= 1) this.finishConstruction();
+      } else {
+        this.stalledTime += dt;
+        if (this.stalledTime > 1.5 && this.faction === 'player') {
+          game.notify(MESSAGES.needEngineer, 'warn', `need_engineer_${this.id}`, 9, 5);
+        }
+      }
       this.updateBar();
       return;
     }

@@ -88,6 +88,17 @@ export class Game {
           silent: true,
         });
       }
+      const engineers = START[faction]?.engineers ?? 0;
+      for (let i = 0; i < engineers; i++) {
+        const spot = this.findSpawnSpot(
+          base.hq.x,
+          base.hq.z,
+          UNITS.engineer.radius,
+          i * 2.4 + Math.PI / 2,
+        );
+        const unit = this.spawnUnit(faction, 'engineer', spot.x, spot.z, { silent: true });
+        if (unit) unit.root.rotation.y = Math.atan2(faceX - spot.x, faceZ - spot.z);
+      }
     };
 
     createBase('player', player, enemyHq.x, enemyHq.z);
@@ -392,6 +403,66 @@ export class Game {
     return best;
   }
 
+  // ------------------------------------------------------------- builders
+  buildersNear(building, faction = building.faction) {
+    const radius = building.radius + 8;
+    const out = [];
+    for (const u of this.units) {
+      if (!u.alive || u.faction !== faction || !u.def.builder) continue;
+      if (dist(u.position.x, u.position.z, building.position.x, building.position.z) <= radius) {
+        out.push(u);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Направляет свободных инженеров к новой стройплощадке. Стройка идёт только
+   * рядом с инженерами; скорость растёт с их числом (но не выше четырёх).
+   */
+  assignBuilders(building) {
+    if (!building || !building.alive || building.complete) return 0;
+    const faction = building.faction;
+    const candidates = [];
+    for (const u of this.units) {
+      if (!u.alive || u.faction !== faction || !u.def.builder) continue;
+      const d = dist(u.position.x, u.position.z, building.position.x, building.position.z);
+      if (d > 90) continue;
+      const busy = u.order && u.order.type !== 'move';
+      const remoteMove = u.order?.type === 'move' && faction === 'enemy';
+      if (busy && !remoteMove) continue;
+      candidates.push({ u, d });
+    }
+    candidates.sort((a, b) => a.d - b.d);
+    const chosen = candidates.slice(0, 4);
+    chosen.forEach(({ u }, i) => this.sendBuilderTo(u, building, i));
+    return chosen.length;
+  }
+
+  /** Ручное назначение выбранных инженеров на стройплощадку. */
+  assignBuildersTo(building, builders) {
+    if (!building || !building.alive || building.complete) return 0;
+    let assigned = 0;
+    for (const u of builders) {
+      if (!u || !u.alive || !u.def.builder || assigned >= 4) continue;
+      this.sendBuilderTo(u, building, assigned);
+      assigned++;
+    }
+    return assigned;
+  }
+
+  sendBuilderTo(unit, building, index = 0) {
+    const angle = Math.atan2(
+      unit.position.z - building.position.z,
+      unit.position.x - building.position.x,
+    ) + index * 0.6;
+    const r = building.radius + 2.4;
+    unit.issueMove(
+      clamp(building.position.x + Math.cos(angle) * r, -MAP.clamp, MAP.clamp),
+      clamp(building.position.z + Math.sin(angle) * r, -MAP.clamp, MAP.clamp),
+    );
+  }
+
   getObstaclesNear(x, z, range) {
     const out = [];
     for (const o of this.world.obstacles) {
@@ -595,23 +666,43 @@ export class Game {
     return { valid: true, x: px, z: pz, patch };
   }
 
-  tryBuild(type, x, z) {
+  /**
+   * Закладывает здание. opts.faction позволяет ИИ строить за свой счёт,
+   * opts.wallet — объект с полем credits (контроллер ИИ).
+   */
+  tryBuild(type, x, z, opts = {}) {
     const def = BUILDINGS[type];
+    const faction = opts.faction ?? 'player';
+    const wallet = opts.wallet ?? null;
+    const credits = wallet ? wallet.credits : this.credits;
     if (!def || def.cost <= 0) return null;
-    if (this.credits < def.cost) {
-      this.notify(MESSAGES.noCredits, 'warn', 'no-credits', 0, 3);
+    if (credits < def.cost) {
+      if (faction === 'player') this.notify(MESSAGES.noCredits, 'warn', 'no-credits', 0, 3);
       return null;
     }
     const place = this.findPlacement(type, x, z);
     if (!place.valid) {
-      if (place.reason === 'oil') this.notify(MESSAGES.needOil, 'warn', 'bad-place', 0, 2);
-      else this.notify(MESSAGES.badPlace, 'warn', 'bad-place', 0, 2);
+      if (faction === 'player') {
+        if (place.reason === 'oil') this.notify(MESSAGES.needOil, 'warn', 'bad-place', 0, 2);
+        else this.notify(MESSAGES.badPlace, 'warn', 'bad-place', 0, 2);
+      }
       return null;
     }
-    this.credits -= def.cost;
-    const b = this.createBuilding('player', type, place.x, place.z, { complete: false, patch: place.patch });
+    if (wallet) wallet.credits -= def.cost;
+    else this.credits -= def.cost;
+    const b = this.createBuilding(faction, type, place.x, place.z, {
+      complete: false,
+      patch: place.patch,
+      silent: faction !== 'player',
+    });
     this.pushUnitsOut(b);
     this.fx.buildDust(new Vector3(place.x, 0, place.z), 1.0);
+    if (faction === 'player') {
+      const assigned = this.assignBuilders(b);
+      if (!assigned) {
+        this.notify(MESSAGES.noEngineerAssigned, 'warn', 'no-engineer-assigned', 0, 5);
+      }
+    }
     return b;
   }
 

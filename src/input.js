@@ -315,6 +315,17 @@ export class Input {
     const picked = this.pick(e.clientX, e.clientY);
     const point = this.groundPoint(e.clientX, e.clientY);
 
+    // Инженеры по ПКМ на недостроенном здании идут помогать стройке.
+    if (picked.entity && picked.entity.faction === 'player' && picked.entity.isBuilding && !picked.entity.complete) {
+      const builders = units.filter((u) => u.def.builder);
+      if (builders.length) {
+        this.game.assignBuildersTo(picked.entity, builders);
+        this.game.fx.orderMarker(picked.entity.position, 'move');
+        this.game.notify('Инженеры направлены к стройплощадке.', 'hint', 'builders-manual', 0, 3);
+        return;
+      }
+    }
+
     if (units.length) {
       if (picked.entity && picked.entity.faction !== 'player') {
         this.game.commandAttack(picked.entity);
@@ -400,7 +411,7 @@ export class Input {
       return;
     }
 
-    const hotkeyMap = { KeyZ: 'Z', KeyX: 'X', KeyC: 'C', KeyV: 'V', KeyF: 'F', KeyR: 'R' };
+    const hotkeyMap = { KeyZ: 'Z', KeyX: 'X', KeyC: 'C', KeyV: 'V', KeyB: 'B', KeyF: 'F', KeyR: 'R' };
     if (hotkeyMap[e.code] && !e.repeat) {
       const handled = this.game.ui?.triggerHotkey(hotkeyMap[e.code]);
       if (handled) e.preventDefault();

@@ -27,6 +27,15 @@ export const ICONS = {
     <circle cx="37" cy="17" r="2.6"/>
     <path d="M37 20v7"/>
   `),
+  engineer: stroke(`
+    <circle cx="22" cy="14" r="5"/>
+    <path d="M13 41v-9c0-5 4-8 9-8s9 3 9 8v9"/>
+    <path d="M15 10h14M18 5h8" opacity=".8"/>
+    <path d="M22 24v9"/>
+    <path d="M31 27h5v5h-5Z"/>
+    <path d="m34 32 4 6"/>
+    <path d="M12 34h6" opacity=".5"/>
+  `),
   marine: stroke(`
     <path d="M24 5c-6.5 0-10 4.5-10 11v9h20v-9c0-6.5-3.5-11-10-11Z"/>
     <path d="M14 15h20" opacity=".6"/>

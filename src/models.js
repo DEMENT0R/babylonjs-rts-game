@@ -217,6 +217,7 @@ export class ModelFactory {
   unit(type, faction) {
     const build = {
       marine: () => this.buildMarine(faction),
+      engineer: () => this.buildEngineer(faction),
       scout: () => this.buildScout(faction),
       tank: () => this.buildTank(faction),
       artillery: () => this.buildArtillery(faction),
@@ -232,6 +233,116 @@ export class ModelFactory {
       derrick: () => this.buildDerrick(faction),
     }[type];
     return this.cloneTemplate(`building:${type}:${faction}`, build);
+  }
+
+  // -------------------------------------------------------------- UNIT: ENGINEER
+  buildEngineer(faction) {
+    const m = this.baseMaterials(faction);
+    const root = new TransformNode(`engineer_${faction}`, this.scene);
+    const parts = {};
+    const add = (mesh, parent = root) => {
+      mesh.parent = parent;
+      mesh.isPickable = false;
+      mesh.receiveShadows = false;
+      return mesh;
+    };
+
+    const hips = [];
+    for (const side of [-1, 1]) {
+      const hip = new TransformNode(`eng_hip_${side}`, this.scene);
+      hip.parent = root;
+      hip.position.set(0.24 * side, 0.9, 0);
+      const leg = MeshBuilder.CreateBox(`eng_leg_${side}`, { width: 0.28, height: 0.76, depth: 0.32 }, this.scene);
+      leg.position.y = -0.39;
+      add(leg, hip).material = m.panel;
+      const boot = MeshBuilder.CreateBox(`eng_boot_${side}`, { width: 0.38, height: 0.22, depth: 0.52 }, this.scene);
+      boot.position.set(0, -0.82, 0.09);
+      add(boot, hip).material = m.rubber;
+      hips.push(hip);
+    }
+
+    const torso = MeshBuilder.CreateBox('eng_torso', { width: 0.92, height: 0.78, depth: 0.54 }, this.scene);
+    torso.position.y = 1.34;
+    add(torso).material = m.hull;
+
+    const vest = MeshBuilder.CreateBox('eng_vest', { width: 0.86, height: 0.56, depth: 0.2 }, this.scene);
+    vest.position.set(0, 1.4, 0.24);
+    add(vest).material = m.warn;
+
+    const vestStripe = MeshBuilder.CreateBox('eng_veststripe', { width: 0.88, height: 0.08, depth: 0.22 }, this.scene);
+    vestStripe.position.set(0, 1.55, 0.25);
+    add(vestStripe).material = m.accent;
+
+    const belt = MeshBuilder.CreateBox('eng_belt', { width: 0.94, height: 0.16, depth: 0.58 }, this.scene);
+    belt.position.y = 0.97;
+    add(belt).material = m.dark;
+
+    const head = MeshBuilder.CreateSphere('eng_head', { diameter: 0.42, segments: 10 }, this.scene);
+    head.position.set(0, 1.9, 0.01);
+    add(head).material = m.steel;
+
+    const hat = MeshBuilder.CreateCylinder('eng_hat', { diameterTop: 0.38, diameterBottom: 0.46, height: 0.2, tessellation: 12 }, this.scene);
+    hat.position.set(0, 2.12, 0);
+    add(hat).material = m.warn;
+
+    const brim = MeshBuilder.CreateCylinder('eng_brim', { diameter: 0.6, height: 0.06, tessellation: 12 }, this.scene);
+    brim.position.set(0, 2.01, 0.06);
+    add(brim).material = m.warn;
+
+    const visor = MeshBuilder.CreateBox('eng_visor', { width: 0.34, height: 0.11, depth: 0.08 }, this.scene);
+    visor.position.set(0, 1.92, 0.22);
+    add(visor).material = m.glass;
+
+    const pack = MeshBuilder.CreateBox('eng_pack', { width: 0.58, height: 0.54, depth: 0.3 }, this.scene);
+    pack.position.set(0, 1.38, -0.4);
+    add(pack).material = m.dark;
+    const canister = MeshBuilder.CreateCylinder('eng_canister', { diameter: 0.2, height: 0.46, tessellation: 8 }, this.scene);
+    canister.position.set(0.2, 1.55, -0.46);
+    add(canister).material = m.warn;
+    const canister2 = MeshBuilder.CreateCylinder('eng_canister2', { diameter: 0.2, height: 0.46, tessellation: 8 }, this.scene);
+    canister2.position.set(-0.2, 1.55, -0.46);
+    add(canister2).material = m.warn;
+
+    const arms = [];
+    for (const side of [-1, 1]) {
+      const arm = new TransformNode(`eng_arm_${side}`, this.scene);
+      arm.parent = root;
+      arm.position.set(0.55 * side, 1.58, 0);
+      const upper = MeshBuilder.CreateBox(`eng_upperarm_${side}`, { width: 0.2, height: 0.46, depth: 0.24 }, this.scene);
+      upper.position.y = -0.22;
+      add(upper, arm).material = m.panel;
+      const hand = MeshBuilder.CreateBox(`eng_hand_${side}`, { width: 0.2, height: 0.2, depth: 0.24 }, this.scene);
+      hand.position.set(0, -0.5, 0.05);
+      add(hand, arm).material = m.dark;
+      arms.push(arm);
+    }
+
+    const wrench = MeshBuilder.CreateBox('eng_wrench', { width: 0.09, height: 0.09, depth: 0.55 }, this.scene);
+    wrench.position.set(0, -0.56, 0.35);
+    add(wrench, arms[1]).material = m.steel;
+    const wrenchHead = MeshBuilder.CreateTorus('eng_wrenchhead', { diameter: 0.2, thickness: 0.06, tessellation: 10 }, this.scene);
+    wrenchHead.position.set(0, -0.56, 0.66);
+    wrenchHead.rotation.y = Math.PI / 2;
+    add(wrenchHead, arms[1]).material = m.steel;
+
+    const toolbox = MeshBuilder.CreateBox('eng_toolbox', { width: 0.34, height: 0.3, depth: 0.52 }, this.scene);
+    toolbox.position.set(0, -0.58, 0.3);
+    add(toolbox, arms[0]).material = m.warn;
+    const toolboxStrip = MeshBuilder.CreateBox('eng_toolstrip', { width: 0.36, height: 0.06, depth: 0.54 }, this.scene);
+    toolboxStrip.position.set(0, -0.42, 0.3);
+    add(toolboxStrip, arms[0]).material = m.dark;
+
+    const muzzle = new TransformNode('eng_muzzle', this.scene);
+    muzzle.parent = arms[1];
+    muzzle.position.set(0, -0.5, 0.62);
+
+    parts.hips = hips;
+    parts.arms = arms;
+    parts.wrench = wrench;
+    parts.toolbox = toolbox;
+    parts.muzzle = muzzle;
+    parts.height = 2.3;
+    return { root, parts, height: 2.3 };
   }
 
   // ---------------------------------------------------------------- UNIT: MARINE

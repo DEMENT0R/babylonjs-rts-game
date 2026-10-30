@@ -53,17 +53,42 @@ export const START = {
   // Стартовые позиции баз и месторождений строит генератор карт (mapgen.js).
   player: {
     marines: 2,
+    engineers: 1,
   },
   enemy: {
     marines: 3,
+    engineers: 1,
   },
 };
 
 // order — порядок кнопок в командной панели.
 export const BUILD_ORDER = ['power', 'barracks', 'derrick'];
 export const TRAIN_ORDER = ['marine', 'scout', 'tank', 'artillery'];
+export const HQ_TRAIN_ORDER = ['engineer'];
 
 export const UNITS = {
+  engineer: {
+    key: 'engineer',
+    name: 'Инженер',
+    role: 'СТРОИТЕЛЬ',
+    icon: 'engineer',
+    desc: 'Возводит здания. Чем больше инженеров рядом со стройплощадкой, тем быстрее идёт стройка. Слаб в бою, берегите его.',
+    cost: 70,
+    buildTime: 10,
+    hp: 90,
+    armor: 0,
+    radius: 0.95,
+    speed: 8.2,
+    range: 7,
+    damage: 4,
+    cooldown: 1.0,
+    aggro: 11,
+    height: 2.4,
+    projectile: 'bullet',
+    muzzleHeight: 1.45,
+    from: 'hq',
+    builder: true,
+  },
   marine: {
     key: 'marine',
     name: 'Пехотинец',
@@ -265,4 +290,7 @@ export const MESSAGES = {
   repairStarted: 'Ремонт начат. Кредиты списываются по мере восстановления.',
   repairStopped: 'Ремонт остановлен.',
   repairCredits: 'Недостаточно кредитов для продолжения ремонта.',
+  needEngineer: 'Стройплощадке нужны инженеры. Наймите их в командном центре.',
+  noEngineerAssigned: 'К стройплощадке не направлен ни один инженер — постройка замерла.',
+  builderNear: 'Инженеры на месте — стройка идёт быстрее.',
 };

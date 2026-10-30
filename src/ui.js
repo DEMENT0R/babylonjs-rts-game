@@ -7,6 +7,7 @@ import {
   BUILDINGS,
   BUILD_ORDER,
   TRAIN_ORDER,
+  HQ_TRAIN_ORDER,
   MESSAGES,
   MAP,
 } from './config.js';
@@ -337,7 +338,8 @@ export class UI {
     const buildings = game.selectedBuildings();
 
     if (units.length) {
-      return [
+      const hasEngineer = units.some((u) => u.def.builder);
+      const commands = [
         {
           id: 'attackmove',
           label: 'Атака по площади',
@@ -354,11 +356,15 @@ export class UI {
           label: 'Стоп',
           short: 'СТОП',
           icon: 'stop',
-          hotkey: 'X',
+          hotkey: hasEngineer ? 'B' : 'X',
           desc: 'Остановить выбранных юнитов и сбросить приказ.',
           action: () => game.commandStop(),
         },
       ];
+      if (hasEngineer) {
+        BUILD_ORDER.forEach((type, i) => commands.push(this.buildCommand(type, BUILD_HOTKEYS[i])));
+      }
+      return commands;
     }
 
     if (!buildings.length) return [];
@@ -381,63 +387,72 @@ export class UI {
     const repair = this.repairCommand(buildings);
 
     if (b.type === 'hq') {
-      const commands = BUILD_ORDER.map((type, i) => {
-        const def = BUILDINGS[type];
-        const freePatch = type === 'derrick' && !game.world.oilPatches.some((p) => !p.derrick || !p.derrick.alive);
-        const disabled = game.credits < def.cost || freePatch;
-        return {
-          id: `build:${type}`,
-          label: def.name,
-          short: def.name.toUpperCase(),
-          icon: def.icon,
-          hotkey: BUILD_HOTKEYS[i],
-          cost: def.cost,
-          desc: def.desc,
-          kind: 'build',
-          disabled,
-          reason: freePatch ? 'Нет свободных нефтяных месторождений.' : `Недостаточно кредитов. Нужно ${def.cost}.`,
-          action: () => game.startPlacement(type),
-          tip: this.buildTip(def),
-        };
+      const commands = BUILD_ORDER.map((type, i) => this.buildCommand(type, BUILD_HOTKEYS[i]));
+      HQ_TRAIN_ORDER.forEach((type, i) => {
+        commands.push(this.trainCommand(type, b, BUILD_HOTKEYS[BUILD_ORDER.length + i]));
       });
       if (repair) commands.push(repair);
       return commands;
     }
 
     if (b.type === 'barracks') {
-      const commands = TRAIN_ORDER.map((type, i) => {
-        const def = UNITS[type];
-        const queueFull = b.queue.length >= b.maxQueue;
-        const cap = game.countUnits('player') >= game.armyCap;
-        const disabled = !b.complete || queueFull || game.credits < def.cost || cap;
-        return {
-          id: `train:${type}`,
-          label: def.name,
-          short: def.name.toUpperCase(),
-          icon: def.icon,
-          hotkey: BUILD_HOTKEYS[i],
-          cost: def.cost,
-          desc: def.desc,
-          kind: 'train',
-          disabled,
-          reason: !b.complete ? MESSAGES.notReady
-            : queueFull ? MESSAGES.queueFull
-              : cap ? MESSAGES.capReached
-                : `Недостаточно кредитов. Нужно ${def.cost}.`,
-          action: () => {
-            if (game.trainUnit(type, b)) {
-              this.renderSelection();
-              this.renderCommands();
-            }
-          },
-          tip: this.unitTip(def),
-        };
-      });
+      const commands = TRAIN_ORDER.map((type, i) => this.trainCommand(type, b, BUILD_HOTKEYS[i]));
       if (repair) commands.push(repair);
       return commands;
     }
 
     return repair ? [repair] : [];
+  }
+
+  buildCommand(type, hotkey) {
+    const game = this.game;
+    const def = BUILDINGS[type];
+    const freePatch = type === 'derrick' && !game.world.oilPatches.some((p) => !p.derrick || !p.derrick.alive);
+    const disabled = game.credits < def.cost || freePatch;
+    return {
+      id: `build:${type}`,
+      label: def.name,
+      short: def.name.toUpperCase(),
+      icon: def.icon,
+      hotkey,
+      cost: def.cost,
+      desc: def.desc,
+      kind: 'build',
+      disabled,
+      reason: freePatch ? 'Нет свободных нефтяных месторождений.' : `Недостаточно кредитов. Нужно ${def.cost}.`,
+      action: () => game.startPlacement(type),
+      tip: this.buildTip(def),
+    };
+  }
+
+  trainCommand(type, building, hotkey) {
+    const game = this.game;
+    const def = UNITS[type];
+    const queueFull = building.queue.length >= building.maxQueue;
+    const cap = game.countUnits('player') >= game.armyCap;
+    const disabled = !building.complete || queueFull || game.credits < def.cost || cap;
+    return {
+      id: `train:${type}`,
+      label: def.name,
+      short: def.name.toUpperCase(),
+      icon: def.icon,
+      hotkey,
+      cost: def.cost,
+      desc: def.desc,
+      kind: 'train',
+      disabled,
+      reason: !building.complete ? MESSAGES.notReady
+        : queueFull ? MESSAGES.queueFull
+          : cap ? MESSAGES.capReached
+            : `Недостаточно кредитов. Нужно ${def.cost}.`,
+      action: () => {
+        if (game.trainUnit(type, building)) {
+          this.renderSelection();
+          this.renderCommands();
+        }
+      },
+      tip: this.unitTip(def),
+    };
   }
 
   repairCommand(buildings) {
@@ -631,8 +646,11 @@ export class UI {
     const b = buildings[0];
     const def = b.def;
     const pct = clamp((b.hp / b.maxHp) * 100, 0, 100);
+    const constructionCount = b.builderCount ?? 0;
     const status = !b.complete
-      ? { text: `СТРОИТСЯ ${Math.floor(b.construction * 100)}%`, cls: 'warn' }
+      ? (constructionCount
+        ? { text: `СТРОИТСЯ ${Math.floor(b.construction * 100)}% · ИНЖ. ${constructionCount}`, cls: 'warn' }
+        : { text: `ЖДЁТ ИНЖЕНЕРОВ ${Math.floor(b.construction * 100)}%`, cls: 'accent' })
       : b.repairing
         ? { text: 'РЕМОНТ', cls: 'accent' }
         : b.queue.length
@@ -764,8 +782,11 @@ export class UI {
           if (this.live.hpFill) this.live.hpFill.style.width = `${clamp((b.hp / b.maxHp) * 100, 0, 100)}%`;
           if (this.live.hpText) this.live.hpText.textContent = `${Math.ceil(b.hp)} / ${b.maxHp}`;
           if (this.live.statusChip) {
+            const builders = b.builderCount ?? 0;
             const text = !b.complete
-              ? `СТРОИТСЯ ${Math.floor(b.construction * 100)}%`
+              ? (builders
+                ? `СТРОИТСЯ ${Math.floor(b.construction * 100)}% · ИНЖ. ${builders}`
+                : `ЖДЁТ ИНЖЕНЕРОВ ${Math.floor(b.construction * 100)}%`)
               : b.repairing ? 'РЕМОНТ' : b.queue.length ? `ОЧЕРЕДЬ ${b.queue.length}` : 'ГОТОВО';
             const dot = this.live.statusChip.querySelector('i');
             this.live.statusChip.innerHTML = `<i></i>${text}`;
