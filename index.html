@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#050b11" />
+  <meta name="description" content="ГЕЛИОС-7 — маленькая 3D-RTS в стиле StarCraft на Babylon.js: база, энергия, нефть и три типа юнитов." />
+  <title>ГЕЛИОС-7 — тактическая RTS</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <canvas id="scene" touch-action="none"></canvas>
+    <div class="scanlines" aria-hidden="true"></div>
+    <div id="alertFlash" aria-hidden="true"></div>
+
+    <header id="hud-top">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 48 48"><path d="M24 3 43 14v20L24 45 5 34V14Z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M24 10 36 17v14L24 38 12 31V17Z" fill="none" stroke="currentColor" stroke-width="1.1" opacity=".55"/><path d="M24 17 31 21v8l-7 4-7-4v-8Z" fill="currentColor" opacity=".9"/></svg>
+        </div>
+        <div class="brand-text">
+          <strong>ГЕЛИОС-7</strong>
+          <span>КОЛОНИАЛЬНАЯ СЕТЬ / СЕКТОР 7Г</span>
+        </div>
+      </div>
+
+      <div class="resources">
+        <div class="res" id="resCredits">
+          <span class="res-ico" data-icon="credits"></span>
+          <div class="res-copy"><b id="credits">0</b><small>КРЕДИТЫ</small></div>
+        </div>
+        <div class="res" id="resPower">
+          <span class="res-ico" data-icon="bolt"></span>
+          <div class="res-copy"><b id="power">0 / 0</b><small>ЭНЕРГИЯ</small></div>
+        </div>
+        <div class="res" id="resArmy">
+          <span class="res-ico" data-icon="army"></span>
+          <div class="res-copy"><b id="army">0 / 50</b><small>АРМИЯ</small></div>
+        </div>
+      </div>
+
+      <div class="top-right">
+        <div class="mission">
+          <span>ЗАДАЧА</span>
+          <b>Уничтожить командный центр противника</b>
+        </div>
+        <div class="clock" id="clock">00:00</div>
+        <button id="btnPause" class="icon-btn" title="Пауза (Esc)" aria-label="Пауза">
+          <span data-icon="pause"></span>
+        </button>
+      </div>
+    </header>
+
+    <div id="feed" aria-live="polite"></div>
+
+    <main id="hud-bottom">
+      <section id="minimap-panel" class="panel">
+        <div class="panel-head">
+          <span>ТАКТИЧЕСКАЯ КАРТА</span>
+          <span class="panel-tag" id="mmSector">7Г</span>
+        </div>
+        <div class="minimap-frame">
+          <canvas id="minimap" width="512" height="512"></canvas>
+          <div class="mm-corners" aria-hidden="true"></div>
+          <div class="mm-ping" id="mmPing"></div>
+        </div>
+        <div class="minimap-foot">
+          <span>ЛКМ — камера</span>
+          <span id="gridStatus">СЕТЬ В НОРМЕ</span>
+        </div>
+      </section>
+
+      <section id="selection-panel" class="panel">
+        <div class="panel-head">
+          <span id="selTitle">НЕТ ВЫБОРА</span>
+          <span class="panel-tag" id="selTag">—</span>
+        </div>
+        <div id="selectionBody" class="sel-body"></div>
+      </section>
+
+      <section id="command-panel" class="panel">
+        <div class="panel-head">
+          <span>КОМАНДЫ</span>
+          <span class="panel-tag" id="cmdStatus">—</span>
+        </div>
+        <div id="commands" class="cmd-grid"></div>
+        <div class="hint-line">
+          <span><kbd>ЛКМ</kbd> выбор</span>
+          <span><kbd>ПКМ</kbd> приказ</span>
+          <span><kbd>F</kbd> атака</span>
+          <span><kbd>Shift</kbd> добавить</span>
+        </div>
+      </section>
+    </main>
+
+    <div id="selectBox" aria-hidden="true"></div>
+    <div id="tooltip" role="tooltip"></div>
+    <div id="pauseBadge">ПАУЗА</div>
+
+    <div id="overlay" class="overlay">
+      <div class="overlay-bg" aria-hidden="true"></div>
+      <div id="overlayCard" class="overlay-card">
+        <div class="boot">
+          <div class="boot-ring"></div>
+          <p>ИНИЦИАЛИЗАЦИЯ КОМАНДНОЙ СЕТИ...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="vendor/babylon.js"></script>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
