@@ -378,8 +378,10 @@ export class UI {
 
     if (b.faction !== 'player') return [];
 
+    const repair = this.repairCommand(buildings);
+
     if (b.type === 'hq') {
-      return BUILD_ORDER.map((type, i) => {
+      const commands = BUILD_ORDER.map((type, i) => {
         const def = BUILDINGS[type];
         const freePatch = type === 'derrick' && !game.world.oilPatches.some((p) => !p.derrick || !p.derrick.alive);
         const disabled = game.credits < def.cost || freePatch;
@@ -398,10 +400,12 @@ export class UI {
           tip: this.buildTip(def),
         };
       });
+      if (repair) commands.push(repair);
+      return commands;
     }
 
     if (b.type === 'barracks') {
-      return TRAIN_ORDER.map((type, i) => {
+      const commands = TRAIN_ORDER.map((type, i) => {
         const def = UNITS[type];
         const queueFull = b.queue.length >= b.maxQueue;
         const cap = game.countUnits('player') >= game.armyCap;
@@ -429,9 +433,48 @@ export class UI {
           tip: this.unitTip(def),
         };
       });
+      if (repair) commands.push(repair);
+      return commands;
     }
 
-    return [];
+    return repair ? [repair] : [];
+  }
+
+  repairCommand(buildings) {
+    const damaged = buildings.filter((b) => b.complete && b.hp < b.maxHp - 0.5);
+    if (!damaged.length) return null;
+    const repairing = damaged.some((b) => b.repairing);
+    return {
+      id: 'repair',
+      label: repairing ? 'Остановить ремонт' : 'Ремонт',
+      short: repairing ? 'СТОП РЕМОНТ' : 'РЕМОНТ',
+      icon: 'repair',
+      hotkey: 'R',
+      desc: 'Восстанавливать прочность здания за кредиты. Пока ремонт идёт, кредиты расходуются постепенно.',
+      kind: 'repair',
+      disabled: false,
+      action: () => this.game.toggleRepair(damaged),
+      tip: this.repairTip(damaged),
+    };
+  }
+
+  repairTip(buildings) {
+    const game = this.game;
+    const b = buildings[0];
+    const rate = game.repairRate(b);
+    const perHp = game.repairCostPerHp(b);
+    const full = buildings.reduce((sum, item) => sum + game.repairFullCost(item), 0);
+    const repairing = buildings.some((item) => item.repairing);
+    return `
+      <div class="tip-head"><span class="tip-role">ИНЖЕНЕРНАЯ СЛУЖБА</span><b>Ремонт</b></div>
+      <p>Восстанавливает прочность выбранных зданий. Кредиты списываются только за реально полученные HP, ремонт можно остановить в любой момент.</p>
+      <div class="tip-stats">
+        <span><i>+HP/С</i>${rate.toFixed(1)}</span>
+        <span><i>ЦЕНА/HP</i>${perHp.toFixed(2)}</span>
+        <span><i>ПОЛНОСТЬЮ</i>${full}</span>
+      </div>
+      <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${full}</span><span>${repairing ? 'ремонт идёт' : 'горячая клавиша R'}</span></div>
+    `;
   }
 
   unitTip(def) {
@@ -590,9 +633,11 @@ export class UI {
     const pct = clamp((b.hp / b.maxHp) * 100, 0, 100);
     const status = !b.complete
       ? { text: `СТРОИТСЯ ${Math.floor(b.construction * 100)}%`, cls: 'warn' }
-      : b.queue.length
-        ? { text: `ОЧЕРЕДЬ ${b.queue.length}`, cls: 'accent' }
-        : { text: 'ГОТОВО', cls: 'ok' };
+      : b.repairing
+        ? { text: 'РЕМОНТ', cls: 'accent' }
+        : b.queue.length
+          ? { text: `ОЧЕРЕДЬ ${b.queue.length}`, cls: 'accent' }
+          : { text: 'ГОТОВО', cls: 'ok' };
     this.el.selTitle.textContent = def.name + (buildings.length > 1 ? ` ×${buildings.length}` : '');
     this.el.selTag.textContent = b.faction === 'player' ? 'ЗДАНИЕ' : 'ПРОТИВНИК';
 
@@ -602,6 +647,9 @@ export class UI {
         ? `<span class="chip chip--power-use">${icon('bolt')} −${def.powerUse}</span>`
         : '';
     const incomeChip = def.income ? `<span class="chip chip--income">${icon('credits')} ${def.income}/с</span>` : '';
+    const repairChip = b.repairing
+      ? `<span class="chip chip--repair">${icon('repair')} +${this.game.repairRate(b).toFixed(1)} HP/с</span>`
+      : '';
     const queueHTML = this.renderQueue(b);
     const buildHTML = !b.complete
       ? `<button class="btn-small btn-cancel-build" data-cancel-build>ОТМЕНИТЬ ПОСТРОЙКУ · ВОЗВРАТ 60%</button>`
@@ -621,13 +669,14 @@ export class UI {
             <span class="chip chip--status ${status.cls}"><i></i>${status.text}</span>
             ${powerChip}
             ${incomeChip}
+            ${repairChip}
           </div>
         </div>
         ${this.sideStatus()}
       </div>
-      ${b.type === 'barracks' ? queueHTML : ''}
+      ${b.type === 'barracks' || b.type === 'hq' ? queueHTML : ''}
       ${buildHTML}
-      <div class="sel-foot"><span class="dot"></span> ${b.type === 'barracks' ? 'ПКМ по земле — точка сбора · клик по очереди — отмена' : b.type === 'hq' ? 'ПКМ по месторождению — быстрая нефтяная вышка' : 'Пассивное строение'}</div>
+      <div class="sel-foot"><span class="dot"></span> ${b.type === 'barracks' ? 'ПКМ по земле — точка сбора · клик по очереди — отмена · R — ремонт' : b.type === 'hq' ? 'ПКМ по месторождению — быстрая нефтяная вышка · R — ремонт' : 'Пассивное строение · R — ремонт'}</div>
     `;
     this.live = {
       kind: 'building',
@@ -717,7 +766,7 @@ export class UI {
           if (this.live.statusChip) {
             const text = !b.complete
               ? `СТРОИТСЯ ${Math.floor(b.construction * 100)}%`
-              : b.queue.length ? `ОЧЕРЕДЬ ${b.queue.length}` : 'ГОТОВО';
+              : b.repairing ? 'РЕМОНТ' : b.queue.length ? `ОЧЕРЕДЬ ${b.queue.length}` : 'ГОТОВО';
             const dot = this.live.statusChip.querySelector('i');
             this.live.statusChip.innerHTML = `<i></i>${text}`;
           }

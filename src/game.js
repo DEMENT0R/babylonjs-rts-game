@@ -9,6 +9,7 @@ import {
   MAP,
   MESSAGES,
   AI,
+  REPAIR,
 } from './config.js';
 import { clamp, dist, formatTime } from './utils.js';
 import { Unit, Building } from './entities.js';
@@ -238,6 +239,98 @@ export class Game {
 
   powerFactor(faction) {
     return this.power[faction]?.factor ?? 1;
+  }
+
+  // ------------------------------------------------------------- repair
+  walletFor(faction) {
+    return faction === 'enemy' ? (this.ai?.credits ?? 0) : this.credits;
+  }
+
+  spend(faction, amount) {
+    if (faction === 'enemy') {
+      if (this.ai) this.ai.credits -= amount;
+    } else {
+      this.credits -= amount;
+    }
+  }
+
+  repairCostPerHp(building) {
+    const def = building.def;
+    return def.cost > 0
+      ? (def.cost * REPAIR.costFraction) / def.hp
+      : REPAIR.hqCostPerHp;
+  }
+
+  repairRate(building) {
+    return building.maxHp / REPAIR.duration;
+  }
+
+  repairFullCost(building) {
+    return Math.ceil((building.maxHp - building.hp) * this.repairCostPerHp(building));
+  }
+
+  repairTick(building, dt) {
+    if (!building.alive || !building.complete) {
+      building.repairing = false;
+      return;
+    }
+    if (building.hp >= building.maxHp - 0.01) {
+      const wasRepairing = building.repairing;
+      building.hp = building.maxHp;
+      building.repairing = false;
+      if (building.faction === 'player' && wasRepairing) {
+        this.notify(MESSAGES.repairDone, 'success', `repair_done_${building.id}`, 0, 3);
+      }
+      return;
+    }
+    if (!building.repairing) return;
+
+    const hpStep = Math.min(this.repairRate(building) * dt, building.maxHp - building.hp);
+    const cost = hpStep * this.repairCostPerHp(building);
+    if (this.walletFor(building.faction) < cost) {
+      building.repairing = false;
+      if (building.faction === 'player') {
+        this.notify(MESSAGES.repairCredits, 'warn', `repair_credits_${building.id}`, 4, 4);
+      }
+      return;
+    }
+    this.spend(building.faction, cost);
+    building.hp = Math.min(building.maxHp, building.hp + hpStep);
+    if (building.hp >= building.maxHp) {
+      building.hp = building.maxHp;
+      building.repairing = false;
+      if (building.faction === 'player') {
+        this.notify(MESSAGES.repairDone, 'success', `repair_done_${building.id}`, 0, 3);
+      }
+    }
+  }
+
+  /** Включает ремонт всех выбранных повреждённых зданий либо выключает его. */
+  toggleRepair(buildings = this.selectedBuildings()) {
+    const list = buildings.filter((b) => b && b.alive && b.complete && b.hp < b.maxHp - 0.5);
+    if (!list.length) {
+      this.notify(MESSAGES.repairFull, 'hint', 'repair_full', 0, 3);
+      return false;
+    }
+    const start = list.some((b) => !b.repairing);
+    for (const b of list) b.repairing = start;
+    if (start) {
+      const cost = list.reduce((sum, b) => sum + this.repairFullCost(b), 0);
+      this.notify(
+        `${MESSAGES.repairStarted} Полный ремонт: ${cost} кредитов.`,
+        'info',
+        'repair-start',
+        0,
+        5,
+      );
+      if (this.fx) {
+        for (const b of list) this.fx.repairSparks(b.position, Math.min(2.2, 0.9 + b.radius * 0.2));
+      }
+    } else {
+      this.notify(MESSAGES.repairStopped, 'info', 'repair-stop', 0, 3);
+    }
+    if (this.ui) this.ui.onSelectionChanged();
+    return true;
   }
 
   // ------------------------------------------------------------- entities

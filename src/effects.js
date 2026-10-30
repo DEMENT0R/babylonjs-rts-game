@@ -537,8 +537,25 @@ export class Effects {
     slot.mesh.visibility = 0.85;
   }
 
-  buildDust(position, scale = 1) {
-    for (let i = 0; i < 9; i++) {
+  repairSparks(position, scale = 1) {
+    for (let i = 0; i < 4; i++) {
+      const height = 0.8 + Math.random() * 2.4 * scale;
+      const px = position.x + (Math.random() - 0.5) * scale * 2.4;
+      const pz = position.z + (Math.random() - 0.5) * scale * 2.4;
+      this.puff('spark', new Vector3(px, height, pz), {
+        life: 0.18 + Math.random() * 0.18,
+        size0: 0.12,
+        size1: 0.34,
+        fade: 1,
+        alpha: 0.95,
+        vel: new Vector3((Math.random() - 0.5) * 3, 1 + Math.random() * 2, (Math.random() - 0.5) * 3),
+        buoyancy: -5,
+        drag: 1.2,
+      });
+    }
+  }
+
+  buildDust(position, scale = 1) {    for (let i = 0; i < 9; i++) {
       const a = Math.random() * Math.PI * 2;
       const sp = 1.2 + Math.random() * 3.5 * scale;
       this.puff('dust', position.clone().add(new Vector3(Math.cos(a) * 1.4 * scale, 0.2, Math.sin(a) * 1.4 * scale)), {

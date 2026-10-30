@@ -718,6 +718,7 @@ body.mode-attack #scene {
 .chip--power { color: var(--cyan); }
 .chip--power-use { color: var(--amber); }
 .chip--income { color: var(--green); }
+.chip--repair { color: var(--amber); border-color: rgba(255, 176, 46, 0.28); }
 
 .type-chips {
   display: flex;

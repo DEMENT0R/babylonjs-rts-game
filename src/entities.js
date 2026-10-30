@@ -697,6 +697,8 @@ export class Building extends Entity {
     this.oilPatch = null;
     this.fxTimer = 1 + Math.random() * 2;
     this.forceBar = !this.complete;
+    this.repairing = false;
+    this.repairFx = 0;
 
     this.model = game.factory.building(type, faction);
     this.root = this.model.root;
@@ -878,6 +880,8 @@ export class Building extends Entity {
       return;
     }
 
+    if (this.repairing) game.repairTick(this, dt);
+
     if (this.queue.length) {
       const item = this.queue[0];
       const speed = game.powerFactor(this.faction);
@@ -900,6 +904,15 @@ export class Building extends Entity {
   animate(dt) {
     const t = this.game.elapsed;
     const parts = this.parts;
+    if (this.repairing) {
+      this.repairFx -= dt;
+      if (this.repairFx <= 0) {
+        this.repairFx = 0.18 + Math.random() * 0.16;
+        this.game.fx.repairSparks(this.position, Math.min(2.4, 0.7 + this.radius * 0.3));
+      }
+    } else {
+      this.repairFx = 0;
+    }
     if (this.type === 'hq' && parts.radar) {
       parts.radar.rotation.y = t * 0.55;
       if (parts.flag) parts.flag.rotation.y = Math.PI / 2 + Math.sin(t * 1.6) * 0.12;
