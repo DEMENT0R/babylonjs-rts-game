@@ -13,6 +13,7 @@ import {
 } from './config.js';
 import { icon } from './icons.js';
 import { randomSeed, seedUrl } from './mapgen.js';
+import { GRAPHICS_LABELS, GRAPHICS_OPTIONS } from './settings.js';
 import { clamp, formatTime, plural, mulberry32, esc } from './utils.js';
 
 const BUILD_HOTKEYS = ['Z', 'X', 'C', 'V'];
@@ -82,6 +83,12 @@ export class UI {
   bindStatic() {
     this.el.pauseBtn.addEventListener('click', () => this.togglePause());
     this.el.overlay.addEventListener('click', (e) => {
+      const gfx = e.target.closest('[data-graphics]');
+      if (gfx) {
+        this.game.graphics?.set(gfx.dataset.graphics, gfx.dataset.value);
+        this.refreshGraphicsControls();
+        return;
+      }
       const action = e.target.closest('[data-action]')?.dataset.action;
       if (!action) return;
       if (action === 'start') this.startGame();
@@ -171,6 +178,7 @@ export class UI {
           <div><kbd>ЛКМ</kbd><span>по миникарте — камера</span></div>
         </div>
       </div>
+      ${this.graphicsBlock()}
       <div class="overlay-actions">
         <button class="btn-primary" data-action="start">НАЧАТЬ ОПЕРАЦИЮ <span>→</span></button>
         <div class="overlay-note">Каждая карта строится из сида: ссылку вида <b>?seed=${map.label}</b> можно сохранить и сыграть на той же карте снова.</div>
@@ -250,6 +258,7 @@ export class UI {
           <div><kbd>Esc</kbd><span>продолжить</span></div>
         </div>
       </div>
+      ${this.graphicsBlock()}
       <div class="overlay-actions">
         <button class="btn-primary" data-action="resume">ПРОДОЛЖИТЬ <span>→</span></button>
         <button class="btn-ghost" data-action="restart">ЗАНОВО</button>
@@ -297,6 +306,38 @@ export class UI {
     this.el.overlayCard.innerHTML = html;
     this.el.overlay.className = `overlay is-open ${variant ?? ''}`;
     this.overlayOpen = true;
+  }
+
+  // --------------------------------------------------------------- graphics
+  graphicsBlock() {
+    const values = this.game.graphics?.get?.() ?? {};
+    const rows = Object.entries(GRAPHICS_OPTIONS).map(([key, options]) => {
+      const label = GRAPHICS_LABELS[key] ?? key;
+      const buttons = options.map((option) => {
+        const active = values[key] === option.value;
+        return `<button type="button" class="graphics-opt${active ? ' is-active' : ''}" data-graphics="${key}" data-value="${option.value}" aria-pressed="${active}">${option.label}</button>`;
+      }).join('');
+      return `
+        <div class="graphics-row">
+          <span class="graphics-label">${label}</span>
+          <div class="graphics-options">${buttons}</div>
+        </div>`;
+    }).join('');
+    return `
+      <div class="graphics-block">
+        <div class="controls-title">ГРАФИКА <span>// сохраняется в браузере</span></div>
+        <div class="graphics-grid">${rows}</div>
+      </div>`;
+  }
+
+  refreshGraphicsControls() {
+    const values = this.game.graphics?.get?.();
+    if (!values) return;
+    this.el.overlay.querySelectorAll('[data-graphics]').forEach((btn) => {
+      const active = values[btn.dataset.graphics] === btn.dataset.value;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
   }
 
   // --------------------------------------------------------------- messages

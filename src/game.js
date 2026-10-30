@@ -18,13 +18,14 @@ import { AIController } from './ai.js';
 let nextBuildingId = 1;
 
 export class Game {
-  constructor({ scene, camera, factory, world, fx }) {
+  constructor({ scene, camera, factory, world, fx, graphics }) {
     this.scene = scene;
     this.camera = camera;
     this.factory = factory;
     this.world = world;
     this.map = world.map;
     this.fx = fx;
+    this.graphics = graphics;
     this.ui = null;
     this.input = null;
 

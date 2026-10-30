@@ -1524,6 +1524,75 @@ body.mode-attack #scene {
   text-overflow: ellipsis;
 }
 
+.graphics-block {
+  margin-top: 16px;
+  padding-top: 11px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.graphics-grid {
+  display: flex;
+  flex-direction: column;
+}
+
+.graphics-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  border-top: 1px dashed rgba(82, 172, 202, 0.1);
+}
+
+.graphics-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.graphics-label {
+  flex: 0 0 auto;
+  font-size: 7.5px;
+  letter-spacing: 0.17em;
+  color: var(--dim);
+  text-transform: uppercase;
+}
+
+.graphics-options {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.graphics-opt {
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  background: rgba(79, 210, 255, 0.045);
+  color: #8ea8b6;
+  font-family: var(--font-mono);
+  font-size: 7px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: color 0.13s, border-color 0.13s, background 0.13s, box-shadow 0.13s;
+}
+
+.graphics-opt:hover {
+  border-color: rgba(79, 210, 255, 0.6);
+  color: var(--cyan-soft);
+}
+
+.graphics-opt.is-active {
+  border-color: rgba(79, 210, 255, 0.85);
+  background: rgba(79, 210, 255, 0.16);
+  color: #eaffff;
+  box-shadow: 0 0 10px rgba(79, 210, 255, 0.18), inset 0 0 10px rgba(79, 210, 255, 0.08);
+}
+
+.graphics-opt:focus-visible {
+  outline: 1px solid var(--cyan);
+  outline-offset: 2px;
+}
+
 .overlay-actions {
   display: flex;
   align-items: center;
@@ -1882,6 +1951,10 @@ body.mode-attack #scene {
     padding-top: 12px;
   }
   .controls-block {
+    margin-top: 12px;
+    padding-top: 9px;
+  }
+  .graphics-block {
     margin-top: 12px;
     padding-top: 9px;
   }

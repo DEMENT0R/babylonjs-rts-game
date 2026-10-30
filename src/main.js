@@ -16,6 +16,7 @@ import { Effects } from './effects.js';
 import { Game } from './game.js';
 import { UI } from './ui.js';
 import { Input } from './input.js';
+import { GraphicsSettings } from './settings.js';
 
 function fatal(err) {
   console.error(err);
@@ -105,7 +106,11 @@ function boot() {
   if (world.sky) glow.addExcludedMesh(world.sky);
   const fx = new Effects(scene);
 
-  const game = new Game({ scene, camera, factory, world, fx });
+  const graphics = new GraphicsSettings({ engine, glow, world });
+  graphics.load();
+  graphics.apply();
+
+  const game = new Game({ scene, camera, factory, world, fx, graphics });
   const ui = new UI(game);
   const input = new Input(game);
 
@@ -128,7 +133,7 @@ function boot() {
 
   // Отладочные инструменты доступны только с ?debug и не мешают обычной игре.
   if (new URLSearchParams(window.location.search).has('debug')) {
-    window.__GAME__ = { engine, scene, camera, game, ui, input, world, map, fx, factory };
+    window.__GAME__ = { engine, scene, camera, game, ui, input, world, map, fx, factory, graphics };
     window.game = game;
     window.__MAP__ = map;
     window.__advance = (seconds = 1) => {
