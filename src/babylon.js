@@ -12,6 +12,7 @@ export const {
   Scene,
   ArcRotateCamera,
   Vector3,
+  Quaternion,
   Color3,
   Color4,
   Matrix,

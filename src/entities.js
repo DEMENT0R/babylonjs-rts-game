@@ -403,18 +403,57 @@ export class Unit extends Entity {
     const faction = this.faction;
     this.game.fx.muzzle(muzzle, faction, this.type === 'tank' ? 1.7 : 1);
 
-    if (this.def.projectile === 'shell') {
-      this.game.fx.fireShell(muzzle, targetPoint, (impact) => {
-        if (!this.alive || this.game.over) return;
-        this.game.splashDamage(impact, this.def.splash, this.def.damage, this);
-        this.game.fx.explode(impact, 0.8, { scorch: true });
-      }, 44);
+    const kind = this.def.projectile ?? 'bullet';
+    const speed = kind === 'shell' ? 54 : kind === 'rocket' ? 38 : 94;
+    const shotDistance = dist(this.position.x, this.position.z, target.position.x, target.position.z);
+
+    if (kind === 'shell') {
+      this.game.fx.fireProjectile({
+        from: muzzle,
+        to: targetPoint,
+        kind,
+        faction,
+        speed,
+        arc: Math.min(1.8, shotDistance * 0.06),
+        onImpact: (impact) => {
+          if (this.game.over) return;
+          this.game.splashDamage(impact, this.def.splash, this.def.damage, this);
+          this.game.fx.explode(impact, 0.8, { scorch: true });
+        },
+      });
       return;
     }
 
-    this.game.dealDamage(target, this.def.damage, this);
-    this.game.fx.tracer(muzzle, targetPoint, faction);
-    this.game.fx.hit(targetPoint, target.faction, 0.7);
+    if (kind === 'rocket') {
+      this.game.fx.fireProjectile({
+        from: muzzle,
+        to: targetPoint,
+        kind,
+        faction,
+        speed,
+        arc: Math.min(5, shotDistance * 0.16),
+        onImpact: (impact) => {
+          if (this.game.over) return;
+          this.game.splashDamage(impact, this.def.splash, this.def.damage, this);
+          this.game.fx.explode(impact, 0.75, { scorch: true });
+          this.game.fx.impactDust(impact, 1.1);
+        },
+      });
+      return;
+    }
+
+    this.game.fx.fireProjectile({
+      from: muzzle,
+      to: targetPoint,
+      kind: 'bullet',
+      faction,
+      speed,
+      onImpact: () => {
+        if (this.game.over) return;
+        this.game.dealDamage(target, this.def.damage, this);
+        this.game.fx.hit(targetPoint, target.faction, 0.7);
+      },
+    });
   }
 
   getMuzzle() {

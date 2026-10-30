@@ -8,6 +8,7 @@ import {
   Color3,
   Color4,
   Vector3,
+  Quaternion,
   Mesh,
   PointLight,
   Engine,
@@ -157,20 +158,50 @@ export class Effects {
     }
     this.tracerCursor = 0;
 
-    this.shells = [];
-    const shellMat = new StandardMaterial('fxShellMat', scene);
-    shellMat.diffuseColor = color('#ffdba0');
-    shellMat.emissiveColor = color('#ffb15a');
-    shellMat.specularColor = Color3.Black();
-    for (let i = 0; i < 10; i++) {
-      const mesh = MeshBuilder.CreateSphere(`shell_${i}`, { diameter: 0.28, segments: 6 }, scene);
-      mesh.material = shellMat;
+    // Снаряды: пули, танковые снаряды и ракеты РСЗО. Капсула вытянута вдоль
+    // траектории, поэтому даже быстрые пули хорошо читаются на экране.
+    this.projectileKinds = {
+      bullet: { scale: [0.62, 0.85, 0.62], speed: 92, trail: 'spark', trailChance: 0.12 },
+      shell: { scale: [1.15, 1.45, 1.15], speed: 52, trail: 'smoke', trailChance: 0.7 },
+      rocket: { scale: [1.4, 3.1, 1.4], speed: 38, trail: 'smokeDark', trailChance: 0.95 },
+    };
+    const projectileMats = {
+      bulletPlayer: this._projectileMat('fxBulletPlayer', '#bdf6ff', '#5fe4ff'),
+      bulletEnemy: this._projectileMat('fxBulletEnemy', '#ffd0b8', '#ff7a48'),
+      shell: this._projectileMat('fxProjShell', '#ffe5b0', '#ffb14f'),
+      rocket: this._projectileMat('fxProjRocket', '#fff0cc', '#ff8a2e'),
+    };
+    this.projectiles = [];
+    for (let i = 0; i < 96; i++) {
+      const mesh = MeshBuilder.CreateCapsule(`proj_${i}`, {
+        height: 1,
+        radius: 0.085,
+        tessellation: 6,
+        capSubdivisions: 2,
+      }, scene);
+      mesh.material = projectileMats.bulletPlayer;
       mesh.isPickable = false;
       mesh.isVisible = false;
+      mesh.rotationQuaternion = new Quaternion();
       mesh.metadata = { fx: true };
-      this.shells.push({ mesh, active: false, t: 0, from: new Vector3(), to: new Vector3(), speed: 45, onImpact: null });
+      this.projectiles.push({
+        mesh,
+        mats: projectileMats,
+        active: false,
+        kind: 'bullet',
+        t: 0,
+        from: new Vector3(),
+        to: new Vector3(),
+        speed: 90,
+        arc: 0,
+        faction: 'player',
+        onImpact: null,
+        trailAcc: 0,
+      });
     }
-
+    this.projectileCursor = 0;
+    this.up = new Vector3(0, 1, 0);
+    this.projectileDir = new Vector3();
     this.rings = [];
     const ringMat = new StandardMaterial('fxShockMat', scene);
     ringMat.diffuseColor = Color3.Black();
@@ -233,9 +264,19 @@ export class Effects {
     };
     this.puffs.forEach((p) => exclude(p.mesh));
     this.tracers.forEach((t) => exclude(t.mesh));
-    this.shells.forEach((s) => exclude(s.mesh));
     this.rings.forEach((r) => exclude(r.mesh));
     this.decals.forEach((d) => exclude(d.mesh));
+  }
+
+  _projectileMat(name, diffuse, emissive) {
+    const m = new StandardMaterial(name, this.scene);
+    m.diffuseColor = color(diffuse);
+    m.emissiveColor = color(emissive);
+    m.specularColor = Color3.Black();
+    m.disableLighting = true;
+    m.fogEnabled = true;
+    m.freeze();
+    return m;
   }
 
   _puffMat(name, tex, tint, additive, alpha) {
@@ -338,17 +379,48 @@ export class Effects {
     this.muzzle(from, faction, 1.5);
   }
 
-  fireShell(from, to, onImpact, speed = 42) {
-    let slot = this.shells.find((s) => !s.active);
+  fireShell(from, to, onImpact, speed = 52) {
+    return this.fireProjectile({ from, to, kind: 'shell', speed, onImpact });
+  }
+
+  /**
+   * Запускает видимый снаряд. Урон применяется в onImpact, поэтому попадание
+   * совпадает с моментом, когда пуля действительно долетела до цели.
+   */
+  fireProjectile({ from, to, kind = 'bullet', faction = 'player', speed = null, arc = 0, onImpact = null }) {
+    const spec = this.projectileKinds[kind] ?? this.projectileKinds.bullet;
+    let slot = null;
+    for (let i = 0; i < this.projectiles.length; i++) {
+      const p = this.projectiles[this.projectileCursor];
+      this.projectileCursor = (this.projectileCursor + 1) % this.projectiles.length;
+      if (!p.active) {
+        slot = p;
+        break;
+      }
+    }
     if (!slot) return false;
     slot.active = true;
+    slot.kind = kind;
     slot.t = 0;
     slot.from.copyFrom(from);
     slot.to.copyFrom(to);
-    slot.speed = speed;
+    slot.speed = speed ?? spec.speed;
+    slot.arc = arc ?? (kind === 'rocket' ? 2.4 : 0);
+    slot.faction = faction;
     slot.onImpact = onImpact;
-    slot.mesh.isVisible = true;
+    slot.trailAcc = 0;
+    const mat = kind === 'bullet'
+      ? (faction === 'enemy' ? slot.mats.bulletEnemy : slot.mats.bulletPlayer)
+      : slot.mats[kind] ?? slot.mats.shell;
+    slot.mesh.material = mat;
+    slot.mesh.scaling.set(spec.scale[0], spec.scale[1], spec.scale[2]);
     slot.mesh.position.copyFrom(from);
+    slot.mesh.isVisible = true;
+    const dir = this.projectileDir.copyFrom(to).subtractInPlace(from);
+    if (dir.lengthSquared() > 1e-6) {
+      dir.normalize();
+      Quaternion.FromUnitVectorsToRef(this.up, dir, slot.mesh.rotationQuaternion);
+    }
     return true;
   }
 
@@ -589,10 +661,10 @@ export class Effects {
       t.mesh.alpha = t.alpha * (1 - t.age / t.life);
     }
 
-    for (const s of this.shells) {
+    for (const s of this.projectiles) {
       if (!s.active) continue;
-      const dist = Vector3.Distance(s.from, s.to);
-      s.t += (s.speed * dt) / Math.max(0.001, dist);
+      const length = Vector3.Distance(s.from, s.to);
+      s.t += (s.speed * dt) / Math.max(0.001, length);
       if (s.t >= 1) {
         s.active = false;
         s.mesh.isVisible = false;
@@ -602,18 +674,37 @@ export class Effects {
         continue;
       }
       const pos = Vector3.Lerp(s.from, s.to, s.t);
-      pos.y += Math.sin(Math.PI * s.t) * Math.min(2.5, dist * 0.18);
+      if (s.arc) pos.y += Math.sin(Math.PI * s.t) * s.arc;
       s.mesh.position.copyFrom(pos);
-      s.mesh.scaling.setAll(0.8 + Math.sin(s.t * Math.PI) * 0.4);
-      if (Math.random() < 0.65) {
-        this.puff('smoke', pos, {
-          life: 0.35,
-          size0: 0.07,
-          size1: 0.3,
-          fade: 0.4,
-          vel: Vector3.Zero(),
-          buoyancy: 0.2,
-        });
+
+      const spec = this.projectileKinds[s.kind] ?? this.projectileKinds.bullet;
+      s.trailAcc += dt;
+      const interval = s.kind === 'rocket' ? 0.035 : s.kind === 'shell' ? 0.07 : 0.14;
+      if (s.trailAcc >= interval) {
+        s.trailAcc = 0;
+        if (Math.random() < spec.trailChance) {
+          this.puff(spec.trail, pos, {
+            life: s.kind === 'rocket' ? 0.55 : 0.26,
+            size0: s.kind === 'rocket' ? 0.22 : 0.1,
+            size1: s.kind === 'rocket' ? 0.9 : 0.34,
+            fade: 0.5,
+            alpha: s.kind === 'rocket' ? 0.65 : 0.4,
+            vel: s.kind === 'rocket'
+              ? new Vector3((Math.random() - 0.5) * 0.4, 0.3, (Math.random() - 0.5) * 0.4)
+              : Vector3.Zero(),
+            buoyancy: 0.2,
+          });
+        }
+        if (s.kind === 'rocket') {
+          this.puff('fire', pos, {
+            life: 0.14,
+            size0: 0.28,
+            size1: 0.7,
+            fade: 0.8,
+            vel: Vector3.Zero(),
+            buoyancy: 0.4,
+          });
+        }
       }
     }
 
