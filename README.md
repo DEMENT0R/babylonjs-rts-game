@@ -6,6 +6,16 @@
 
 ![Стартовый экран](screenshots/start.png)
 
+## Играть онлайн
+
+Открыть в браузере: <https://dement0r.github.io/babylonjs-rts-game/>.
+
+Устанавливать ничего не нужно: это статическая страница на GitHub Pages.
+Она обновляется автоматически workflow
+[`deploy-pages.yml`](.github/workflows/deploy-pages.yml) после каждого пуша
+в `main` или `master`. Если репозиторий ещё не опубликован, см. раздел
+[«Публикация на GitHub Pages»](#публикация-на-github-pages).
+
 ## Запуск
 
 Нужен только **Node.js 18+**. Никаких зависимостей и сборки.
@@ -86,6 +96,10 @@ node server.mjs
 ## Структура
 
 ```
+.github/
+  workflows/
+    deploy-pages.yml публикация на GitHub Pages
+.nojekyll           отключает обработку Jekyll на Pages
 index.html          разметка HUD
 styles.css          оформление интерфейса
 favicon.svg         иконка
@@ -118,6 +132,36 @@ screenshots/        скриншоты для README
 - Все текстуры (земля, небо, спрайты эффектов) генерируются в `DynamicTexture`.
 - Отладочные функции доступны по адресу `/?debug` (объект `window.__GAME__`).
 - Проверено в Chrome/Edge с WebGL2. Нужен браузер с поддержкой WebGL2.
+
+## Публикация на GitHub Pages
+
+Игра — статический сайт, поэтому на runner'е не нужны Node.js, npm и сборка:
+workflow копирует в `_site` только `index.html`, `styles.css`, `favicon.svg`,
+`src/` и `vendor/`, а затем публикует артефакт через `actions/deploy-pages`.
+Запускается он при пуше в `main`/`master` и вручную из вкладки **Actions**
+(`workflow_dispatch`).
+
+Первая публикация:
+
+1. Создайте на GitHub пустой репозиторий и добавьте remote (если его ещё нет):
+
+   ```bash
+   git remote add origin https://github.com/DEMENT0R/babylonjs-rts-game.git
+   git push -u origin HEAD
+   ```
+
+2. В репозитории откройте **Settings → Pages → Build and deployment** и
+   выберите **Source: GitHub Actions**.
+
+3. Запустите workflow **Deploy to GitHub Pages** на вкладке **Actions** или
+   сделайте новый пуш. После завершения игра будет доступна по адресу
+   `https://<аккаунт>.github.io/<репозиторий>/`.
+
+> Если первый запуск прошёл до включения Pages, он завершится ошибкой.
+> Откройте его и нажмите **Re-run all jobs**.
+
+Все ссылки в `index.html` и импорты в `src/` относительные, поэтому сайт
+работает и в корне домена, и в подкаталоге проекта, и с кастомным доменом.
 
 ## Ограничения
 

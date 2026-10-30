@@ -24,7 +24,7 @@ function fatal(err) {
       <div class="overlay-top">
         <div class="eyebrow"><i></i> СБОЙ СИСТЕМЫ</div>
         <h1>НЕТ СИГНАЛА</h1>
-        <p class="tagline">Не удалось инициализировать 3D-движок. Проверьте, что браузер поддерживает WebGL2 и файлы игры загружены через локальный сервер.</p>
+        <p class="tagline">Не удалось инициализировать 3D-движок. Проверьте, что браузер поддерживает WebGL2, а файлы игры загружены с сервера (локального или GitHub Pages).</p>
       </div>
       <div class="end-note">${String(err?.message ?? err)}</div>
       <div class="overlay-actions">

@@ -1,4 +1,5 @@
 node_modules/
+_site/
 .npm-cache/
 npm-debug.log*
 chrome-profile*/
