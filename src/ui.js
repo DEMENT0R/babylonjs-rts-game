@@ -14,7 +14,7 @@ import { icon } from './icons.js';
 import { randomSeed, seedUrl } from './mapgen.js';
 import { clamp, formatTime, plural, mulberry32, esc } from './utils.js';
 
-const BUILD_HOTKEYS = ['Z', 'X', 'C'];
+const BUILD_HOTKEYS = ['Z', 'X', 'C', 'V'];
 
 export class UI {
   constructor(game) {
@@ -989,7 +989,7 @@ export class UI {
       const p = this.worldToMinimap(u.position.x, u.position.z);
       ctx.fillStyle = u.faction === 'player' ? '#c3f8ff' : '#ffb09e';
       ctx.beginPath();
-      ctx.arc(p.x, p.y, u.type === 'tank' ? 5.5 : 4.2, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, u.type === 'tank' || u.type === 'artillery' ? 5.5 : 4.2, 0, Math.PI * 2);
       ctx.fill();
       if (this.game.selected.has(u)) {
         ctx.strokeStyle = '#ffffff';

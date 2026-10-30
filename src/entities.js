@@ -229,6 +229,7 @@ export class Unit extends Entity {
     this.walkPhase = Math.random() * 10;
     this.recoil = 0;
     this.muzzleIndex = 0;
+    this.pendingVolley = [];
     this.retaliateTimer = 0;
     this.stuckTime = 0;
     this.detourTimer = 0;
@@ -295,6 +296,7 @@ export class Unit extends Entity {
   update(dt) {
     if (!this.alive) return;
     this.attackCd = Math.max(0, this.attackCd - dt);
+    this.updateVolley(dt);
     if (this.retaliateTimer > 0) this.retaliateTimer -= dt;
 
     const order = this.order;
@@ -381,7 +383,7 @@ export class Unit extends Entity {
   aimAt(target, dt) {
     const dx = target.position.x - this.position.x;
     const dz = target.position.z - this.position.z;
-    if (this.type !== 'tank' && !this.moving) {
+    if (this.type !== 'tank' && this.type !== 'artillery' && !this.moving) {
       const desired = yawTo(dx, dz);
       this.root.rotation.y = turnTowards(this.root.rotation.y, desired, dt * 7);
     }
@@ -397,14 +399,21 @@ export class Unit extends Entity {
   }
 
   canFireAt(target) {
-    if (this.type !== 'tank') return true;
-    return this.aimError(target) < 0.16;
+    if (this.type === 'tank') return this.aimError(target) < 0.16;
+    if (this.type === 'artillery') return this.aimError(target) < 0.22;
+    return true;
   }
 
   fire(target) {
     if (!this.alive || this.game.over) return;
     this.attackCd = this.def.cooldown;
     this.recoil = 1;
+
+    const kind = this.def.projectile ?? 'bullet';
+    if (kind === 'rocket') {
+      this.startVolley(target);
+      return;
+    }
 
     const muzzle = this.getMuzzle();
     const targetPoint = new Vector3(
@@ -415,8 +424,7 @@ export class Unit extends Entity {
     const faction = this.faction;
     this.game.fx.muzzle(muzzle, faction, this.type === 'tank' ? 1.7 : 1);
 
-    const kind = this.def.projectile ?? 'bullet';
-    const speed = kind === 'shell' ? 54 : kind === 'rocket' ? 38 : 94;
+    const speed = kind === 'shell' ? 54 : 94;
     const shotDistance = dist(this.position.x, this.position.z, target.position.x, target.position.z);
 
     if (kind === 'shell') {
@@ -436,24 +444,6 @@ export class Unit extends Entity {
       return;
     }
 
-    if (kind === 'rocket') {
-      this.game.fx.fireProjectile({
-        from: muzzle,
-        to: targetPoint,
-        kind,
-        faction,
-        speed,
-        arc: Math.min(5, shotDistance * 0.16),
-        onImpact: (impact) => {
-          if (this.game.over) return;
-          this.game.splashDamage(impact, this.def.splash, this.def.damage, this);
-          this.game.fx.explode(impact, 0.75, { scorch: true });
-          this.game.fx.impactDust(impact, 1.1);
-        },
-      });
-      return;
-    }
-
     this.game.fx.fireProjectile({
       from: muzzle,
       to: targetPoint,
@@ -464,6 +454,54 @@ export class Unit extends Entity {
         if (this.game.over) return;
         this.game.dealDamage(target, this.def.damage, this);
         this.game.fx.hit(targetPoint, target.faction, 0.7);
+      },
+    });
+  }
+
+  /** РСЗО выпускает ракеты очередью, а не одним залпом в один кадр. */
+  startVolley(target) {
+    const count = this.def.salvo ?? 1;
+    const delay = this.def.salvoDelay ?? 0.14;
+    const spread = this.def.salvoSpread ?? 2.5;
+    const impactY = Math.min(target.def.height * 0.55, 4);
+    this.pendingVolley = [];
+    for (let i = 0; i < count; i++) {
+      this.pendingVolley.push({
+        delay: i * delay,
+        x: target.position.x + (Math.random() - 0.5) * spread * 2,
+        y: impactY,
+        z: target.position.z + (Math.random() - 0.5) * spread * 2,
+      });
+    }
+  }
+
+  updateVolley(dt) {
+    if (!this.pendingVolley.length) return;
+    const next = this.pendingVolley[0];
+    next.delay -= dt;
+    if (next.delay > 0) return;
+    this.pendingVolley.shift();
+    if (this.game.over) {
+      this.pendingVolley = [];
+      return;
+    }
+    const muzzle = this.getMuzzle();
+    const point = new Vector3(next.x, next.y, next.z);
+    const shotDistance = dist(this.position.x, this.position.z, point.x, point.z);
+    this.game.fx.muzzle(muzzle, this.faction, 1.35);
+    this.recoil = Math.max(this.recoil, 0.65);
+    this.game.fx.fireProjectile({
+      from: muzzle,
+      to: point,
+      kind: 'rocket',
+      faction: this.faction,
+      speed: 38,
+      arc: Math.min(5, shotDistance * 0.16),
+      onImpact: (impact) => {
+        if (this.game.over) return;
+        this.game.splashDamage(impact, this.def.splash, this.def.damage, this);
+        this.game.fx.explode(impact, 0.72, { scorch: true });
+        this.game.fx.impactDust(impact, 1.1);
       },
     });
   }
@@ -594,11 +632,13 @@ export class Unit extends Entity {
     this.root.position.z = pos.z;
     const moving = this.moving;
     if (moving) {
-      this.walkPhase += dt * (this.type === 'scout' ? 13 : this.type === 'tank' ? 5 : 9);
+      this.walkPhase += dt * (this.type === 'scout' ? 13 : this.type === 'tank' ? 5 : this.type === 'artillery' ? 6 : 9);
       const targetAngle = yawTo(this.lastDirX, this.lastDirZ);
       this.root.rotation.y = turnTowards(this.root.rotation.y, targetAngle, dt * 5.5);
     }
-    const bob = moving && this.type !== 'tank' ? Math.abs(Math.sin(this.walkPhase * 0.9)) * 0.05 : 0;
+    const bob = moving && this.type !== 'tank' && this.type !== 'artillery'
+      ? Math.abs(Math.sin(this.walkPhase * 0.9)) * 0.05
+      : 0;
     this.root.position.y = bob;
 
     if (this.type === 'marine') {
@@ -621,6 +661,14 @@ export class Unit extends Entity {
         : 0;
       this.parts.turret.rotation.y = turnTowards(this.parts.turret.rotation.y, desired, dt * 4.4);
       if (this.parts.barrelGroup) this.parts.barrelGroup.position.z = 0.6 - this.recoil * 0.3;
+      this.root.position.y = 0;
+    } else if (this.type === 'artillery') {
+      const spin = moving ? 9 * dt : 0;
+      for (const wheel of this.parts.wheels ?? []) wheel.rotation.y += spin;
+      const desired = this.target && this.target.alive
+        ? yawTo(this.target.position.x - pos.x, this.target.position.z - pos.z) - this.root.rotation.y
+        : 0;
+      this.parts.turret.rotation.y = turnTowards(this.parts.turret.rotation.y, desired, dt * 3.2);
       this.root.position.y = 0;
     }
 

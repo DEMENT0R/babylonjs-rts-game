@@ -61,8 +61,9 @@ export class AIController {
     const t = this.game.elapsed;
     let type = 'marine';
     const roll = Math.random();
-    if (t > 140 && roll < 0.26) type = 'tank';
-    else if (roll < 0.44) type = 'scout';
+    if (t > 200 && roll < 0.2) type = 'artillery';
+    else if (t > 140 && roll < 0.42) type = 'tank';
+    else if (roll < 0.6) type = 'scout';
 
     const def = UNITS[type];
     if (this.credits < def.cost) return;

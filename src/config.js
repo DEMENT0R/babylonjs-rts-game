@@ -61,7 +61,7 @@ export const START = {
 
 // order — порядок кнопок в командной панели.
 export const BUILD_ORDER = ['power', 'barracks', 'derrick'];
-export const TRAIN_ORDER = ['marine', 'scout', 'tank'];
+export const TRAIN_ORDER = ['marine', 'scout', 'tank', 'artillery'];
 
 export const UNITS = {
   marine: {
@@ -125,6 +125,31 @@ export const UNITS = {
     splash: 2.7,
     height: 3,
     projectile: 'shell',
+    muzzleHeight: 2.1,
+    from: 'barracks',
+  },
+  artillery: {
+    key: 'artillery',
+    name: 'РСЗО «Гроза»',
+    role: 'АРТИЛЛЕРИЯ',
+    icon: 'artillery',
+    desc: 'Установка залпового огня: пять ракет накрывают площадь с безопасного расстояния. Слаба в ближнем бою.',
+    cost: 280,
+    buildTime: 26,
+    hp: 260,
+    armor: 1,
+    radius: 2.1,
+    speed: 3.7,
+    range: 26,
+    damage: 18,
+    cooldown: 5.2,
+    aggro: 32,
+    splash: 3.6,
+    salvo: 5,
+    salvoDelay: 0.16,
+    salvoSpread: 3.4,
+    height: 3.4,
+    projectile: 'rocket',
     muzzleHeight: 2.1,
     from: 'barracks',
   },

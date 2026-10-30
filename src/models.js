@@ -198,6 +198,7 @@ export class ModelFactory {
       marine: () => this.buildMarine(faction),
       scout: () => this.buildScout(faction),
       tank: () => this.buildTank(faction),
+      artillery: () => this.buildArtillery(faction),
     }[type];
     return this.cloneTemplate(`unit:${type}:${faction}`, build);
   }
@@ -546,6 +547,146 @@ export class ModelFactory {
     parts.muzzle = muzzle;
     parts.height = 2.9;
     return { root, parts, height: 2.9 };
+  }
+
+  // -------------------------------------------------------------- UNIT: ARTILLERY
+  buildArtillery(faction) {
+    const m = this.baseMaterials(faction);
+    const root = new TransformNode(`artillery_${faction}`, this.scene);
+    const parts = {};
+    const add = (mesh, parent = root) => {
+      mesh.parent = parent;
+      mesh.isPickable = false;
+      mesh.receiveShadows = false;
+      return mesh;
+    };
+
+    // Шасси: длинный шестиколёсный грузовик.
+    const chassis = MeshBuilder.CreateBox('artchassis', { width: 2.45, height: 0.52, depth: 4.5 }, this.scene);
+    chassis.position.y = 0.98;
+    add(chassis).material = m.hull;
+
+    const underbody = MeshBuilder.CreateBox('artunder', { width: 2.2, height: 0.32, depth: 3.9 }, this.scene);
+    underbody.position.y = 0.6;
+    add(underbody).material = m.dark;
+
+    const cab = MeshBuilder.CreateBox('artcab', { width: 2.35, height: 0.95, depth: 1.25 }, this.scene);
+    cab.position.set(0, 1.68, 1.55);
+    add(cab).material = m.panel;
+
+    const windshield = MeshBuilder.CreateBox('artglass', { width: 1.9, height: 0.48, depth: 0.08 }, this.scene);
+    windshield.position.set(0, 1.88, 2.2);
+    windshield.rotation.x = 0.12;
+    add(windshield).material = m.glass;
+
+    const bumper = MeshBuilder.CreateBox('artbumper', { width: 2.5, height: 0.3, depth: 0.3 }, this.scene);
+    bumper.position.set(0, 0.78, 2.32);
+    add(bumper).material = m.steel;
+
+    for (const side of [-1, 1]) {
+      const headlight = MeshBuilder.CreateSphere(`artlight_${side}`, { diameter: 0.2, segments: 6 }, this.scene);
+      headlight.position.set(0.78 * side, 1.36, 2.26);
+      add(headlight).material = m.glow;
+    }
+
+    const wheels = [];
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 3; i++) {
+        const wheel = MeshBuilder.CreateCylinder(`artwheel_${side}_${i}`, {
+          diameter: 0.92,
+          height: 0.58,
+          tessellation: 12,
+        }, this.scene);
+        wheel.rotation.z = Math.PI / 2;
+        wheel.position.set(1.3 * side, 0.5, -1.45 + i * 1.45);
+        add(wheel).material = m.rubber;
+
+        const hub = MeshBuilder.CreateCylinder(`arthub_${side}_${i}`, {
+          diameter: 0.34,
+          height: 0.62,
+          tessellation: 8,
+        }, this.scene);
+        hub.rotation.z = Math.PI / 2;
+        hub.position.set(1.3 * side, 0.5, -1.45 + i * 1.45);
+        add(hub).material = m.steel;
+        wheels.push(wheel);
+      }
+
+      const stripe = MeshBuilder.CreateBox(`artstripe_${side}`, { width: 0.06, height: 0.16, depth: 2.7 }, this.scene);
+      stripe.position.set(1.24 * side, 1.08, -0.35);
+      add(stripe).material = m.accent;
+
+      const jack = MeshBuilder.CreateBox(`artjack_${side}`, { width: 0.22, height: 0.9, depth: 0.22 }, this.scene);
+      jack.position.set(1.02 * side, 0.55, -1.95);
+      jack.rotation.x = -0.25;
+      add(jack).material = m.steel;
+    }
+
+    const bed = MeshBuilder.CreateBox('artbed', { width: 2.2, height: 0.18, depth: 2.5 }, this.scene);
+    bed.position.set(0, 1.3, -0.85);
+    add(bed).material = m.dark;
+
+    // Пусковая установка: поворотная платформа с пакетом направляющих.
+    const launcher = new TransformNode('artlauncher', this.scene);
+    launcher.parent = root;
+    launcher.position.set(0, 1.45, -0.75);
+
+    const base = MeshBuilder.CreateCylinder('artbase', { diameter: 2.15, height: 0.26, tessellation: 10 }, this.scene);
+    base.position.y = 0.13;
+    add(base, launcher).material = m.dark;
+
+    const rack = new TransformNode('artrack', this.scene);
+    rack.parent = launcher;
+    rack.position.y = 0.28;
+    rack.rotation.x = -0.38;
+
+    const rackBody = MeshBuilder.CreateBox('artrackbody', { width: 2.05, height: 0.3, depth: 2.3 }, this.scene);
+    add(rackBody, rack).material = m.panel;
+
+    const backPlate = MeshBuilder.CreateBox('artbackplate', { width: 2.0, height: 0.85, depth: 0.16 }, this.scene);
+    backPlate.position.set(0, 0.32, -1.04);
+    add(backPlate, rack).material = m.hull;
+
+    const muzzles = [];
+    let tubeIndex = 0;
+    for (let row = 0; row < 2; row++) {
+      for (const x of [-0.62, 0, 0.62]) {
+        const tube = MeshBuilder.CreateCylinder(`arttube_${tubeIndex}`, {
+          diameter: 0.24,
+          height: 2.15,
+          tessellation: 8,
+        }, this.scene);
+        tube.rotation.x = Math.PI / 2;
+        tube.position.set(x, 0.34 + row * 0.4, 0.28);
+        add(tube, rack).material = m.steel;
+
+        const band = MeshBuilder.CreateCylinder(`artband_${tubeIndex}`, {
+          diameter: 0.29,
+          height: 0.08,
+          tessellation: 8,
+        }, this.scene);
+        band.rotation.x = Math.PI / 2;
+        band.position.set(x, 0.34 + row * 0.4, 1.28);
+        add(band, rack).material = m.accent;
+
+        const muzzle = new TransformNode(`artmuzzle_${tubeIndex}`, this.scene);
+        muzzle.parent = rack;
+        muzzle.position.set(x, 0.34 + row * 0.4, 1.52);
+        muzzles.push(muzzle);
+        tubeIndex++;
+      }
+    }
+
+    const rackStripe = MeshBuilder.CreateBox('artrackstripe', { width: 1.98, height: 0.06, depth: 0.1 }, this.scene);
+    rackStripe.position.set(0, 0.47, 0.9);
+    add(rackStripe, rack).material = m.accent;
+
+    parts.wheels = wheels;
+    parts.turret = launcher;
+    parts.barrelGroup = rack;
+    parts.muzzles = muzzles;
+    parts.height = 3.2;
+    return { root, parts, height: 3.2 };
   }
 
   // ---------------------------------------------------------------- BUILDING: HQ
