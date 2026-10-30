@@ -20,6 +20,21 @@ import { mulberry32, rngRange, rngPick } from './utils.js';
 
 const SUN_DIR = new Vector3(-0.52, 0.46, 0.54).normalize();
 
+// Солнце и карта теней закреплены над центром поля боя. Дистанция до света
+// задаёт глубину теневой камеры, а extent с запасом накрывает углы карты.
+const SUN_DISTANCE = 150;
+const SHADOW_EXTENT = 132;
+const SHADOW_MIN_Z = 10;
+const SHADOW_MAX_Z = 320;
+const SHADOW_DARKNESS = 0.33;
+
+const SHADOW_MODES = {
+  high: { mapSize: 2048, blurKernel: 24 },
+  medium: { mapSize: 1024, blurKernel: 18 },
+  low: { mapSize: 512, blurKernel: 12 },
+  off: null,
+};
+
 export class World {
   constructor(scene, factory, map) {
     this.scene = scene;
@@ -29,6 +44,9 @@ export class World {
     this.rocks = [];
     this.obstacles = [];
     this.decor = [];
+    this.shadow = null;
+    this.shadowMode = 'medium';
+    this.casterRoots = new Map();
     this.rng = mulberry32((map.seed ^ 0x7e11a5) >>> 0);
     this._buildLights();
     this._buildSky();
@@ -52,22 +70,22 @@ export class World {
     this.hemi.groundColor = Color3.FromHexString(style.hemiGround);
 
     this.sun = new DirectionalLight('sun', SUN_DIR.scale(-1), scene);
-    this.sun.position = SUN_DIR.scale(90);
+    this.sun.position = SUN_DIR.scale(SUN_DISTANCE);
     this.sun.diffuse = Color3.FromHexString(style.sun);
     this.sun.specular = Color3.FromHexString(style.sunSpecular);
     this.sun.intensity = 1.7;
 
-    this.shadow = new ShadowGenerator(1024, this.sun);
-    this.shadow.useBlurExponentialShadowMap = true;
-    this.shadow.blurKernel = 18;
-    this.shadow.setDarkness(0.33);
-    this.sun.shadowMinZ = 10;
-    this.sun.shadowMaxZ = 260;
+    // Теневой объём центрирован на мире и не следует за камерой: так вся карта
+    // получает тени, а при панорамировании они не «уезжают» и не мерцают.
+    this.sun.shadowMinZ = SHADOW_MIN_Z;
+    this.sun.shadowMaxZ = SHADOW_MAX_Z;
     this.sun.autoUpdateExtends = false;
-    this.sun.orthoLeft = -MAP.half - 8;
-    this.sun.orthoRight = MAP.half + 8;
-    this.sun.orthoTop = MAP.half + 8;
-    this.sun.orthoBottom = -MAP.half - 8;
+    this.sun.orthoLeft = -SHADOW_EXTENT;
+    this.sun.orthoRight = SHADOW_EXTENT;
+    this.sun.orthoTop = SHADOW_EXTENT;
+    this.sun.orthoBottom = -SHADOW_EXTENT;
+
+    this._createShadow(SHADOW_MODES.medium);
 
     scene.fogMode = Scene.FOGMODE_EXP2;
     scene.fogDensity = 0.0038;
@@ -464,8 +482,39 @@ export class World {
     this.dust.start();
   }
 
-  addCaster(root, max = 8) {
-    if (!root) return;
+  _createShadow(quality) {
+    this.shadow = new ShadowGenerator(quality.mapSize, this.sun);
+    this.shadow.useBlurExponentialShadowMap = true;
+    this.shadow.blurKernel = quality.blurKernel;
+    this.shadow.setDarkness(SHADOW_DARKNESS);
+    this.shadow.getShadowMap().refreshRate = 1;
+    this.casterRoots.forEach((max, root) => this._addCasterMeshes(root, max));
+  }
+
+  /** Переключает качество теней из меню графики. */
+  setShadowMode(mode = 'medium') {
+    const next = Object.prototype.hasOwnProperty.call(SHADOW_MODES, mode) ? mode : 'medium';
+    if (next === this.shadowMode) return;
+    this.shadowMode = next;
+    if (next === 'off') {
+      this.sun.shadowEnabled = false;
+      this.shadow?.dispose();
+      this.shadow = null;
+      return;
+    }
+    this.sun.shadowEnabled = true;
+    const quality = SHADOW_MODES[next];
+    if (!this.shadow) {
+      this._createShadow(quality);
+      return;
+    }
+    if (this.shadow.mapSize !== quality.mapSize) this.shadow.mapSize = quality.mapSize;
+    this.shadow.blurKernel = quality.blurKernel;
+    this.shadow.getShadowMap().refreshRate = 1;
+  }
+
+  _addCasterMeshes(root, max = 8) {
+    if (!this.shadow) return;
     if (!root.getChildMeshes) {
       this.shadow.addShadowCaster(root);
       return;
@@ -484,8 +533,16 @@ export class World {
     scored.slice(0, max).forEach((item) => this.shadow.addShadowCaster(item.mesh));
   }
 
+  addCaster(root, max = 8) {
+    if (!root) return;
+    this.casterRoots.set(root, max);
+    this._addCasterMeshes(root, max);
+  }
+
   removeCaster(root) {
     if (!root) return;
+    this.casterRoots.delete(root);
+    if (!this.shadow) return;
     const list = this.shadow.getShadowMap()?.renderList;
     if (!list) return;
     const meshes = new Set(root.getChildMeshes(false));
@@ -493,13 +550,6 @@ export class World {
     const filtered = list.filter((m) => !meshes.has(m));
     list.length = 0;
     list.push(...filtered);
-  }
-
-  update(dt, camera) {
-    const t = camera.target;
-    this.sun.position.set(t.x + SUN_DIR.x * 95, 95 + t.y, t.z + SUN_DIR.z * 95);
-    this.sun.direction.copyFrom(SUN_DIR.scale(-1));
-    this.shadow.getShadowMap().refreshRate = 1;
   }
 }
 
