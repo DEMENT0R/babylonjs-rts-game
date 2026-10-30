@@ -5,7 +5,8 @@
   "description": "Мини-RTS в стиле StarCraft на Babylon.js. Без сборки и внешних ассетов.",
   "type": "module",
   "scripts": {
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "verify:maps": "node scripts/verify-maps.mjs"
   },
   "engines": {
     "node": ">=18"
