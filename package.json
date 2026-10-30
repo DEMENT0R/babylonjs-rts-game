@@ -1,0 +1,13 @@
+{
+  "name": "gelios-7-rts",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Мини-RTS в стиле StarCraft на Babylon.js. Без сборки и внешних ассетов.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
