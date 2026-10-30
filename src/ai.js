@@ -239,7 +239,8 @@ export class AIController {
     if (this.buildIntent) return;
     if (game.powerFactor('enemy') < 0.9 && Math.random() < 0.35) return;
     this.credits -= def.cost;
-    barracks[0].enqueue(type);
+    const builder = barracks[Math.floor(Math.random() * barracks.length)];
+    builder.enqueue(type);
     this.trainTimer = 3.5 + Math.random() * 2.5;
   }
 

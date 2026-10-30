@@ -165,7 +165,11 @@ export class Entity {
       this.die(source);
     }
     if (this instanceof Unit && this.alive && source?.alive) {
-      if (!this.order || this.order.type === 'attackMove') {
+      const busyBuilding = this.def.builder
+        && this.assistBuilding
+        && this.assistBuilding.alive
+        && !this.assistBuilding.complete;
+      if (!busyBuilding && (!this.order || this.order.type === 'attackMove')) {
         if (dist(this.position.x, this.position.z, source.position.x, source.position.z) < this.def.aggro + 6) {
           this.target = source;
           this.retaliateTimer = 3;
@@ -232,6 +236,7 @@ export class Unit extends Entity {
     this.pendingVolley = [];
     this.retaliateTimer = 0;
     this.workTimer = 0;
+    this.assistBuilding = null;
     this.stuckTime = 0;
     this.detourTimer = 0;
     this.detourSign = Math.random() < 0.5 ? -1 : 1;
@@ -277,6 +282,16 @@ export class Unit extends Entity {
   }
 
   acquireTarget(range) {
+    // Инженер на активной стройплощадке не отвлекается на случайные цели:
+    // иначе он уходит в бой и стройка останавливается.
+    if (
+      this.def.builder
+      && this.assistBuilding
+      && this.assistBuilding.alive
+      && !this.assistBuilding.complete
+    ) {
+      return null;
+    }
     let best = null;
     let bestScore = Infinity;
     for (const e of this.game.entities) {

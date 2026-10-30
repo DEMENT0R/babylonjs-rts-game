@@ -113,7 +113,7 @@ export class Game {
     const hq = this.playerBuildings().find((b) => b.type === 'hq');
     if (hq) this.selectOnly([hq]);
     this.notify('Связь установлена. Командование колонией за вами.', 'info', 'begin', 0);
-    this.notify('Постройте казармы и займите нефтяные месторождения.', 'hint', 'hint-build', 0, 10);
+    this.notify('Постройте казармы и держите инженеров под рукой: без них стройка стоит.', 'hint', 'hint-build', 0, 10);
   }
 
   setPaused(value) {
@@ -159,8 +159,11 @@ export class Game {
     if (this.tutorialStep === 0 && this.elapsed > 18) {
       this.tutorialStep = 1;
       this.notify('Нефтяные вышки приносят кредиты. Захватывайте нейтральные месторождения.', 'hint', 'hint-oil', 0, 12);
-    } else if (this.tutorialStep === 1 && this.elapsed > 55) {
+    } else if (this.tutorialStep === 1 && this.elapsed > 42) {
       this.tutorialStep = 2;
+      this.notify('Здания строятся только рядом с инженерами. Чем их больше, тем быстрее.', 'hint', 'hint-engineer', 0, 12);
+    } else if (this.tutorialStep === 2 && this.elapsed > 70) {
+      this.tutorialStep = 3;
       this.notify('Сенсоры фиксируют активность противника. Укрепляйте оборону.', 'warn', 'hint-enemy', 0, 14);
     }
 
@@ -428,6 +431,11 @@ export class Game {
       if (!u.alive || u.faction !== faction || !u.def.builder) continue;
       const d = dist(u.position.x, u.position.z, building.position.x, building.position.z);
       if (d > 90) continue;
+      const assignedElsewhere = u.assistBuilding
+        && u.assistBuilding !== building
+        && u.assistBuilding.alive
+        && !u.assistBuilding.complete;
+      if (assignedElsewhere) continue;
       const busy = u.order && u.order.type !== 'move';
       const remoteMove = u.order?.type === 'move' && faction === 'enemy';
       if (busy && !remoteMove) continue;
@@ -452,6 +460,7 @@ export class Game {
   }
 
   sendBuilderTo(unit, building, index = 0) {
+    unit.assistBuilding = building;
     const angle = Math.atan2(
       unit.position.z - building.position.z,
       unit.position.x - building.position.x,

@@ -113,7 +113,7 @@ export class UI {
     this.el.selectionBody.addEventListener('click', (e) => {
       const q = e.target.closest('[data-cancel-queue]');
       if (q) {
-        const building = this.game.primaryBarracks();
+        const building = this.game.selectedBuildings()[0];
         if (building) this.game.cancelQueue(building, Number(q.dataset.cancelQueue));
         return;
       }
@@ -148,7 +148,7 @@ export class UI {
         </div>
         <div class="objectives">
           <div class="objective"><b>01</b><span><strong>Нефть — это жизнь</strong><small>Занимайте месторождения вышками: они приносят кредиты.</small></span></div>
-          <div class="objective"><b>02</b><span><strong>Соберите армию</strong><small>Постройте казармы. Пехота, скауты и танки — ваша сила.</small></span></div>
+          <div class="objective"><b>02</b><span><strong>Соберите армию</strong><small>Постройте казармы. Пехота, скауты, танки и РСЗО — ваша сила. Инженеры возводят здания.</small></span></div>
           <div class="objective"><b>03</b><span><strong>Уничтожьте улей</strong><small>Сравняйте с землёй командный центр противника.</small></span></div>
         </div>
       </div>
@@ -161,8 +161,10 @@ export class UI {
           <div><kbd>Q / E</kbd><span>поворот камеры</span></div>
           <div><kbd>Колесо</kbd><span>зум</span></div>
           <div><kbd>СКМ</kbd><span>тащить камеру</span></div>
-          <div><kbd>Z X C</kbd><span>быстрые команды</span></div>
+          <div><kbd>Z X C V</kbd><span>команды</span></div>
           <div><kbd>F</kbd><span>атака по площади</span></div>
+          <div><kbd>B</kbd><span>стоп (инженеры)</span></div>
+          <div><kbd>R</kbd><span>ремонт здания</span></div>
           <div><kbd>Shift</kbd><span>добавить к выбору</span></div>
           <div><kbd>Пробел</kbd><span>на базу</span></div>
           <div><kbd>Esc</kbd><span>пауза / меню</span></div>
@@ -241,8 +243,9 @@ export class UI {
         <div class="controls-grid">
           <div><kbd>WASD</kbd><span>камера</span></div>
           <div><kbd>Q / E</kbd><span>поворот</span></div>
-          <div><kbd>Z X C</kbd><span>команды</span></div>
+          <div><kbd>Z X C V</kbd><span>команды</span></div>
           <div><kbd>F</kbd><span>атака по площади</span></div>
+          <div><kbd>R</kbd><span>ремонт</span></div>
           <div><kbd>Пробел</kbd><span>на базу</span></div>
           <div><kbd>Esc</kbd><span>продолжить</span></div>
         </div>
@@ -499,6 +502,7 @@ export class UI {
       <div class="tip-stats">
         <span><i>HP</i>${def.hp}</span><span><i>УРОН</i>${def.damage}</span>
         <span><i>ДАЛЬНОСТЬ</i>${def.range}</span><span><i>СКОРОСТЬ</i>${def.speed}</span>
+        ${def.builder ? '<span><i>СТРОЙКА</i>до ×4</span>' : ''}
       </div>
       <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.buildTime} с · ${def.from === 'barracks' ? 'казармы' : 'штаб'}</span></div>
     `;
@@ -513,7 +517,7 @@ export class UI {
         <span><i>HP</i>${def.hp}</span>${power ? `<span><i>ЭНЕРГИЯ</i>${power}</span>` : ''}
         ${def.income ? `<span><i>ДОХОД</i>${def.income}/с</span>` : ''}
       </div>
-      <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.buildTime} с</span></div>
+      <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.buildTime} с · нужны инженеры рядом</span></div>
     `;
   }
 
