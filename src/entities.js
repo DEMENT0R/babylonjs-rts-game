@@ -9,7 +9,7 @@ import {
   Color3,
 } from './babylon.js';
 import { UNITS, BUILDINGS, FACTIONS, MAP } from './config.js';
-import { clamp, dist, turnTowards, damp, TAU } from './utils.js';
+import { clamp, dist, turnTowards, damp, angleDiff } from './utils.js';
 
 let nextId = 1;
 
@@ -229,7 +229,6 @@ export class Unit extends Entity {
     this.walkPhase = Math.random() * 10;
     this.recoil = 0;
     this.muzzleIndex = 0;
-    this.turretAim = 0;
     this.retaliateTimer = 0;
     this.stuckTime = 0;
     this.detourTimer = 0;
@@ -358,7 +357,9 @@ export class Unit extends Entity {
       }
       if (inRange) {
         this.moving = false;
-        if (this.attackCd <= 0) this.fire(desired);
+        // Танк стреляет только когда башня действительно довернулась на цель:
+        // иначе снаряд визуально уходил в сторону от ствола.
+        if (this.attackCd <= 0 && this.canFireAt(desired)) this.fire(desired);
       } else {
         const stop = this.range + targetRadius + this.radius - 0.35;
         this.moveToward(desired.position.x, desired.position.z, dt, stop);
@@ -380,13 +381,24 @@ export class Unit extends Entity {
   aimAt(target, dt) {
     const dx = target.position.x - this.position.x;
     const dz = target.position.z - this.position.z;
-    if (this.type === 'tank') {
-      const desired = yawTo(dx, dz) - this.root.rotation.y;
-      this.turretAim = desired;
-    } else if (!this.moving) {
+    if (this.type !== 'tank' && !this.moving) {
       const desired = yawTo(dx, dz);
       this.root.rotation.y = turnTowards(this.root.rotation.y, desired, dt * 7);
     }
+  }
+
+  /** Насколько башня ещё не довёрнута на цель (радианы). */
+  aimError(target) {
+    if (!this.parts?.turret) return 0;
+    const dx = target.position.x - this.position.x;
+    const dz = target.position.z - this.position.z;
+    const turretYaw = this.root.rotation.y + this.parts.turret.rotation.y;
+    return Math.abs(angleDiff(turretYaw, yawTo(dx, dz)));
+  }
+
+  canFireAt(target) {
+    if (this.type !== 'tank') return true;
+    return this.aimError(target) < 0.16;
   }
 
   fire(target) {
@@ -607,7 +619,7 @@ export class Unit extends Entity {
       const desired = this.target && this.target.alive
         ? yawTo(this.target.position.x - pos.x, this.target.position.z - pos.z) - this.root.rotation.y
         : 0;
-      this.parts.turret.rotation.y = turnTowards(this.parts.turret.rotation.y, desired, dt * 2.6);
+      this.parts.turret.rotation.y = turnTowards(this.parts.turret.rotation.y, desired, dt * 4.4);
       if (this.parts.barrelGroup) this.parts.barrelGroup.position.z = 0.6 - this.recoil * 0.3;
       this.root.position.y = 0;
     }
