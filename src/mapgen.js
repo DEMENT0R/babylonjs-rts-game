@@ -198,7 +198,7 @@ export function normalizeSeed(input) {
   if (typeof input === 'number' && Number.isFinite(input)) return input >>> 0;
   const raw = String(input ?? '').trim();
   if (!raw) return randomSeed();
-  const hex = raw.replace(/^#/, '').replace(/^0x/i, '');
+  const hex = raw.replace(/^#/, '').replace(/^0x/i, '').replace(/[-\s]/g, '');
   if (/^[0-9a-f]{1,8}$/i.test(hex)) return parseInt(hex, 16) >>> 0;
   return fnv1a(raw);
 }

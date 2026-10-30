@@ -4,12 +4,16 @@
 // Babylon.js. Проверяются детерминизм, симметрия всех объектов, корректность
 // стартовых баз и разнообразие карт на большой выборке сидов.
 
-import { createMap, formatSeed, normalizeSeed } from '../src/mapgen.js';
+import { createMap, formatSeed, formatSeedLabel, normalizeSeed } from '../src/mapgen.js';
 
 const fail = [];
 const check = (condition, message) => {
   if (!condition) fail.push(message);
 };
+
+check(normalizeSeed(formatSeed(0x7a3f91c2)) === 0x7a3f91c2, 'сид в формате URL не распознан');
+check(normalizeSeed(formatSeedLabel(0x7a3f91c2)) === 0x7a3f91c2, 'сид с дефисом не распознан');
+check(normalizeSeed('7A3F-91C2') === 0x7a3f91c2, 'сид с дефисом не распознан');
 
 const key = (x, z) => `${(Math.round(x * 100) / 100 + 0).toFixed(2)},${(Math.round(z * 100) / 100 + 0).toFixed(2)}`;
 const close = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
