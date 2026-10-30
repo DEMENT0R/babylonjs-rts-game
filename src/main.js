@@ -74,7 +74,7 @@ function boot() {
     'camera',
     Math.atan2(playerHq.z - enemyHq.z, playerHq.x - enemyHq.x),
     0.93,
-    64,
+    CAMERA.startRadius,
     new Vector3(
       playerHq.x + (toEnemyX / toEnemyLen) * 5,
       0,
@@ -87,7 +87,7 @@ function boot() {
   camera.lowerBetaLimit = CAMERA.minBeta - 0.1;
   camera.upperBetaLimit = CAMERA.maxBeta + 0.1;
   camera.minZ = 0.4;
-  camera.maxZ = 900;
+  camera.maxZ = 1400;
   camera.fov = 0.78;
   camera.inertia = 0;
   camera.panningSensibility = 0;

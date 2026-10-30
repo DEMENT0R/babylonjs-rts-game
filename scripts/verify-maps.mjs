@@ -5,6 +5,10 @@
 // стартовых баз и разнообразие карт на большой выборке сидов.
 
 import { createMap, formatSeed, formatSeedLabel, normalizeSeed } from '../src/mapgen.js';
+import { MAP } from '../src/config.js';
+
+const EDGE = MAP.clamp;
+const BASE_EDGE = MAP.half - 4;
 
 const fail = [];
 const check = (condition, message) => {
@@ -49,7 +53,7 @@ for (const seed of seeds) {
     const k = key(patch.x, patch.z);
     check(!patchByKey.has(k), `${label}: два месторождения в одной точке ${k}`);
     patchByKey.set(k, patch);
-    check(Math.abs(patch.x) <= 60 && Math.abs(patch.z) <= 60, `${label}: месторождение за картой`);
+    check(Math.abs(patch.x) <= EDGE && Math.abs(patch.z) <= EDGE, `${label}: месторождение за картой`);
   }
   totalOil += map.oilPatches.length;
   for (const patch of map.oilPatches) {
@@ -74,12 +78,12 @@ for (const seed of seeds) {
   const expectedEnemyPower = transform(player.power);
   check(close(enemy.hq.x, expectedEnemyHq.x) && close(enemy.hq.z, expectedEnemyHq.z), `${label}: штаб врага не совпал с отражением`);
   check(close(enemy.power.x, expectedEnemyPower.x) && close(enemy.power.z, expectedEnemyPower.z), `${label}: электростанция врага не совпала с отражением`);
-  check(Math.hypot(player.hq.x - enemy.hq.x, player.hq.z - enemy.hq.z) >= 60, `${label}: базы слишком близко`);
+  check(Math.hypot(player.hq.x - enemy.hq.x, player.hq.z - enemy.hq.z) >= 60 * (MAP.half / 60), `${label}: базы слишком близко`);
   for (const base of [player, enemy]) {
-    check(Math.abs(base.hq.x) <= 56 && Math.abs(base.hq.z) <= 56, `${label}: штаб за пределами карты`);
-    check(Math.abs(base.power.x) <= 56 && Math.abs(base.power.z) <= 56, `${label}: электростанция за пределами карты`);
+    check(Math.abs(base.hq.x) <= BASE_EDGE && Math.abs(base.hq.z) <= BASE_EDGE, `${label}: штаб за пределами карты`);
+    check(Math.abs(base.power.x) <= BASE_EDGE && Math.abs(base.power.z) <= BASE_EDGE, `${label}: электростанция за пределами карты`);
     for (const marine of base.marines) {
-      check(Math.abs(marine.x) <= 56 && Math.abs(marine.z) <= 56, `${label}: юнит за пределами карты`);
+      check(Math.abs(marine.x) <= BASE_EDGE && Math.abs(marine.z) <= BASE_EDGE, `${label}: юнит за пределами карты`);
       check(Math.hypot(marine.x - base.hq.x, marine.z - base.hq.z) > 6, `${label}: юнит внутри штаба`);
     }
   }
@@ -90,7 +94,7 @@ for (const seed of seeds) {
   check(!!enemy.barracks, `${label}: у врага нет казарм`);
   if (enemy.barracks) {
     const b = enemy.barracks;
-    check(Math.abs(b.x) <= 56 && Math.abs(b.z) <= 56, `${label}: казармы за пределами карты`);
+    check(Math.abs(b.x) <= BASE_EDGE && Math.abs(b.z) <= BASE_EDGE, `${label}: казармы за пределами карты`);
     check(Math.hypot(b.x - enemy.hq.x, b.z - enemy.hq.z) > 9, `${label}: казармы внутри штаба`);
     check(Math.hypot(b.x - enemy.power.x, b.z - enemy.power.z) > 8, `${label}: казармы внутри электростанции`);
     for (const patch of map.oilPatches) {

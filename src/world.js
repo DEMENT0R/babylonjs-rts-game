@@ -62,15 +62,15 @@ export class World {
     this.shadow.blurKernel = 18;
     this.shadow.setDarkness(0.33);
     this.sun.shadowMinZ = 10;
-    this.sun.shadowMaxZ = 210;
+    this.sun.shadowMaxZ = 260;
     this.sun.autoUpdateExtends = false;
-    this.sun.orthoLeft = -58;
-    this.sun.orthoRight = 58;
-    this.sun.orthoTop = 58;
-    this.sun.orthoBottom = -58;
+    this.sun.orthoLeft = -MAP.half - 8;
+    this.sun.orthoRight = MAP.half + 8;
+    this.sun.orthoTop = MAP.half + 8;
+    this.sun.orthoBottom = -MAP.half - 8;
 
     scene.fogMode = Scene.FOGMODE_EXP2;
-    scene.fogDensity = 0.0046;
+    scene.fogDensity = 0.0038;
     scene.fogColor = Color3.FromHexString(style.fog);
     scene.ambientColor = new Color3(0.15, 0.17, 0.19);
   }
@@ -196,8 +196,8 @@ export class World {
     tex.update(false);
     tex.wrapU = Texture.WRAP_ADDRESSMODE;
     tex.wrapV = Texture.WRAP_ADDRESSMODE;
-    tex.uScale = 9;
-    tex.vScale = 9;
+    tex.uScale = 13;
+    tex.vScale = 13;
     tex.anisotropicFilteringLevel = 8;
 
     const mat = new StandardMaterial('groundMat', this.scene);
@@ -371,7 +371,7 @@ export class World {
     this._bakeSource(postLight);
 
     for (const side of [-1, 1]) {
-      for (let i = -MAP.half; i <= MAP.half; i += 15) {
+      for (let i = -MAP.half; i <= MAP.half; i += 20) {
         for (const [x, z] of [
           [i, side * (MAP.half + 0.6)],
           [side * (MAP.half + 0.6), i],
@@ -419,7 +419,7 @@ export class World {
     }
     for (let i = 0; i < 16; i++) {
       const a = rng() * Math.PI * 2;
-      const r = rngRange(rng, 105, 155);
+      const r = rngRange(rng, MAP.half * 1.75, MAP.half * 2.55);
       const source = rngPick(rng, sources);
       const inst = source.createInstance(`mountain_${i}`);
       const s = rngRange(rng, 0.8, 1.4);
@@ -445,8 +445,8 @@ export class World {
     this.dust = new ParticleSystem('ambientDust', 70, this.scene);
     this.dust.particleTexture = tex;
     this.dust.emitter = new Vector3(0, 1, 0);
-    this.dust.minEmitBox = new Vector3(-60, 0, -60);
-    this.dust.maxEmitBox = new Vector3(60, 5, 60);
+    this.dust.minEmitBox = new Vector3(-MAP.half, 0, -MAP.half);
+    this.dust.maxEmitBox = new Vector3(MAP.half, 5, MAP.half);
     this.dust.color1 = new Color4(0.85, 0.78, 0.65, 0.22);
     this.dust.color2 = new Color4(0.7, 0.7, 0.65, 0.12);
     this.dust.colorDead = new Color4(0.6, 0.6, 0.6, 0);

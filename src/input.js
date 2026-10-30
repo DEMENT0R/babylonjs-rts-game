@@ -5,7 +5,7 @@ import {
   Matrix,
   MeshBuilder,
 } from './babylon.js';
-import { BUILDINGS, MAP, UNITS } from './config.js';
+import { BUILDINGS, CAMERA, MAP } from './config.js';
 import { clamp, damp, dist } from './utils.js';
 
 const NEUTRAL_GHOST = '#4fd2ff';
@@ -356,14 +356,14 @@ export class Input {
     if (this.game.ui?.overlayOpen) return;
     e.preventDefault();
     const dir = Math.sign(e.deltaY);
-    this.desired.radius = clamp(this.desired.radius * (1 + dir * 0.12), 24, 96);
+    this.desired.radius = clamp(this.desired.radius * (1 + dir * 0.12), CAMERA.minRadius, CAMERA.maxRadius);
   }
 
   clampTarget() {
     this.desired.target.x = clamp(this.desired.target.x, -MAP.clamp - 4, MAP.clamp + 4);
     this.desired.target.z = clamp(this.desired.target.z, -MAP.clamp - 4, MAP.clamp + 4);
     this.desired.beta = clamp(this.desired.beta, 0.66, 1.26);
-    this.desired.radius = clamp(this.desired.radius, 24, 96);
+    this.desired.radius = clamp(this.desired.radius, CAMERA.minRadius, CAMERA.maxRadius);
   }
 
   onKeyDown(e) {

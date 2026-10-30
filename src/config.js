@@ -2,17 +2,18 @@
 // Все размеры — в мировых единицах, время — в секундах.
 
 export const MAP = {
-  half: 60, // граница игровой зоны (квадрат ±60)
-  clamp: 57, // предел движения юнитов
-  ground: 320, // размер земли
+  half: 90, // граница игровой зоны (квадрат ±90)
+  clamp: 87, // предел движения юнитов
+  ground: 480, // размер земли
 };
 
 export const CAMERA = {
-  minRadius: 24,
-  maxRadius: 96,
+  minRadius: 28,
+  maxRadius: 150,
+  startRadius: 86,
   minBeta: 0.62,
   maxBeta: 1.3,
-  panSpeed: 1.15,
+  panSpeed: 1.35,
 };
 
 export const FACTIONS = {
@@ -75,10 +76,10 @@ export const UNITS = {
     armor: 0,
     radius: 0.95,
     speed: 7.2,
-    range: 7.5,
+    range: 11,
     damage: 8,
     cooldown: 0.55,
-    aggro: 13,
+    aggro: 18,
     height: 2.5,
     projectile: null,
     muzzleHeight: 1.55,
@@ -96,10 +97,10 @@ export const UNITS = {
     armor: 0,
     radius: 0.9,
     speed: 11.5,
-    range: 6.5,
+    range: 9,
     damage: 5,
     cooldown: 0.3,
-    aggro: 12,
+    aggro: 16,
     height: 2,
     projectile: null,
     muzzleHeight: 1.1,
@@ -117,10 +118,10 @@ export const UNITS = {
     armor: 2,
     radius: 1.7,
     speed: 5.0,
-    range: 9.5,
+    range: 15,
     damage: 26,
     cooldown: 1.5,
-    aggro: 14,
+    aggro: 22,
     splash: 2.7,
     height: 3,
     projectile: 'shell',
