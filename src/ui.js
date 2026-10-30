@@ -35,6 +35,9 @@ export class UI {
     this.buildMinimapBackground();
     this.el.mmSector.textContent = this.game.map.label;
     this.el.mmSector.title = `Карта ${this.game.map.label} · ${this.game.map.style.name}`;
+    if (this.el.brandSector) {
+      this.el.brandSector.textContent = `КОЛОНИАЛЬНАЯ СЕТЬ / СЕКТОР ${this.game.map.label}`;
+    }
     this.showStart();
     this.renderHeader();
     this.drawMinimap();
@@ -60,6 +63,8 @@ export class UI {
       alert: this.$('#alertFlash'),
       minimap: this.$('#minimap'),
       mmPing: this.$('#mmPing'),
+      mmSector: this.$('#mmSector'),
+      brandSector: this.$('#brandSector'),
       minimapFrame: document.querySelector('.minimap-frame'),
       tooltip: this.$('#tooltip'),
       selectBox: this.$('#selectBox'),
