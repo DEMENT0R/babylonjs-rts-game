@@ -1,0 +1,738 @@
+// Состояние игры: экономика, выбор, приказы, производство, победа.
+
+import { Vector3, Color3 } from './babylon.js';
+import {
+  START,
+  UNITS,
+  BUILDINGS,
+  FACTIONS,
+  MAP,
+  MESSAGES,
+  AI,
+  OIL_PATCHES,
+} from './config.js';
+import { clamp, dist, formatTime } from './utils.js';
+import { Unit, Building } from './entities.js';
+import { AIController } from './ai.js';
+
+let nextBuildingId = 1;
+
+export class Game {
+  constructor({ scene, camera, factory, world, fx }) {
+    this.scene = scene;
+    this.camera = camera;
+    this.factory = factory;
+    this.world = world;
+    this.fx = fx;
+    this.ui = null;
+    this.input = null;
+
+    this.entities = [];
+    this.units = [];
+    this.buildings = [];
+    this.selected = new Set();
+    this.primary = null;
+
+    this.credits = START.credits;
+    this.armyCap = START.armyCap;
+    this.elapsed = 0;
+    this.paused = true;
+    this.started = false;
+    this.over = null;
+
+    this.stats = { kills: 0, losses: 0, gathered: 0, trained: 0, built: 0 };
+    this.power = {
+      player: { produced: 0, used: 0, factor: 1 },
+      enemy: { produced: 0, used: 0, factor: 1 },
+    };
+    this.notifyTimes = new Map();
+    this.alertCd = 0;
+    this.powerTimer = 0;
+    this.baseAlertCd = 0;
+    this.tutorialStep = 0;
+    this.derrickIncomeAcc = 0;
+    this.enemyDerrickAcc = 0;
+
+    this.setupBases();
+    this.recomputePower();
+    this.ai = new AIController(this);
+    this.ui = null;
+  }
+
+  // ------------------------------------------------------------- setup
+  setupBases() {
+    const p = START.player;
+    this.createBuilding('player', 'hq', p.hq[0], p.hq[1], { complete: true, silent: true });
+    this.createBuilding('player', 'power', p.power[0], p.power[1], { complete: true, silent: true });
+    for (const [x, z] of p.derricks) {
+      const patch = this.findOilPatch(x, z);
+      const b = this.createBuilding('player', 'derrick', x, z, { complete: true, silent: true, patch });
+      if (patch) patch.derrick = b;
+    }
+    const e = START.enemy;
+    this.createBuilding('enemy', 'hq', e.hq[0], e.hq[1], { complete: true, silent: true });
+    this.createBuilding('enemy', 'power', e.power[0], e.power[1], { complete: true, silent: true });
+    this.createBuilding('enemy', 'barracks', e.barracks[0], e.barracks[1], { complete: true, silent: true });
+    for (const [x, z] of e.derricks) {
+      const patch = this.findOilPatch(x, z);
+      const b = this.createBuilding('enemy', 'derrick', x, z, { complete: true, silent: true, patch });
+      if (patch) patch.derrick = b;
+    }
+
+    const spawnMarines = (faction, positions, faceX, faceZ) => {
+      for (const [x, z] of positions) {
+        const u = this.spawnUnit(faction, 'marine', x, z, { silent: true });
+        if (u) u.root.rotation.y = Math.atan2(faceX - x, faceZ - z);
+      }
+    };
+    spawnMarines('player', [
+      [-34.0, 24.0],
+      [-43.0, 23.0],
+    ], 0, 0);
+    spawnMarines('enemy', [
+      [31.5, -24.5],
+      [34.5, -23.5],
+      [29.0, -22.5],
+    ], 0, 0);
+  }
+
+  // ------------------------------------------------------------- loop
+  begin() {
+    if (this.started) return;
+    this.started = true;
+    this.paused = false;
+    const hq = this.playerBuildings().find((b) => b.type === 'hq');
+    if (hq) this.selectOnly([hq]);
+    this.notify('Связь установлена. Командование колонией за вами.', 'info', 'begin', 0);
+    this.notify('Постройте казармы и займите нефтяные месторождения.', 'hint', 'hint-build', 0, 10);
+  }
+
+  setPaused(value) {
+    if (this.over) return;
+    this.paused = value;
+  }
+
+  update(dt) {
+    if (!this.started || this.paused || this.over) return;
+    dt = Math.min(dt, 0.1);
+    this.elapsed += dt;
+
+    const income = this.playerIncome();
+    this.credits += income * dt;
+    this.stats.gathered += income * dt;
+
+    this.powerTimer -= dt;
+    if (this.powerTimer <= 0) {
+      this.powerTimer = 0.5;
+      this.recomputePower();
+    }
+
+    const snapshot = this.entities.slice();
+    for (const entity of snapshot) {
+      if (entity.alive) entity.update(dt);
+    }
+    for (const entity of this.entities) {
+      if (entity.alive && entity.hp < entity.maxHp * 0.52) {
+        this.fx.damageSmoke(entity, dt);
+      }
+    }
+    this.fx.update(dt);
+    this.ai.update(dt);
+
+    // проверка атаки на базу
+    this.baseAlertCd -= dt;
+    if (this.baseAlertCd <= 0) {
+      this.baseAlertCd = 0.8;
+      this.checkBaseUnderAttack();
+    }
+
+    // подсказки
+    if (this.tutorialStep === 0 && this.elapsed > 18) {
+      this.tutorialStep = 1;
+      this.notify('Нефтяные вышки приносят кредиты. Захватывайте нейтральные месторождения.', 'hint', 'hint-oil', 0, 12);
+    } else if (this.tutorialStep === 1 && this.elapsed > 55) {
+      this.tutorialStep = 2;
+      this.notify('Сенсоры фиксируют активность противника. Укрепляйте оборону.', 'warn', 'hint-enemy', 0, 14);
+    }
+
+    this.checkVictory();
+  }
+
+  checkVictory() {
+    if (this.over) return;
+    const playerHQ = this.entities.find((e) => e.alive && e.isBuilding && e.type === 'hq' && e.faction === 'player');
+    const enemyHQ = this.entities.find((e) => e.alive && e.isBuilding && e.type === 'hq' && e.faction === 'enemy');
+    if (!enemyHQ) this.endGame('victory');
+    else if (!playerHQ) this.endGame('defeat');
+  }
+
+  endGame(result) {
+    if (this.over) return;
+    this.over = result;
+    this.paused = true;
+    this.stats.time = this.elapsed;
+    if (this.ui) this.ui.showEnd(result);
+  }
+
+  checkBaseUnderAttack() {
+    const hq = this.entities.find((e) => e.alive && e.isBuilding && e.type === 'hq' && e.faction === 'player');
+    if (!hq) return;
+    let attacker = null;
+    for (const e of this.entities) {
+      if (!e.alive || e.faction !== 'enemy' || !(e instanceof Unit)) continue;
+      if (dist(e.position.x, e.position.z, hq.position.x, hq.position.z) < 28) {
+        attacker = e;
+        break;
+      }
+    }
+    if (!attacker) {
+      this.alertCd = 0;
+      return;
+    }
+    if (this.alertCd > 0) {
+      this.alertCd -= 0.8;
+      return;
+    }
+    this.alertCd = 10;
+    this.notify('Наша база под атакой!', 'danger', 'base-attack', 0, 9);
+    if (this.ui) {
+      this.ui.alert();
+      this.ui.ping(attacker.position.x, attacker.position.z, '#ff4b3e');
+    }
+  }
+
+  // ------------------------------------------------------------- economy / power
+  playerIncome() {
+    let sum = 0;
+    for (const b of this.buildings) {
+      if (b.alive && b.faction === 'player' && b.type === 'derrick' && b.complete) sum += b.def.income;
+    }
+    return sum;
+  }
+
+  enemyIncome() {
+    let sum = AI.baseIncome;
+    for (const b of this.buildings) {
+      if (b.alive && b.faction === 'enemy' && b.type === 'derrick' && b.complete) sum += b.def.income;
+    }
+    // Противник не должен развиваться быстрее игрока: у него нет микроконтроля.
+    return sum * 0.7;
+  }
+
+  recomputePower() {
+    const result = { player: { produced: 0, used: 0, factor: 1 }, enemy: { produced: 0, used: 0, factor: 1 } };
+    for (const b of this.buildings) {
+      if (!b.alive || !b.complete) continue;
+      const p = result[b.faction];
+      if (!p) continue;
+      p.produced += b.def.powerProduce || 0;
+      p.used += b.def.powerUse || 0;
+    }
+    for (const f of ['player', 'enemy']) {
+      const p = result[f];
+      p.factor = p.used > p.produced ? 0.4 : 1;
+    }
+    const wasDeficit = this.power.player.used > this.power.player.produced;
+    this.power = result;
+    if (result.player.used > result.player.produced && !wasDeficit) {
+      this.notify(MESSAGES.lowPower, 'warn', 'low-power', 0, 12);
+    }
+  }
+
+  powerFactor(faction) {
+    return this.power[faction]?.factor ?? 1;
+  }
+
+  // ------------------------------------------------------------- entities
+  createBuilding(faction, type, x, z, opts = {}) {
+    const def = BUILDINGS[type];
+    let px = x;
+    let pz = z;
+    let patch = opts.patch ?? null;
+    if (type === 'derrick') {
+      if (!patch) patch = this.findOilPatch(x, z, 4.5);
+      if (patch) {
+        px = patch.x;
+        pz = patch.z;
+      }
+    }
+    const b = new Building(this, faction, type, px, pz, opts);
+    b.uid = nextBuildingId++;
+    if (type === 'derrick' && patch) {
+      patch.derrick = b;
+      b.oilPatch = patch;
+    }
+    this.entities.push(b);
+    this.buildings.push(b);
+    if (!opts.silent) {
+      this.notify(
+        `Начато строительство: ${def.name}`,
+        'info',
+        `build_${b.id}`,
+        0,
+        5,
+      );
+      this.stats.built++;
+    }
+    if (opts.complete) this.recomputePower();
+    return b;
+  }
+
+  spawnUnit(faction, type, x, z, opts = {}) {
+    const u = new Unit(this, faction, type, x, z, opts);
+    this.entities.push(u);
+    this.units.push(u);
+    if (!opts.silent) {
+      this.fx.buildDust(new Vector3(x, 0, z), 0.7);
+    }
+    return u;
+  }
+
+  findOilPatch(x, z, maxDist = 4.2) {
+    let best = null;
+    let bestD = maxDist;
+    for (const patch of this.world.oilPatches) {
+      if (patch.derrick && patch.derrick.alive) continue;
+      const d = dist(x, z, patch.x, patch.z);
+      if (d <= bestD) {
+        best = patch;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  getObstaclesNear(x, z, range) {
+    const out = [];
+    for (const o of this.world.obstacles) {
+      const d = dist(x, z, o.x, o.z);
+      if (d < range + o.radius) out.push(o);
+    }
+    for (const b of this.buildings) {
+      if (!b.alive) continue;
+      const d = dist(x, z, b.position.x, b.position.z);
+      if (d < range + b.radius) {
+        out.push({ x: b.position.x, z: b.position.z, radius: b.radius * 0.94, kind: 'building', building: b });
+      }
+    }
+    return out;
+  }
+
+  isPositionFree(x, z, radius) {
+    if (Math.abs(x) > MAP.clamp || Math.abs(z) > MAP.clamp) return false;
+    for (const o of this.world.obstacles) {
+      if (dist(x, z, o.x, o.z) < radius + o.radius + 0.2) return false;
+    }
+    for (const b of this.buildings) {
+      if (!b.alive) continue;
+      if (dist(x, z, b.position.x, b.position.z) < radius + b.radius + 0.2) return false;
+    }
+    return true;
+  }
+
+  // ------------------------------------------------------------- selection
+  selectOnly(list) {
+    for (const e of this.selected) e.setSelected(false);
+    this.selected.clear();
+    for (const e of list) {
+      if (!e || !e.alive) continue;
+      e.setSelected(true);
+      this.selected.add(e);
+      this.primary = e;
+    }
+    if (this.selected.size === 0) this.primary = null;
+    if (this.ui) this.ui.onSelectionChanged();
+  }
+
+  toggleSelect(entity, additive = true) {
+    if (!entity || !entity.alive) return;
+    if (!additive) {
+      this.selectOnly([entity]);
+      return;
+    }
+    if (this.selected.has(entity)) {
+      this.selected.delete(entity);
+      entity.setSelected(false);
+      if (this.primary === entity) this.primary = [...this.selected][this.selected.size - 1] ?? null;
+    } else {
+      this.selected.add(entity);
+      entity.setSelected(true);
+      this.primary = entity;
+    }
+    if (this.ui) this.ui.onSelectionChanged();
+  }
+
+  clearSelection() {
+    for (const e of this.selected) e.setSelected(false);
+    this.selected.clear();
+    this.primary = null;
+    if (this.ui) this.ui.onSelectionChanged();
+  }
+
+  selectedUnits() {
+    return [...this.selected].filter((e) => e instanceof Unit && e.alive && e.faction === 'player');
+  }
+
+  selectedBuildings() {
+    return [...this.selected].filter((e) => e instanceof Building && e.alive && e.faction === 'player');
+  }
+
+  playerBuildings() {
+    return this.buildings.filter((b) => b.faction === 'player' && b.alive);
+  }
+
+  playerUnits() {
+    return this.units.filter((u) => u.faction === 'player' && u.alive);
+  }
+
+  countUnits(faction) {
+    let n = 0;
+    for (const u of this.units) if (u.alive && u.faction === faction) n++;
+    return n;
+  }
+
+  primaryBarracks() {
+    const bs = this.selectedBuildings().filter((b) => b.type === 'barracks');
+    return bs[0] ?? null;
+  }
+
+  primaryHQ() {
+    const bs = this.selectedBuildings().filter((b) => b.type === 'hq');
+    return bs[0] ?? null;
+  }
+
+  // ------------------------------------------------------------- orders
+  issueFormationMove(units, point, mode = 'move') {
+    if (!units.length) return;
+    const alive = units.filter((u) => u.alive);
+    if (!alive.length) return;
+    const cx = alive.reduce((s, u) => s + u.position.x, 0) / alive.length;
+    const cz = alive.reduce((s, u) => s + u.position.z, 0) / alive.length;
+    const dir = Math.atan2(point.x - cx, point.z - cz);
+    const spacing = 2.25;
+    const cols = Math.ceil(Math.sqrt(alive.length));
+    const rows = Math.ceil(alive.length / cols);
+    const sorted = alive.slice().sort((a, b) =>
+      dist(a.position.x, a.position.z, point.x, point.z) - dist(b.position.x, b.position.z, point.x, point.z));
+    const cos = Math.cos(dir);
+    const sin = Math.sin(dir);
+    sorted.forEach((unit, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const lx = (col - (cols - 1) / 2) * spacing;
+      const lz = (row - (rows - 1) / 2) * spacing;
+      let tx = point.x + lx * cos + lz * sin;
+      let tz = point.z - lx * sin + lz * cos;
+      tx = clamp(tx, -MAP.clamp + 1, MAP.clamp - 1);
+      tz = clamp(tz, -MAP.clamp + 1, MAP.clamp - 1);
+      if (mode === 'attackMove') unit.issueAttackMove(tx, tz);
+      else unit.issueMove(tx, tz);
+    });
+    this.fx.orderMarker(point, mode === 'attackMove' ? 'attack' : 'move');
+  }
+
+  commandMove(point) {
+    const units = this.selectedUnits();
+    if (!units.length) return;
+    this.issueFormationMove(units, point, 'move');
+  }
+
+  commandAttackMove(point) {
+    const units = this.selectedUnits();
+    if (!units.length) return;
+    this.issueFormationMove(units, point, 'attackMove');
+  }
+
+  commandAttack(target) {
+    const units = this.selectedUnits();
+    if (!units.length || !target || !target.alive) return;
+    for (const u of units) u.issueAttack(target);
+    this.fx.orderMarker(target.position, 'attack');
+  }
+
+  commandStop() {
+    for (const u of this.selectedUnits()) u.stop();
+  }
+
+  setRally(point) {
+    const barracks = this.selectedBuildings().filter((b) => b.type === 'barracks');
+    for (const b of barracks) b.setRally(point.x, point.z);
+    if (!barracks.length) {
+      const hq = this.primaryHQ();
+      if (hq) hq.setRally(point.x, point.z);
+    }
+  }
+
+  // ------------------------------------------------------------- building placement
+  findPlacement(type, x, z) {
+    const def = BUILDINGS[type];
+    const r = def.radius;
+    let px = x;
+    let pz = z;
+    let patch = null;
+
+    if (type === 'derrick') {
+      patch = this.findOilPatch(x, z, 6.2);
+      if (!patch) return { valid: false, reason: 'oil', x, z };
+      px = patch.x;
+      pz = patch.z;
+    }
+
+    if (Math.abs(px) > MAP.half - r - 1 || Math.abs(pz) > MAP.half - r - 1) {
+      return { valid: false, reason: 'bounds', x: px, z: pz, patch };
+    }
+
+    for (const o of this.world.obstacles) {
+      if (dist(px, pz, o.x, o.z) < r + o.radius + 0.5) {
+        return { valid: false, reason: 'rock', x: px, z: pz, patch };
+      }
+    }
+    for (const b of this.buildings) {
+      if (!b.alive) continue;
+      if (dist(px, pz, b.position.x, b.position.z) < r + b.radius + 0.6) {
+        return { valid: false, reason: 'building', x: px, z: pz, patch };
+      }
+    }
+    for (const p of this.world.oilPatches) {
+      if (type === 'derrick') {
+        if (p !== patch && dist(px, pz, p.x, p.z) < r + p.radius * 0.55) {
+          return { valid: false, reason: 'oil', x: px, z: pz, patch };
+        }
+      } else if (dist(px, pz, p.x, p.z) < r + p.radius * 0.75) {
+        return { valid: false, reason: 'oil', x: px, z: pz, patch };
+      }
+    }
+    return { valid: true, x: px, z: pz, patch };
+  }
+
+  tryBuild(type, x, z) {
+    const def = BUILDINGS[type];
+    if (!def || def.cost <= 0) return null;
+    if (this.credits < def.cost) {
+      this.notify(MESSAGES.noCredits, 'warn', 'no-credits', 0, 3);
+      return null;
+    }
+    const place = this.findPlacement(type, x, z);
+    if (!place.valid) {
+      if (place.reason === 'oil') this.notify(MESSAGES.needOil, 'warn', 'bad-place', 0, 2);
+      else this.notify(MESSAGES.badPlace, 'warn', 'bad-place', 0, 2);
+      return null;
+    }
+    this.credits -= def.cost;
+    const b = this.createBuilding('player', type, place.x, place.z, { complete: false, patch: place.patch });
+    this.pushUnitsOut(b);
+    this.fx.buildDust(new Vector3(place.x, 0, place.z), 1.0);
+    return b;
+  }
+
+  pushUnitsOut(building) {
+    for (const u of this.units) {
+      if (!u.alive) continue;
+      const dx = u.position.x - building.position.x;
+      const dz = u.position.z - building.position.z;
+      const d = Math.hypot(dx, dz);
+      const min = building.radius + u.radius + 0.25;
+      if (d < min) {
+        const nx = d > 0.001 ? dx / d : 1;
+        const nz = d > 0.001 ? dz / d : 0;
+        u.position.x = building.position.x + nx * min;
+        u.position.z = building.position.z + nz * min;
+        u.root.position.x = u.position.x;
+        u.root.position.z = u.position.z;
+      }
+    }
+  }
+
+  cancelBuilding(building, refund = true) {
+    if (!building || !building.alive || building.complete) return;
+    if (refund) this.credits += Math.floor(building.def.cost * 0.6);
+    if (building.oilPatch) {
+      building.oilPatch.derrick = null;
+      building.oilPatch = null;
+    }
+    this.removeEntity(building);
+    building.alive = false;
+    building.disposeVisual();
+    this.recomputePower();
+    this.notify('Строительство отменено. Возвращено 60% стоимости.', 'info', `cancel_${building.id}`, 0, 2);
+    if (this.ui) this.ui.onSelectionChanged();
+  }
+
+  // ------------------------------------------------------------- production
+  spawnFromBuilding(building, type) {
+    if (!building.alive) return;
+    const rally = building.rally ?? building.defaultRally();
+    let dx = rally.x - building.position.x;
+    let dz = rally.z - building.position.z;
+    const len = Math.hypot(dx, dz) || 1;
+    dx /= len;
+    dz /= len;
+    const startX = building.position.x + dx * (building.radius + 1.8);
+    const startZ = building.position.z + dz * (building.radius + 1.8);
+    const spot = this.findSpawnSpot(startX, startZ, UNITS[type].radius, Math.atan2(dz, dx));
+    const unit = this.spawnUnit(building.faction, type, spot.x, spot.z, {
+      rotation: Math.atan2(dx, dz),
+      silent: false,
+    });
+    if (rally) {
+      unit.issueMove(rally.x + (Math.random() - 0.5) * 1.6, rally.z + (Math.random() - 0.5) * 1.6);
+    }
+    this.fx.buildDust(new Vector3(spot.x, 0, spot.z), 0.55);
+    if (building.faction === 'player') this.stats.trained++;
+    return unit;
+  }
+
+  findSpawnSpot(x, z, radius, angle = 0) {
+    for (let ring = 0; ring < 7; ring++) {
+      const r = ring * (radius * 2.1 + 0.7);
+      for (let i = 0; i < 10; i++) {
+        const a = angle + (i / 10) * Math.PI * 2 + ring * 0.35;
+        const px = x + Math.cos(a) * r;
+        const pz = z + Math.sin(a) * r;
+        if (this.isPositionFree(px, pz, radius) && Math.abs(px) < MAP.clamp && Math.abs(pz) < MAP.clamp) {
+          return { x: px, z: pz };
+        }
+      }
+    }
+    return { x: clamp(x, -MAP.clamp, MAP.clamp), z: clamp(z, -MAP.clamp, MAP.clamp) };
+  }
+
+  trainUnit(type, building = this.primaryBarracks()) {
+    const def = UNITS[type];
+    if (!def) return false;
+    if (!building || !building.alive) return false;
+    if (!building.complete) {
+      this.notify(MESSAGES.notReady, 'warn', 'not-ready', 0, 3);
+      return false;
+    }
+    if (building.queue.length >= building.maxQueue) {
+      this.notify(MESSAGES.queueFull, 'warn', 'queue-full', 0, 3);
+      return false;
+    }
+    if (this.credits < def.cost) {
+      this.notify(MESSAGES.noCredits, 'warn', 'no-credits', 0, 3);
+      return false;
+    }
+    if (this.countUnits('player') >= this.armyCap) {
+      this.notify(MESSAGES.capReached, 'warn', 'cap', 0, 3);
+      return false;
+    }
+    this.credits -= def.cost;
+    building.enqueue(type);
+    if (this.ui) this.ui.onQueueChanged(building);
+    return true;
+  }
+
+  cancelQueue(building, index) {
+    if (!building || !building.alive) return;
+    const item = building.cancelQueue(index);
+    if (!item) return;
+    const def = UNITS[item.type];
+    if (def) this.credits += def.cost;
+    if (this.ui) this.ui.onSelectionChanged();
+  }
+
+  // ------------------------------------------------------------- combat
+  dealDamage(target, amount, source) {
+    if (!target || !target.alive) return;
+    target.takeDamage(amount, source);
+  }
+
+  splashDamage(point, radius, amount, source) {
+    if (!source) return;
+    for (const e of this.entities.slice()) {
+      if (!e.alive || e.faction === source.faction) continue;
+      if (!(e instanceof Unit) && !(e instanceof Building)) continue;
+      const d = dist(point.x, point.z, e.position.x, e.position.z);
+      if (d > radius + e.radius * 0.4) continue;
+      const falloff = 1 - 0.5 * clamp(d / radius, 0, 1);
+      e.takeDamage(amount * falloff, source);
+    }
+  }
+
+  onEntityDamaged(entity, source, dmg) {
+    if (!entity || !source) return;
+    if (entity.faction === 'player' && source.faction === 'enemy') {
+      if (this.ui) this.ui.hitIndicator(entity);
+    }
+  }
+
+  onEntityDeath(entity, source) {
+    const scale = entity.isBuilding
+      ? 1.6 + entity.radius * 0.25
+      : entity.type === 'tank'
+        ? 1.25
+        : 0.62;
+    const pos = entity.position.clone();
+    pos.y = entity.isBuilding ? 1.6 : 0.9;
+    this.fx.explode(pos, scale, { scorch: entity.isBuilding || entity.type === 'tank' });
+    this.fx.buildDust(entity.position, entity.isBuilding ? 1.5 : 0.5);
+
+    if (entity.faction === 'enemy') this.stats.kills++;
+    if (entity.faction === 'player') this.stats.losses++;
+
+    if (entity.isBuilding && entity.type === 'derrick' && entity.oilPatch) {
+      entity.oilPatch.derrick = null;
+      entity.oilPatch = null;
+      if (entity.faction === 'enemy') {
+        this.notify('Нефтяная вышка противника уничтожена. Доход врага снижен.', 'success', `ed_${entity.id}`, 0, 4);
+      } else {
+        this.notify('Наша нефтяная вышка уничтожена.', 'danger', `pd_${entity.id}`, 0, 4);
+      }
+    } else if (entity.isBuilding && entity.faction === 'player') {
+      this.notify(`Потеряно: ${entity.def.name}`, 'danger', `lost_${entity.id}`, 0, 4);
+    } else if (entity.isBuilding && entity.faction === 'enemy' && entity.type !== 'hq') {
+      this.notify(`Уничтожено: ${entity.def.name} противника`, 'success', `killed_${entity.id}`, 0, 3);
+    }
+
+    const wasHQ = entity.isBuilding && entity.type === 'hq';
+    this.removeEntity(entity);
+    if (this.ui) this.ui.onSelectionChanged();
+    this.recomputePower();
+
+    if (wasHQ) {
+      if (entity.faction === 'enemy') this.endGame('victory');
+      else this.endGame('defeat');
+    }
+  }
+
+  removeEntity(entity) {
+    this.entities = this.entities.filter((e) => e !== entity);
+    this.units = this.units.filter((e) => e !== entity);
+    this.buildings = this.buildings.filter((e) => e !== entity);
+    if (this.selected.delete(entity)) {
+      if (this.primary === entity) this.primary = [...this.selected].at(-1) ?? null;
+    }
+  }
+
+  // ------------------------------------------------------------- ui helpers
+  notify(text, kind = 'info', key = null, cooldown = 0, duration = 4) {
+    if (!this.ui) return;
+    if (key) {
+      const last = this.notifyTimes.get(key) ?? -999;
+      if (cooldown > 0 && this.elapsed - last < cooldown) return;
+      this.notifyTimes.set(key, this.elapsed);
+    }
+    this.ui.message(text, kind, duration);
+  }
+
+  getStatus() {
+    return {
+      credits: Math.floor(this.credits),
+      power: this.power.player,
+      army: this.countUnits('player'),
+      cap: this.armyCap,
+      time: this.elapsed,
+    };
+  }
+
+  startPlacement(type) {
+    if (this.input) this.input.startPlacement(type);
+    else this.notify('Нет связи с системой строительства.', 'warn');
+  }
+
+  focusOn(x, z) {
+    if (this.input) this.input.focusOn(x, z);
+  }
+}
+

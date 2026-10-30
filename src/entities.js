@@ -1,0 +1,897 @@
+// Юниты и здания: движение, бой, строительство и производство.
+
+import {
+  MeshBuilder,
+  Mesh,
+  StandardMaterial,
+  TransformNode,
+  Vector3,
+  Color3,
+} from './babylon.js';
+import { UNITS, BUILDINGS, FACTIONS, MAP } from './config.js';
+import { clamp, dist, turnTowards, damp, TAU } from './utils.js';
+
+let nextId = 1;
+
+const yawTo = (dx, dz) => Math.atan2(dx, dz);
+
+function createBar(factory, faction, width) {
+  const scene = factory.scene;
+  const group = new TransformNode('healthbar', scene);
+  const bgMat = factory.mat('barBg', {
+    color: '#102832',
+    emissive: '#0a1c24',
+    unlit: true,
+    fog: false,
+    backFaceCulling: false,
+  });
+  const hpMat = factory.mat(`barHp_${faction}`, {
+    color: FACTIONS[faction].hp,
+    emissive: FACTIONS[faction].hp,
+    unlit: true,
+    fog: false,
+    backFaceCulling: false,
+  });
+  const progMat = factory.mat('barProg', {
+    color: '#ffc766',
+    emissive: '#ffae3d',
+    unlit: true,
+    fog: false,
+    backFaceCulling: false,
+  });
+  const progBgMat = factory.mat('barProgBg', {
+    color: '#1a1308',
+    emissive: '#1a1308',
+    unlit: true,
+    fog: false,
+    backFaceCulling: false,
+  });
+
+  const plane = (parent, w, h, mat, z) => {
+    const mesh = MeshBuilder.CreatePlane('barpart', { width: w, height: h }, scene);
+    mesh.material = mat;
+    mesh.parent = parent;
+    mesh.position.z = z;
+    mesh.isPickable = false;
+    mesh.receiveShadows = false;
+    mesh.renderingGroupId = 1;
+    mesh.applyFog = false;
+    return mesh;
+  };
+
+  const bg = plane(group, width + 0.12, 0.38, bgMat, 0);
+  const hp = plane(group, width, 0.25, hpMat, 0.012);
+
+  const progress = new TransformNode('barprogress', scene);
+  progress.parent = group;
+  progress.position.y = -0.3;
+  const pBg = plane(progress, width, 0.12, progBgMat, 0.014);
+  const pFill = plane(progress, width - 0.02, 0.075, progMat, 0.02);
+  progress.setEnabled(false);
+
+  group.setEnabled(false);
+  return { group, width, hp, hpWidth: width, progress, pFill, pWidth: width - 0.04, bg };
+}
+
+export class Entity {
+  constructor(game, faction, type, def, x, z, isBuilding = false) {
+    this.id = nextId++;
+    this.game = game;
+    this.faction = faction;
+    this.type = type;
+    this.def = def;
+    this.isBuilding = isBuilding;
+    this.maxHp = def.hp;
+    this.hp = def.hp;
+    this.radius = def.radius;
+    this.position = new Vector3(x, 0, z);
+    this.alive = true;
+    this.selected = false;
+    this.forceBar = false;
+    this.root = null;
+    this.parts = null;
+    this.model = null;
+    this.bar = null;
+    this.ring = null;
+    this.barVisible = false;
+    this.lastHitAt = -99;
+  }
+
+  setupVisual() {
+    const game = this.game;
+    const factory = game.factory;
+    this.root.position.set(this.position.x, 0, this.position.z);
+    this.root.getChildMeshes(false).forEach((mesh) => {
+      mesh.isPickable = true;
+      mesh.metadata = { entity: this };
+      mesh.receiveShadows = true;
+    });
+
+    const ringMat = factory.mat(`selRing_${this.faction}`, {
+      color: FACTIONS[this.faction].accent,
+      emissive: FACTIONS[this.faction].accent,
+      unlit: true,
+      alpha: 0.9,
+      fog: false,
+      backFaceCulling: false,
+    });
+    const ring = MeshBuilder.CreateTorus(`sel_${this.id}`, {
+      diameter: Math.max(1.9, this.radius * 2.55),
+      thickness: 0.1,
+      tessellation: 36,
+    }, game.scene);
+    ring.material = ringMat;
+    ring.parent = this.root;
+    ring.position.y = this.isBuilding ? (this.def.key === 'hq' ? 0.55 : 0.38) : 0.08;
+    ring.isPickable = false;
+    ring.receiveShadows = false;
+    ring.setEnabled(false);
+    this.ring = ring;
+
+    const barWidth = this.isBuilding
+      ? clamp(this.radius * 1.25, 2.2, 4.4)
+      : clamp(this.radius * 1.35, 1.2, 2.0);
+    this.bar = createBar(factory, this.faction, barWidth);
+    this.barY = this.isBuilding ? this.def.height + 0.7 : this.def.height + 0.45;
+    game.world.addCaster(this.root, this.isBuilding ? 8 : 3);
+
+    // Свечение юнитов и интерфейсных элементов не пускаем в bloom:
+    // при больших армиях это главный источник лишних проходов.
+    const glow = game.scene.getGlowLayerByName?.('glow');
+    if (glow?.addExcludedMesh) {
+      glow.addExcludedMesh(ring);
+      this.bar.group.getChildMeshes(false).forEach((mesh) => glow.addExcludedMesh(mesh));
+      if (!this.isBuilding) {
+        this.root.getChildMeshes(false).forEach((mesh) => glow.addExcludedMesh(mesh));
+      }
+    }
+  }
+
+  setSelected(value) {
+    this.selected = value;
+    if (this.ring) this.ring.setEnabled(value && this.alive);
+    if (this.isBuilding) this.updateRallyVisual?.();
+  }
+
+  takeDamage(amount, source) {
+    if (!this.alive || this.game.over) return;
+    const armor = this.def.armor ?? 0;
+    const dmg = Math.max(1, amount - armor);
+    this.hp -= dmg;
+    this.lastHitAt = this.game.elapsed;
+    this.game.onEntityDamaged(this, source, dmg);
+    if (this.hp <= 0) {
+      this.hp = 0;
+      this.die(source);
+    }
+    if (this instanceof Unit && this.alive && source?.alive) {
+      if (!this.order || this.order.type === 'attackMove') {
+        if (dist(this.position.x, this.position.z, source.position.x, source.position.z) < this.def.aggro + 6) {
+          this.target = source;
+          this.retaliateTimer = 3;
+        }
+      }
+    }
+  }
+
+  die(source) {
+    if (!this.alive) return;
+    this.alive = false;
+    this.game.onEntityDeath(this, source);
+    this.disposeVisual();
+  }
+
+  disposeVisual() {
+    if (this.bar) {
+      this.bar.group.getChildMeshes(false).forEach((m) => m.dispose());
+      this.bar.group.dispose();
+      this.bar = null;
+    }
+    if (this.root) {
+      this.game.world.removeCaster(this.root);
+      this.root.getChildMeshes(false).forEach((m) => m.dispose());
+      this.root.dispose();
+      this.root = null;
+    }
+  }
+
+  updateBar() {
+    if (!this.bar) return;
+    const show = this.selected || this.forceBar || this.hp < this.maxHp - 0.01;
+    this.barVisible = show;
+    this.bar.group.setEnabled(show);
+    if (!show) return;
+    const camera = this.game.camera;
+    if (!camera) return;
+    this.bar.group.position.set(this.position.x, this.barY, this.position.z);
+    this.bar.group.lookAt(camera.position);
+
+    const frac = clamp(this.hp / this.maxHp, 0, 1);
+    this.bar.hp.scaling.x = Math.max(0.001, frac);
+    this.bar.hp.position.x = -(this.bar.hpWidth * (1 - frac)) / 2;
+  }
+
+  update() {}
+}
+
+export class Unit extends Entity {
+  constructor(game, faction, type, x, z, opts = {}) {
+    const def = UNITS[type];
+    super(game, faction, type, def, x, z, false);
+    this.speed = def.speed;
+    this.range = def.range;
+    this.damage = def.damage;
+    this.aggro = def.aggro;
+    this.order = null;
+    this.target = null;
+    this.attackCd = 0.25 + Math.random() * 0.3;
+    this.moving = false;
+    this.walkPhase = Math.random() * 10;
+    this.recoil = 0;
+    this.muzzleIndex = 0;
+    this.turretAim = 0;
+    this.retaliateTimer = 0;
+    this.stuckTime = 0;
+    this.detourTimer = 0;
+    this.detourSign = Math.random() < 0.5 ? -1 : 1;
+    this.lastDirX = 0;
+    this.lastDirZ = 1;
+
+    this.model = game.factory.unit(type, faction);
+    this.root = this.model.root;
+    this.parts = this.model.parts;
+    this.height = this.model.height;
+    this.root.rotation.y = opts.rotation ?? yawTo(-x, -z);
+    this.setupVisual();
+    this.updateBar();
+  }
+
+  get isUnit() {
+    return true;
+  }
+
+  issueMove(x, z) {
+    this.order = { type: 'move', x, z };
+    this.target = null;
+    this.stuckTime = 0;
+  }
+
+  issueAttack(target) {
+    if (!target || !target.alive) return;
+    this.order = { type: 'attack', target };
+    this.target = target;
+    this.stuckTime = 0;
+  }
+
+  issueAttackMove(x, z) {
+    this.order = { type: 'attackMove', x, z };
+    this.target = null;
+    this.stuckTime = 0;
+  }
+
+  stop() {
+    this.order = null;
+    this.target = null;
+    this.moving = false;
+  }
+
+  acquireTarget(range) {
+    let best = null;
+    let bestScore = Infinity;
+    for (const e of this.game.entities) {
+      if (!e.alive || e.faction === this.faction) continue;
+      if (!(e instanceof Unit) && !(e instanceof Building)) continue;
+      const d = dist(this.position.x, this.position.z, e.position.x, e.position.z);
+      if (d - e.radius > range) continue;
+      if (Math.abs(e.position.x) > MAP.half + 8 || Math.abs(e.position.z) > MAP.half + 8) continue;
+      const score = d + (e.isBuilding ? 9 : 0) - (e.type === 'derrick' ? 3 : 0);
+      if (score < bestScore) {
+        bestScore = score;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  update(dt) {
+    if (!this.alive) return;
+    this.attackCd = Math.max(0, this.attackCd - dt);
+    if (this.retaliateTimer > 0) this.retaliateTimer -= dt;
+
+    const order = this.order;
+    let desired = null;
+    let moveX = null;
+    let moveZ = null;
+
+    if (order && order.type === 'attack') {
+      if (order.target && order.target.alive) desired = order.target;
+      else this.order = null;
+    } else if (order && order.type === 'attackMove') {
+      if (this.target && this.target.alive) {
+        const d = dist(this.position.x, this.position.z, this.target.position.x, this.target.position.z);
+        if (d < this.aggro + this.radius + 4) desired = this.target;
+        else this.target = null;
+      }
+      if (!desired) {
+        const acquired = this.acquireTarget(this.aggro);
+        if (acquired) {
+          desired = acquired;
+          this.target = acquired;
+        } else {
+          moveX = order.x;
+          moveZ = order.z;
+        }
+      }
+    } else if (order && order.type === 'move') {
+      moveX = order.x;
+      moveZ = order.z;
+    } else {
+      if (!this.target || !this.target.alive) {
+        this.target = this.acquireTarget(this.aggro);
+      }
+      if (this.target && this.target.alive) desired = this.target;
+      else this.target = null;
+    }
+
+    // не гнаться за целью бесконечно далеко, если приказ не был явным
+    if (desired && !(order && order.type === 'attack')) {
+      const d = dist(this.position.x, this.position.z, desired.position.x, desired.position.z);
+      if (d > this.aggro + 9) {
+        this.target = null;
+        desired = null;
+        if (order && order.type === 'attackMove') {
+          moveX = order.x;
+          moveZ = order.z;
+        } else {
+          this.order = null;
+        }
+      }
+    }
+
+    if (desired) {
+      this.target = desired;
+      const d = dist(this.position.x, this.position.z, desired.position.x, desired.position.z);
+      const targetRadius = Math.min(desired.radius, 2.6);
+      const inRange = d - targetRadius - this.radius <= this.range;
+      if (!this.isBuilding) {
+        this.aimAt(desired, dt);
+      }
+      if (inRange) {
+        this.moving = false;
+        if (this.attackCd <= 0) this.fire(desired);
+      } else {
+        const stop = this.range + targetRadius + this.radius - 0.35;
+        this.moveToward(desired.position.x, desired.position.z, dt, stop);
+      }
+    } else if (moveX !== null) {
+      const arrived = this.moveToward(moveX, moveZ, dt, 0.55 + this.radius * 0.35);
+      if (arrived) {
+        this.order = null;
+        this.moving = false;
+      }
+    } else {
+      this.moving = false;
+    }
+
+    this.animate(dt);
+    this.updateBar();
+  }
+
+  aimAt(target, dt) {
+    const dx = target.position.x - this.position.x;
+    const dz = target.position.z - this.position.z;
+    if (this.type === 'tank') {
+      const desired = yawTo(dx, dz) - this.root.rotation.y;
+      this.turretAim = desired;
+    } else if (!this.moving) {
+      const desired = yawTo(dx, dz);
+      this.root.rotation.y = turnTowards(this.root.rotation.y, desired, dt * 7);
+    }
+  }
+
+  fire(target) {
+    if (!this.alive || this.game.over) return;
+    this.attackCd = this.def.cooldown;
+    this.recoil = 1;
+
+    const muzzle = this.getMuzzle();
+    const targetPoint = new Vector3(
+      target.position.x,
+      Math.min(target.def.height * 0.55, 4),
+      target.position.z,
+    );
+    const faction = this.faction;
+    this.game.fx.muzzle(muzzle, faction, this.type === 'tank' ? 1.7 : 1);
+
+    if (this.def.projectile === 'shell') {
+      this.game.fx.fireShell(muzzle, targetPoint, (impact) => {
+        if (!this.alive || this.game.over) return;
+        this.game.splashDamage(impact, this.def.splash, this.def.damage, this);
+        this.game.fx.explode(impact, 0.8, { scorch: true });
+      }, 44);
+      return;
+    }
+
+    this.game.dealDamage(target, this.def.damage, this);
+    this.game.fx.tracer(muzzle, targetPoint, faction);
+    this.game.fx.hit(targetPoint, target.faction, 0.7);
+  }
+
+  getMuzzle() {
+    const parts = this.parts;
+    if (Array.isArray(parts.muzzles) && parts.muzzles.length) {
+      const node = parts.muzzles[this.muzzleIndex % parts.muzzles.length];
+      this.muzzleIndex++;
+      return node.getAbsolutePosition();
+    }
+    if (parts.muzzle) {
+      this.root.computeWorldMatrix(true);
+      return parts.muzzle.getAbsolutePosition();
+    }
+    return new Vector3(this.position.x, this.def.height * 0.6, this.position.z);
+  }
+
+  moveToward(tx, tz, dt, stopDist) {
+    const pos = this.position;
+    let dx = tx - pos.x;
+    let dz = tz - pos.z;
+    const d = Math.hypot(dx, dz);
+    if (d <= stopDist) {
+      this.moving = false;
+      return true;
+    }
+    let dirX = dx / d;
+    let dirZ = dz / d;
+
+    let sx = 0;
+    let sz = 0;
+    for (const other of this.game.units) {
+      if (other === this || !other.alive) continue;
+      const ox = pos.x - other.position.x;
+      const oz = pos.z - other.position.z;
+      const min = this.radius + other.radius + 0.35;
+      const dd = Math.hypot(ox, oz);
+      if (dd < min && dd > 0.0001) {
+        const w = (min - dd) / min;
+        sx += (ox / dd) * w;
+        sz += (oz / dd) * w;
+      }
+    }
+
+    let ax = 0;
+    let az = 0;
+    const obstacles = this.game.getObstaclesNear(pos.x, pos.z, 8);
+    for (const o of obstacles) {
+      const ox = pos.x - o.x;
+      const oz = pos.z - o.z;
+      const dObs = Math.hypot(ox, oz);
+      const clear = o.radius + this.radius + 1.05;
+      if (dObs < clear + 4.5 && dObs > 0.0001) {
+        const nx = ox / dObs;
+        const nz = oz / dObs;
+        const ahead = -(nx * dirX + nz * dirZ);
+        const proximity = 1 - clamp((dObs - clear) / 4.5, 0, 1);
+        const weight = proximity * (1.4 + Math.max(0, ahead) * 2.4);
+        ax += nx * weight;
+        az += nz * weight;
+        const txv = -nz;
+        const tzv = nx;
+        const side = txv * dirX + tzv * dirZ >= 0 ? 1 : -1;
+        ax += txv * side * weight * 0.9;
+        az += tzv * side * weight * 0.9;
+      }
+    }
+
+    if (this.detourTimer > 0) {
+      this.detourTimer -= dt;
+      ax += -dirZ * this.detourSign * 2.0;
+      az += dirX * this.detourSign * 2.0;
+    }
+
+    let vx = dirX + sx * 1.15 + ax * 0.85;
+    let vz = dirZ + sz * 1.15 + az * 0.85;
+    const len = Math.hypot(vx, vz);
+    if (len > 0.001) {
+      vx = (vx / len) * this.speed;
+      vz = (vz / len) * this.speed;
+    } else {
+      vx = dirX * this.speed;
+      vz = dirZ * this.speed;
+    }
+
+    const beforeX = pos.x;
+    const beforeZ = pos.z;
+    pos.x = clamp(pos.x + vx * dt, -MAP.clamp, MAP.clamp);
+    pos.z = clamp(pos.z + vz * dt, -MAP.clamp, MAP.clamp);
+
+    // выталкивание из статических препятствий
+    for (const o of obstacles) {
+      const ox = pos.x - o.x;
+      const oz = pos.z - o.z;
+      const dd = Math.hypot(ox, oz);
+      const clear = o.radius + this.radius;
+      if (dd < clear && dd > 0.0001) {
+        pos.x = o.x + (ox / dd) * clear;
+        pos.z = o.z + (oz / dd) * clear;
+      }
+    }
+
+    const moved = Math.hypot(pos.x - beforeX, pos.z - beforeZ);
+    if (moved < this.speed * dt * 0.16) {
+      this.stuckTime += dt;
+      if (this.stuckTime > 0.7) {
+        this.detourTimer = 0.8;
+        this.detourSign = Math.random() < 0.5 ? -1 : 1;
+        this.stuckTime = 0;
+      }
+    } else {
+      this.stuckTime = Math.max(0, this.stuckTime - dt * 2);
+    }
+
+    if (moved > 0.0001) {
+      this.lastDirX = (pos.x - beforeX) / moved;
+      this.lastDirZ = (pos.z - beforeZ) / moved;
+    }
+    this.moving = true;
+    return false;
+  }
+
+  animate(dt) {
+    this.recoil = Math.max(0, this.recoil - dt * 7);
+    const pos = this.position;
+    this.root.position.x = pos.x;
+    this.root.position.z = pos.z;
+    const moving = this.moving;
+    if (moving) {
+      this.walkPhase += dt * (this.type === 'scout' ? 13 : this.type === 'tank' ? 5 : 9);
+      const targetAngle = yawTo(this.lastDirX, this.lastDirZ);
+      this.root.rotation.y = turnTowards(this.root.rotation.y, targetAngle, dt * 5.5);
+    }
+    const bob = moving && this.type !== 'tank' ? Math.abs(Math.sin(this.walkPhase * 0.9)) * 0.05 : 0;
+    this.root.position.y = bob;
+
+    if (this.type === 'marine') {
+      const swing = moving ? Math.sin(this.walkPhase) * 0.55 : 0;
+      this.parts.hips[0].rotation.x = damp(this.parts.hips[0].rotation.x, swing, 12, dt);
+      this.parts.hips[1].rotation.x = damp(this.parts.hips[1].rotation.x, -swing, 12, dt);
+      this.parts.arms[0].rotation.x = damp(this.parts.arms[0].rotation.x, -swing * 0.5, 10, dt);
+      this.parts.arms[1].rotation.x = damp(this.parts.arms[1].rotation.x, swing * 0.35 - 0.05, 10, dt);
+      if (this.parts.gun) this.parts.gun.position.z = 0.55 - this.recoil * 0.12;
+    } else if (this.type === 'scout') {
+      const spin = moving ? 13 * dt : 0;
+      for (const wheel of this.parts.wheels) wheel.rotation.y += spin;
+      if (this.parts.muzzles) {
+        // лёгкое покачивание корпуса
+        this.root.rotation.z = Math.sin(this.walkPhase * 0.6) * (moving ? 0.025 : 0);
+      }
+    } else if (this.type === 'tank') {
+      const desired = this.target && this.target.alive
+        ? yawTo(this.target.position.x - pos.x, this.target.position.z - pos.z) - this.root.rotation.y
+        : 0;
+      this.parts.turret.rotation.y = turnTowards(this.parts.turret.rotation.y, desired, dt * 2.6);
+      if (this.parts.barrelGroup) this.parts.barrelGroup.position.z = 0.6 - this.recoil * 0.3;
+      this.root.position.y = 0;
+    }
+
+    if (this.selected && this.ring) {
+      const s = 1 + Math.sin(this.game.elapsed * 3) * 0.02;
+      this.ring.scaling.set(s, 1, s);
+    }
+  }
+
+  disposeVisual() {
+    super.disposeVisual();
+  }
+}
+
+export class Building extends Entity {
+  constructor(game, faction, type, x, z, opts = {}) {
+    const def = BUILDINGS[type];
+    super(game, faction, type, def, x, z, true);
+    this.complete = !!opts.complete;
+    this.construction = this.complete ? 1 : 0;
+    this.queue = [];
+    this.maxQueue = 5;
+    this.rally = null;
+    this.rotation = opts.rotation ?? yawTo(-x, -z);
+    this.door = 0;
+    this.oilPatch = null;
+    this.fxTimer = 1 + Math.random() * 2;
+    this.forceBar = !this.complete;
+
+    this.model = game.factory.building(type, faction);
+    this.root = this.model.root;
+    this.parts = this.model.parts;
+    this.height = this.model.height;
+    this.root.rotation.y = this.rotation;
+    this.setupVisual();
+
+    if (!this.complete) {
+      this.ghostMat = game.factory.mat('ghostCyan', {
+        color: '#6ceaff',
+        emissive: '#38c8ff',
+        unlit: true,
+        alpha: 0.32,
+        fog: false,
+        backFaceCulling: false,
+      });
+      this.originalMaterials = new Map();
+      this.root.getChildMeshes(false).forEach((mesh) => {
+        this.originalMaterials.set(mesh, mesh.material);
+        mesh.material = this.ghostMat;
+      });
+      const buildRing = MeshBuilder.CreateTorus('buildRing', {
+        diameter: this.radius * 2.5,
+        thickness: 0.12,
+        tessellation: 40,
+      }, game.scene);
+      buildRing.material = this.ghostMat;
+      buildRing.position.set(x, 0.12, z);
+      buildRing.isPickable = false;
+      buildRing.receiveShadows = false;
+      this.buildRing = buildRing;
+      this.applyConstructionVisual();
+    }
+
+    this.rally = this.defaultRally();
+    if (type === 'barracks') this.ensureRallyVisual();
+    this.updateBar();
+  }
+
+  defaultRally() {
+    const len = Math.hypot(this.position.x, this.position.z) || 1;
+    const dx = -this.position.x / len;
+    const dz = -this.position.z / len;
+    return new Vector3(
+      clamp(this.position.x + dx * (this.radius + 4.5), -MAP.clamp, MAP.clamp),
+      0,
+      clamp(this.position.z + dz * (this.radius + 4.5), -MAP.clamp, MAP.clamp),
+    );
+  }
+
+  applyConstructionVisual() {
+    const p = clamp(this.construction, 0, 1);
+    this.root.scaling.y = 0.22 + 0.78 * p;
+    const vis = 0.42 + 0.58 * p;
+    this.root.getChildMeshes(false).forEach((mesh) => {
+      mesh.visibility = vis;
+    });
+    if (this.buildRing) {
+      this.buildRing.scaling.set(0.9 + p * 0.15, 1, 0.9 + p * 0.15);
+      this.buildRing.visibility = 0.6 + p * 0.35;
+    }
+  }
+
+  finishConstruction() {
+    if (this.complete) return;
+    this.complete = true;
+    this.construction = 1;
+    this.forceBar = false;
+    this.root.scaling.set(1, 1, 1);
+    if (this.originalMaterials) {
+      this.root.getChildMeshes(false).forEach((mesh) => {
+        const original = this.originalMaterials.get(mesh);
+        if (original) mesh.material = original;
+        mesh.visibility = 1;
+      });
+      this.originalMaterials = null;
+    }
+    if (this.buildRing) {
+      this.buildRing.dispose();
+      this.buildRing = null;
+    }
+    this.game.fx.buildDust(this.position, 1.2 + this.radius * 0.1);
+    this.game.notify(`Строительство завершено: ${this.def.name}`, 'success', `done_${this.id}`);
+    this.game.recomputePower();
+    this.updateBar();
+  }
+
+  cancelConstruction(refund = true) {
+    if (this.complete) return;
+    this.game.cancelBuilding(this, refund);
+  }
+
+  setRally(x, z) {
+    this.rally = new Vector3(clamp(x, -MAP.clamp, MAP.clamp), 0, clamp(z, -MAP.clamp, MAP.clamp));
+    this.updateRallyVisual();
+    this.game.fx.orderMarker(this.rally, 'move');
+  }
+
+  ensureRallyVisual() {
+    if (this.rallyVisual || this.def.key !== 'barracks') return;
+    const scene = this.game.scene;
+    const factory = this.game.factory;
+    const group = new TransformNode('rallyVis', scene);
+    const ring = MeshBuilder.CreateTorus('rallyRing', { diameter: 2.3, thickness: 0.07, tessellation: 30 }, scene);
+    ring.material = factory.mat(`rallyRing_${this.faction}`, {
+      color: FACTIONS[this.faction].accent,
+      emissive: FACTIONS[this.faction].accent,
+      unlit: true,
+      alpha: 0.8,
+      fog: false,
+      backFaceCulling: false,
+    });
+    ring.parent = group;
+    ring.position.y = 0.08;
+    ring.isPickable = false;
+    const pole = MeshBuilder.CreateCylinder('rallyPole', { diameter: 0.07, height: 1.6, tessellation: 5 }, scene);
+    pole.material = factory.mat('rallyPole', { color: '#8a949c', specular: 0.3 });
+    pole.parent = group;
+    pole.position.y = 0.8;
+    pole.isPickable = false;
+    const flag = MeshBuilder.CreatePlane('rallyFlag', { width: 0.85, height: 0.5, sideOrientation: Mesh.DOUBLESIDE }, scene);
+    flag.material = factory.mat(`rallyFlag_${this.faction}`, {
+      color: FACTIONS[this.faction].accent,
+      emissive: FACTIONS[this.faction].accent,
+      unlit: true,
+      alpha: 0.9,
+      fog: false,
+    });
+    flag.parent = group;
+    flag.position.set(0.45, 1.35, 0);
+    flag.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    flag.isPickable = false;
+    group.position.copyFrom(this.rally);
+    group.setEnabled(false);
+    this.rallyVisual = group;
+    this.updateRallyVisual();
+  }
+
+  updateRallyVisual() {
+    if (!this.rallyVisual || !this.rally) return;
+    this.rallyVisual.position.set(this.rally.x, 0, this.rally.z);
+    this.rallyVisual.setEnabled(this.selected && this.alive);
+  }
+
+  setSelected(value) {
+    super.setSelected(value);
+    this.updateRallyVisual();
+  }
+
+  enqueue(type) {
+    if (this.queue.length >= this.maxQueue) return false;
+    const def = UNITS[type];
+    this.queue.push({ type, remaining: def.buildTime, total: def.buildTime });
+    this.forceBar = true;
+    return true;
+  }
+
+  cancelQueue(index) {
+    if (index < 0 || index >= this.queue.length) return null;
+    const [item] = this.queue.splice(index, 1);
+    if (this.queue.length === 0) this.forceBar = !this.complete;
+    return item;
+  }
+
+  get production() {
+    return this.queue[0] ?? null;
+  }
+
+  update(dt) {
+    if (!this.alive) return;
+    const game = this.game;
+
+    if (!this.complete) {
+      this.construction = Math.min(1, this.construction + dt / this.def.buildTime);
+      this.applyConstructionVisual();
+      if (this.construction >= 1) this.finishConstruction();
+      this.updateBar();
+      return;
+    }
+
+    if (this.queue.length) {
+      const item = this.queue[0];
+      const speed = game.powerFactor(this.faction);
+      item.remaining -= dt * speed;
+      this.forceBar = true;
+      if (item.remaining <= 0) {
+        this.queue.shift();
+        game.spawnFromBuilding(this, item.type);
+        if (this.queue.length === 0) this.forceBar = false;
+        game.ui?.onQueueChanged(this);
+      }
+    } else {
+      this.forceBar = false;
+    }
+
+    this.animate(dt);
+    this.updateBar();
+  }
+
+  animate(dt) {
+    const t = this.game.elapsed;
+    const parts = this.parts;
+    if (this.type === 'hq' && parts.radar) {
+      parts.radar.rotation.y = t * 0.55;
+      if (parts.flag) parts.flag.rotation.y = Math.PI / 2 + Math.sin(t * 1.6) * 0.12;
+    } else if (this.type === 'power' && parts.vortex) {
+      parts.vortex.rotation.y = t * 2.2;
+    } else if (this.type === 'derrick') {
+      if (parts.pump) parts.pump.rotation.z = (parts.pumpBase ?? -0.13) + Math.sin(t * 2.1) * 0.15;
+      if (parts.crank) parts.crank.rotation.y = t * 2.5;
+      if (parts.flare) {
+        const flick = 0.82 + Math.sin(t * 11) * 0.12 + Math.sin(t * 17 + 1) * 0.06;
+        parts.flare.scaling.set(1, flick, 1);
+      }
+    } else if (this.type === 'barracks') {
+      const target = this.queue.length ? 1 : 0;
+      this.door = damp(this.door, target, 4, dt);
+      if (parts.door) parts.door.position.y = (parts.doorBaseY ?? 1.02) + this.door * 1.5;
+      if (parts.flag) parts.flag.rotation.y = Math.PI / 2 + Math.sin(t * 1.2) * 0.1;
+    }
+
+    // редкие атмосферные частицы
+    this.fxTimer -= dt;
+    if (this.fxTimer <= 0) {
+      this.fxTimer = 2.2 + Math.random() * 2.4;
+      if (this.type === 'power') {
+        for (const side of [-1, 1]) {
+          const px = Math.cos(this.rotation) * 3.35 * side - Math.sin(this.rotation) * -1.15 + this.position.x;
+          const pz = -Math.sin(this.rotation) * 3.35 * side - Math.cos(this.rotation) * -1.15 + this.position.z;
+          this.game.fx.puff('dust', new Vector3(px, 4.35, pz), {
+            life: 2.4,
+            size0: 0.7,
+            size1: 2.8,
+            fade: 0.3,
+            alpha: 0.4,
+            vel: new Vector3(0, 1.2, 0),
+            buoyancy: 0.5,
+            drag: 0.2,
+          });
+        }
+      } else if (this.type === 'derrick') {
+        const px = this.position.x + Math.cos(this.rotation) * 1.8 + Math.sin(this.rotation) * 1.8;
+        const pz = this.position.z - Math.sin(this.rotation) * 1.8 + Math.cos(this.rotation) * 1.8;
+        this.game.fx.puff('smokeDark', new Vector3(px, 4.6, pz), {
+          life: 2.6,
+          size0: 0.35,
+          size1: 1.6,
+          fade: 0.25,
+          alpha: 0.4,
+          vel: new Vector3(0.2, 1.1, 0.2),
+          buoyancy: 0.3,
+        });
+      }
+    }
+  }
+
+  updateBar() {
+    this.forceBar = !this.complete || this.queue.length > 0;
+    super.updateBar();
+    if (!this.bar) return;
+    const progressRoot = this.bar.progress;
+    if (!this.barVisible) {
+      progressRoot.setEnabled(false);
+      return;
+    }
+    let progress = 0;
+    let show = false;
+    if (!this.complete) {
+      progress = this.construction;
+      show = true;
+    } else if (this.queue.length) {
+      const item = this.queue[0];
+      progress = 1 - item.remaining / item.total;
+      show = true;
+    }
+    progressRoot.setEnabled(show);
+    if (show) {
+      const frac = clamp(progress, 0, 1);
+      this.bar.pFill.scaling.x = Math.max(0.001, frac);
+      this.bar.pFill.position.x = -(this.bar.pWidth * (1 - frac)) / 2;
+    }
+  }
+
+  disposeVisual() {
+    if (this.buildRing) {
+      this.buildRing.dispose();
+      this.buildRing = null;
+    }
+    if (this.rallyVisual) {
+      this.rallyVisual.getChildMeshes(false).forEach((m) => m.dispose());
+      this.rallyVisual.dispose();
+      this.rallyVisual = null;
+    }
+    super.disposeVisual();
+  }
+}
