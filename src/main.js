@@ -19,6 +19,8 @@ import { Input } from './input.js';
 
 function fatal(err) {
   console.error(err);
+  const overlay = document.querySelector('#overlay');
+  if (overlay) overlay.classList.add('is-open');
   const card = document.querySelector('#overlayCard');
   if (card) {
     card.innerHTML = `
