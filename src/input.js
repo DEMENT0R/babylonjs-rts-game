@@ -114,7 +114,9 @@ export class Input {
     );
     if (forward.lengthSquared() < 1e-6) forward.set(0, 0, -1);
     forward.normalize();
-    const right = Vector3.Cross(forward, Vector3.Up()).normalize();
+    // Babylon использует левостороннюю систему координат, поэтому «право» —
+    // это Up × forward, а не forward × Up.
+    const right = Vector3.Cross(Vector3.Up(), forward).normalize();
     return { forward, right };
   }
 
