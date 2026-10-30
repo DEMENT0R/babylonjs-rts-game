@@ -974,18 +974,45 @@ export class UI {
       ctx.fillRect(p.x - 58, p.y - 58, 116, 116);
     }
 
-    // рамка
+    this.minimapBg = canvas;
+  }
+
+  /** Направление взгляда камеры в мировых координатах. */
+  minimapBasis() {
+    const camera = this.game.camera;
+    if (!camera) return { fx: 1, fz: 0 };
+    const fx = camera.target.x - camera.position.x;
+    const fz = camera.target.z - camera.position.z;
+    const len = Math.hypot(fx, fz);
+    if (len < 1e-6) return { fx: 1, fz: 0 };
+    return { fx: fx / len, fz: fz / len };
+  }
+
+  worldToMinimap(x, z) {
+    const s = (512 - 20) / (MAP.half * 2);
+    const { fx, fz } = this.minimapBasis();
+    // Карта поворачивается вместе с камерой: её верх — направление взгляда,
+    // а право — экранное право. Так лево/право на карте совпадают с видом.
+    return {
+      x: 256 + s * (fz * x - fx * z),
+      y: 256 - s * (fx * x + fz * z),
+    };
+  }
+
+  drawMinimapChrome(ctx) {
+    const margin = 10;
+    const w = 512 - margin * 2;
+    const c = 18;
     ctx.strokeStyle = 'rgba(79,210,255,0.28)';
     ctx.lineWidth = 2;
     ctx.strokeRect(margin, margin, w, w);
     ctx.strokeStyle = 'rgba(79,210,255,0.6)';
     ctx.lineWidth = 3;
-    const c = 18;
     for (const [x, y, dx, dy] of [
       [margin, margin, 1, 1],
-      [size - margin, margin, -1, 1],
-      [margin, size - margin, 1, -1],
-      [size - margin, size - margin, -1, -1],
+      [512 - margin, margin, -1, 1],
+      [margin, 512 - margin, 1, -1],
+      [512 - margin, 512 - margin, -1, -1],
     ]) {
       ctx.beginPath();
       ctx.moveTo(x + dx * c, y);
@@ -994,21 +1021,10 @@ export class UI {
       ctx.stroke();
     }
 
-    ctx.fillStyle = 'rgba(79,210,255,0.2)';
+    ctx.fillStyle = 'rgba(79,210,255,0.25)';
     ctx.font = '600 22px monospace';
     ctx.textAlign = 'right';
-    ctx.fillText(`#${map.label}`, size - 26, size - 24);
-
-    this.minimapBg = canvas;
-  }
-
-  worldToMinimap(x, z) {
-    const margin = 10;
-    const w = 512 - margin * 2;
-    return {
-      x: margin + ((x + MAP.half) / (MAP.half * 2)) * w,
-      y: margin + ((z + MAP.half) / (MAP.half * 2)) * w,
-    };
+    ctx.fillText(`#${this.game.map.label}`, 512 - 26, 512 - 24);
   }
 
   viewportPolygon() {
@@ -1068,7 +1084,21 @@ export class UI {
     const ctx = this.mmCtx;
     if (!ctx || !this.minimapBg) return;
     ctx.clearRect(0, 0, 512, 512);
+    ctx.fillStyle = this.game.map.style.minimapFar;
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Фон карты рисуется с тем же поворотом, что и маркеры. Текст и рамка
+    // остаются ровными и рисуются поверх.
+    const { fx, fz } = this.minimapBasis();
+    ctx.save();
+    ctx.setTransform(
+      fz, -fx,
+      -fx, -fz,
+      256 * (1 - fz + fx),
+      256 * (1 + fx + fz),
+    );
     ctx.drawImage(this.minimapBg, 0, 0);
+    ctx.restore();
 
     const poly = this.viewportPolygon();
     if (poly) {
@@ -1122,6 +1152,8 @@ export class UI {
       ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
       ctx.fill();
     }
+
+    this.drawMinimapChrome(ctx);
   }
 
   bindMinimap() {
@@ -1131,10 +1163,13 @@ export class UI {
       const rect = canvas.getBoundingClientRect();
       const px = ((e.clientX - rect.left) / rect.width) * 512;
       const py = ((e.clientY - rect.top) / rect.height) * 512;
-      const margin = 10;
-      const w = 512 - margin * 2;
-      const x = ((px - margin) / w) * MAP.half * 2 - MAP.half;
-      const z = ((py - margin) / w) * MAP.half * 2 - MAP.half;
+      const s = (512 - 20) / (MAP.half * 2);
+      const { fx, fz } = this.minimapBasis();
+      // Обратное преобразование повёрнутой карты.
+      const u = (px - 256) / s;
+      const v = -(py - 256) / s;
+      const x = fz * u + fx * v;
+      const z = -fx * u + fz * v;
       this.game.focusOn(clamp(x, -MAP.clamp, MAP.clamp), clamp(z, -MAP.clamp, MAP.clamp));
     };
     canvas.addEventListener('pointerdown', (e) => {
