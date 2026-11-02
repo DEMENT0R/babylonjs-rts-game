@@ -5,6 +5,7 @@ import {
   START,
   UNITS,
   BUILDINGS,
+  UPGRADES,
   FACTIONS,
   MAP,
   MESSAGES,
@@ -43,6 +44,8 @@ export class Game {
     this.over = null;
 
     this.stats = { kills: 0, losses: 0, gathered: 0, trained: 0, built: 0 };
+    // Изученные улучшения каждой фракции: набор ключей из UPGRADES.
+    this.upgrades = { player: new Set(), enemy: new Set() };
     this.power = {
       player: { produced: 0, used: 0, factor: 1 },
       enemy: { produced: 0, used: 0, factor: 1 },
@@ -788,6 +791,90 @@ export class Game {
     return { x: clamp(x, -MAP.clamp, MAP.clamp), z: clamp(z, -MAP.clamp, MAP.clamp) };
   }
 
+  /**
+   * Множители характеристик юнита с учётом изученных фракцией улучшений.
+   * Считается на лету, поэтому улучшение автоматически действует на всех
+   * юнитов этого типа — и на уже построенных, и на новых.
+   */
+  unitModifiers(faction, type) {
+    const mods = { hp: 1, damage: 1, range: 1, speed: 1, armor: 0 };
+    const active = this.upgrades[faction];
+    if (!active) return mods;
+    for (const key of active) {
+      const def = UPGRADES[key];
+      if (!def || def.target !== type) continue;
+      const effects = def.effects ?? {};
+      if (effects.hp) mods.hp *= effects.hp;
+      if (effects.damage) mods.damage *= effects.damage;
+      if (effects.range) mods.range *= effects.range;
+      if (effects.speed) mods.speed *= effects.speed;
+      if (effects.armor) mods.armor += effects.armor;
+    }
+    return mods;
+  }
+
+  /** Запускает исследование в техцентре. */
+  startUpgrade(building, key) {
+    const def = UPGRADES[key];
+    if (!def || !building || !building.alive || !building.complete) return false;
+    if (building.type !== 'lab') return false;
+    const faction = building.faction;
+    if (this.upgrades[faction]?.has(key)) {
+      if (faction === 'player') {
+        this.notify('Это улучшение уже изучено.', 'hint', `research_done_${key}`, 0, 3);
+      }
+      return false;
+    }
+    if (building.queue.some((item) => item.upgrade === key)) {
+      if (faction === 'player') {
+        this.notify('Это улучшение уже в очереди.', 'hint', `research_queue_${key}`, 0, 3);
+      }
+      return false;
+    }
+    if (building.queue.length >= building.maxQueue) {
+      if (faction === 'player') this.notify(MESSAGES.queueFull, 'warn', 'queue-full', 0, 3);
+      return false;
+    }
+    if (this.walletFor(faction) < def.cost) {
+      if (faction === 'player') this.notify(MESSAGES.noCredits, 'warn', 'no-credits', 0, 3);
+      return false;
+    }
+    this.spend(faction, def.cost);
+    building.enqueueUpgrade(key);
+    if (faction === 'player') {
+      this.notify(`Исследование начато: ${def.name}.`, 'info', `research_start_${key}`, 0, 4);
+    }
+    if (this.ui) this.ui.onQueueChanged(building);
+    return true;
+  }
+
+  /** Завершает исследование и сразу усиливает всех юнитов этого типа. */
+  completeUpgrade(building, key) {
+    const def = UPGRADES[key];
+    if (!def || !building) return;
+    const faction = building.faction;
+    const active = this.upgrades[faction];
+    if (!active) return;
+    const first = !active.has(key);
+    active.add(key);
+    if (first) {
+      for (const unit of this.units) {
+        if (unit.alive && unit.faction === faction && unit.type === def.target) {
+          unit.applyUpgrades(true);
+        }
+      }
+    }
+    if (faction === 'player') {
+      this.notify(
+        `Исследование завершено: ${def.name}. Отряд усилен.`,
+        'success',
+        `research_done_${key}`,
+        0,
+        5,
+      );
+    }
+  }
+
   trainUnit(type, building = this.primaryBarracks()) {
     const def = UNITS[type];
     if (!def) return false;
@@ -818,7 +905,7 @@ export class Game {
     if (!building || !building.alive) return;
     const item = building.cancelQueue(index);
     if (!item) return;
-    const def = UNITS[item.type];
+    const def = item.upgrade ? UPGRADES[item.upgrade] : UNITS[item.type];
     if (def) this.credits += def.cost;
     if (this.ui) this.ui.onSelectionChanged();
   }

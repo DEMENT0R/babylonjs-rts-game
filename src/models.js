@@ -231,6 +231,7 @@ export class ModelFactory {
       power: () => this.buildPower(faction),
       barracks: () => this.buildBarracks(faction),
       derrick: () => this.buildDerrick(faction),
+      lab: () => this.buildLab(faction),
     }[type];
     return this.cloneTemplate(`building:${type}:${faction}`, build);
   }
@@ -1272,6 +1273,139 @@ export class ModelFactory {
 
     parts.height = 5.4;
     return { root, parts, height: 5.4 };
+  }
+
+  // ---------------------------------------------------------------- BUILDING: LAB
+  buildLab(faction) {
+    const m = this.baseMaterials(faction);
+    const root = new TransformNode(`lab_${faction}`, this.scene);
+    const parts = {};
+    const add = (mesh, parent = root, shadow = true) => {
+      mesh.parent = parent;
+      mesh.isPickable = false;
+      mesh.receiveShadows = true;
+      mesh.castShadow = shadow;
+      return mesh;
+    };
+
+    const pad = MeshBuilder.CreateBox('pad', { width: 8.3, height: 0.22, depth: 7.1 }, this.scene);
+    pad.position.y = 0.11;
+    add(pad, root, false).material = m.concrete;
+
+    const padStripe = MeshBuilder.CreateBox('padstripe', { width: 7.9, height: 0.06, depth: 0.18 }, this.scene);
+    padStripe.position.set(0, 0.24, 3.3);
+    add(padStripe, root, false).material = m.accent;
+
+    const hall = MeshBuilder.CreateBox('hall', { width: 6.1, height: 2.6, depth: 4.8 }, this.scene);
+    hall.position.set(0, 1.5, -0.2);
+    add(hall).material = m.panel;
+
+    const band = MeshBuilder.CreateBox('band', { width: 6.16, height: 0.32, depth: 4.86 }, this.scene);
+    band.position.set(0, 2.18, -0.2);
+    add(band, root, false).material = m.dark;
+
+    const roof = MeshBuilder.CreateBox('roof', { width: 6.7, height: 0.28, depth: 5.3 }, this.scene);
+    roof.position.set(0, 2.9, -0.2);
+    add(roof).material = m.dark;
+
+    const roofTrim = MeshBuilder.CreateBox('rooftrim', { width: 6.75, height: 0.06, depth: 0.12 }, this.scene);
+    roofTrim.position.set(0, 3.05, 2.47);
+    add(roofTrim, root, false).material = m.accent;
+
+    // Стеклянный купол — главный визуальный признак исследовательского центра.
+    const dome = MeshBuilder.CreateSphere('labdome', { diameter: 4.3, segments: 14 }, this.scene);
+    dome.position.set(0, 2.95, -0.2);
+    dome.scaling.y = 0.62;
+    add(dome, root, false).material = m.glass;
+
+    const domeRing = MeshBuilder.CreateTorus('domering', { diameter: 4.5, thickness: 0.12, tessellation: 36 }, this.scene);
+    domeRing.position.set(0, 2.98, -0.2);
+    add(domeRing, root, false).material = m.accent;
+
+    const orb = MeshBuilder.CreateSphere('laborb', { diameter: 1.05, segments: 10 }, this.scene);
+    orb.position.set(0, 3.65, -0.2);
+    add(orb, root, false).material = m.glow;
+
+    // Вращающаяся радиотарелка: видно, что центр работает.
+    const radar = new TransformNode('labradar', this.scene);
+    radar.parent = root;
+    radar.position.set(0, 3.75, -0.2);
+    const mast = MeshBuilder.CreateCylinder('labmast', { diameter: 0.16, height: 1.7, tessellation: 6 }, this.scene);
+    mast.position.y = 0.85;
+    add(mast, radar).material = m.steel;
+
+    const dish = MeshBuilder.CreateCylinder('labdish', {
+      diameterTop: 0.18,
+      diameterBottom: 2.9,
+      height: 0.24,
+      tessellation: 18,
+    }, this.scene);
+    dish.position.y = 1.78;
+    dish.rotation.x = -0.55;
+    add(dish, radar).material = m.white;
+
+    const receiver = MeshBuilder.CreateBox('labreceiver', { width: 0.12, height: 0.12, depth: 0.9 }, this.scene);
+    receiver.position.set(0, 1.98, 0.62);
+    receiver.rotation.x = -0.55;
+    add(receiver, radar).material = m.accent;
+
+    const dishTip = MeshBuilder.CreateSphere('labdishtip', { diameter: 0.24, segments: 6 }, this.scene);
+    dishTip.position.set(0, 2.14, 1.05);
+    add(dishTip, radar).material = m.glow;
+
+    // Боковые лабораторные модули и окна.
+    for (const side of [-1, 1]) {
+      const module = MeshBuilder.CreateBox(`labmodule_${side}`, { width: 1.9, height: 1.9, depth: 2.7 }, this.scene);
+      module.position.set(3.55 * side, 1.1, -0.7);
+      add(module).material = m.hull;
+      const moduleStripe = MeshBuilder.CreateBox(`labmodstripe_${side}`, { width: 1.94, height: 0.1, depth: 2.74 }, this.scene);
+      moduleStripe.position.set(3.55 * side, 1.9, -0.7);
+      add(moduleStripe, root, false).material = m.accent;
+      for (let i = 0; i < 2; i++) {
+        const win = MeshBuilder.CreateBox(`labwin_${side}_${i}`, { width: 0.08, height: 0.42, depth: 0.8 }, this.scene);
+        win.position.set(4.52 * side, 1.25, -1.35 + i * 1.3);
+        add(win, root, false).material = m.glass;
+      }
+    }
+
+    for (let i = 0; i < 3; i++) {
+      const win = MeshBuilder.CreateBox(`labfront_${i}`, { width: 0.9, height: 0.5, depth: 0.1 }, this.scene);
+      win.position.set(-1.7 + i * 1.7, 1.62, 2.22);
+      add(win, root, false).material = m.glass;
+    }
+
+    const doorFrame = MeshBuilder.CreateBox('labdoorframe', { width: 2.2, height: 2.1, depth: 0.2 }, this.scene);
+    doorFrame.position.set(0, 1.15, 2.32);
+    add(doorFrame, root, false).material = m.dark;
+    const door = MeshBuilder.CreateBox('labdoor', { width: 1.7, height: 1.8, depth: 0.14 }, this.scene);
+    door.position.set(0, 1.02, 2.43);
+    add(door, root, false).material = m.steel;
+
+    // Антенны и датчики по углам крыши.
+    for (const side of [-1, 1]) {
+      const antenna = MeshBuilder.CreateCylinder(`labantenna_${side}`, {
+        diameter: 0.07,
+        height: 2.1,
+        tessellation: 4,
+      }, this.scene);
+      antenna.position.set(2.8 * side, 3.95, -2.0);
+      add(antenna, root, false).material = m.steel;
+      const beacon = MeshBuilder.CreateSphere(`labbeacon_${side}`, { diameter: 0.2, segments: 6 }, this.scene);
+      beacon.position.set(2.8 * side, 5.05, -2.0);
+      add(beacon, root, false).material = m.glow;
+    }
+
+    for (let i = 0; i < 2; i++) {
+      const crate = MeshBuilder.CreateBox(`labcrate_${i}`, { width: 0.75, height: 0.75, depth: 0.75 }, this.scene);
+      crate.position.set(-3.7 + i * 0.9, 0.5, 2.9);
+      crate.rotation.y = i * 0.5;
+      add(crate, root, false).material = i === 0 ? m.rust : m.dark;
+    }
+
+    parts.radar = radar;
+    parts.orb = orb;
+    parts.height = 5.8;
+    return { root, parts, height: 5.8 };
   }
 
   // ---------------------------------------------------------------- BUILDING: DERRICK

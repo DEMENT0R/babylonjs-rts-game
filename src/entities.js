@@ -8,7 +8,7 @@ import {
   Vector3,
   Color3,
 } from './babylon.js';
-import { UNITS, BUILDINGS, FACTIONS, MAP, MESSAGES } from './config.js';
+import { UNITS, BUILDINGS, UPGRADES, FACTIONS, MAP, MESSAGES } from './config.js';
 import { clamp, dist, turnTowards, damp, angleDiff } from './utils.js';
 
 let nextId = 1;
@@ -260,11 +260,31 @@ export class Unit extends Entity {
     this.height = this.model.height;
     this.root.rotation.y = opts.rotation ?? yawTo(-x, -z);
     this.setupVisual();
+    this.applyUpgrades();
     this.updateBar();
   }
 
   get isUnit() {
     return true;
+  }
+
+  /** Пересчитывает характеристики с учётом изученных улучшений фракции. */
+  applyUpgrades(heal = false) {
+    const mods = this.game.unitModifiers?.(this.faction, this.type);
+    if (!mods) return;
+    const previousMax = this.maxHp;
+    this.maxHp = Math.max(1, Math.round(this.def.hp * mods.hp));
+    this.hp = heal
+      ? Math.min(this.maxHp, this.hp + Math.max(0, this.maxHp - previousMax))
+      : this.maxHp;
+    this.armor = (this.def.armor ?? 0) + mods.armor;
+    this.damage = this.def.damage * mods.damage;
+    this.range = this.def.range * mods.range;
+    // Обзор растёт вместе с дальностью: иначе юнит не замечает цель
+    // на новой дистанции и улучшение дальности почти бесполезно.
+    this.aggro = Math.max(this.def.aggro * Math.max(1, mods.range), this.range + 4);
+    this.speed = this.def.speed * mods.speed;
+    this.updateBar?.();
   }
 
   issueMove(x, z) {
@@ -471,7 +491,7 @@ export class Unit extends Entity {
         arc: Math.min(1.8, shotDistance * 0.06),
         onImpact: (impact) => {
           if (this.game.over) return;
-          this.game.splashDamage(impact, this.def.splash, this.def.damage, this);
+          this.game.splashDamage(impact, this.def.splash, this.damage, this);
           this.game.fx.explode(impact, 0.8, { scorch: true });
         },
       });
@@ -486,7 +506,7 @@ export class Unit extends Entity {
       speed,
       onImpact: () => {
         if (this.game.over) return;
-        this.game.dealDamage(target, this.def.damage, this);
+        this.game.dealDamage(target, this.damage, this);
         this.game.fx.hit(targetPoint, target.faction, 0.7);
       },
     });
@@ -533,7 +553,7 @@ export class Unit extends Entity {
       arc: Math.min(5, shotDistance * 0.16),
       onImpact: (impact) => {
         if (this.game.over) return;
-        this.game.splashDamage(impact, this.def.splash, this.def.damage, this);
+        this.game.splashDamage(impact, this.def.splash, this.damage, this);
         this.game.fx.explode(impact, 0.72, { scorch: true });
         this.game.fx.impactDust(impact, 1.1);
       },
@@ -911,6 +931,16 @@ export class Building extends Entity {
     return true;
   }
 
+  /** Ставит в очередь исследование техцентра. */
+  enqueueUpgrade(key) {
+    if (this.queue.length >= this.maxQueue) return false;
+    const def = UPGRADES[key];
+    if (!def) return false;
+    this.queue.push({ upgrade: key, remaining: def.time, total: def.time });
+    this.forceBar = true;
+    return true;
+  }
+
   cancelQueue(index) {
     if (index < 0 || index >= this.queue.length) return null;
     const [item] = this.queue.splice(index, 1);
@@ -960,7 +990,8 @@ export class Building extends Entity {
       this.forceBar = true;
       if (item.remaining <= 0) {
         this.queue.shift();
-        game.spawnFromBuilding(this, item.type);
+        if (item.upgrade) game.completeUpgrade(this, item.upgrade);
+        else game.spawnFromBuilding(this, item.type);
         if (this.queue.length === 0) this.forceBar = false;
         game.ui?.onQueueChanged(this);
       }
@@ -1001,6 +1032,13 @@ export class Building extends Entity {
       this.door = damp(this.door, target, 4, dt);
       if (parts.door) parts.door.position.y = (parts.doorBaseY ?? 1.02) + this.door * 1.5;
       if (parts.flag) parts.flag.rotation.y = Math.PI / 2 + Math.sin(t * 1.2) * 0.1;
+    } else if (this.type === 'lab') {
+      // Во время исследования тарелка вращается быстрее — здание «работает».
+      if (parts.radar) parts.radar.rotation.y = t * (this.queue.length ? 1.5 : 0.45);
+      if (parts.orb) {
+        const pulse = 1 + Math.sin(t * 2.4) * (this.queue.length ? 0.16 : 0.07);
+        parts.orb.scaling.set(pulse, pulse, pulse);
+      }
     }
 
     // редкие атмосферные частицы

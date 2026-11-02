@@ -62,9 +62,60 @@ export const START = {
 };
 
 // order — порядок кнопок в командной панели.
-export const BUILD_ORDER = ['power', 'barracks', 'derrick'];
+export const BUILD_ORDER = ['power', 'barracks', 'derrick', 'lab'];
 export const TRAIN_ORDER = ['marine', 'scout', 'tank', 'artillery'];
 export const HQ_TRAIN_ORDER = ['engineer'];
+
+// Улучшения техцентра: каждое покупается один раз и усиливает все юниты
+// указанного типа — и уже построенные, и будущие.
+export const UPGRADES = {
+  marine: {
+    key: 'marine',
+    name: 'Боевые стимуляторы',
+    role: 'ПЕХОТА',
+    icon: 'marine',
+    desc: 'Усиливает пехотинцев: больше урона и запаса прочности. Дешёвое усиление для основной ударной силы.',
+    cost: 110,
+    time: 16,
+    target: 'marine',
+    effects: { damage: 1.35, hp: 1.25 },
+  },
+  scout: {
+    key: 'scout',
+    name: 'Форсажные ускорители',
+    role: 'РАЗВЕДКА',
+    icon: 'scout',
+    desc: 'Разгоняет скаутов и повышает урон их спаренных бластеров. Рейды по вышкам становятся ещё быстрее.',
+    cost: 120,
+    time: 16,
+    target: 'scout',
+    effects: { speed: 1.3, damage: 1.2 },
+  },
+  tank: {
+    key: 'tank',
+    name: 'Композитная броня',
+    role: 'ТЕХНИКА',
+    icon: 'tank',
+    desc: 'Наращивает броню и прочность танков «Молот». Тяжёлая техника переживает ещё больше попаданий.',
+    cost: 180,
+    time: 24,
+    target: 'tank',
+    effects: { hp: 1.35, armor: 2 },
+  },
+  artillery: {
+    key: 'artillery',
+    name: 'Улучшенные ракеты',
+    role: 'АРТИЛЛЕРИЯ',
+    icon: 'artillery',
+    desc: 'Увеличивает дальность и урон залпа РСЗО. Хрупкая установка сможет бить, оставаясь вне ответного огня.',
+    cost: 190,
+    time: 26,
+    target: 'artillery',
+    effects: { damage: 1.25, range: 1.2 },
+  },
+};
+
+export const UPGRADE_ORDER = ['marine', 'scout', 'tank', 'artillery'];
 
 export const UNITS = {
   engineer: {
@@ -244,6 +295,22 @@ export const BUILDINGS = {
     powerProduce: 0,
     powerUse: 2,
     income: 2.2,
+    from: 'hq',
+  },
+  lab: {
+    key: 'lab',
+    name: 'Техцентр',
+    role: 'ИССЛЕДОВАНИЯ',
+    icon: 'lab',
+    desc: 'Исследует улучшения для разных юнитов: пехоты, скаутов, танков и РСЗО. Каждое улучшение покупается один раз и действует на весь отряд. Потребляет 6 энергии.',
+    cost: 240,
+    buildTime: 24,
+    hp: 700,
+    armor: 2,
+    radius: 3.4,
+    height: 5.8,
+    powerProduce: 0,
+    powerUse: 6,
     from: 'hq',
   },
 };

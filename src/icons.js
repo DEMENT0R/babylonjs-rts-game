@@ -19,6 +19,21 @@ export const ICONS = {
     <path d="M14 24h7M27 24h7" opacity=".6"/>
     <path d="M24 11V5m0 0-3 3m3-3 3 3"/>
   `),
+  lab: stroke(`
+    <path d="M6 40h36M9 40V20l15-9 15 9v20"/>
+    <path d="M16 40V29h16v11"/>
+    <path d="M24 6v5m-7 4 7-4 7 4" opacity=".7"/>
+    <path d="M18 18c3 4 9 4 12 0" opacity=".55"/>
+    <circle cx="24" cy="25" r="3.2"/>
+    <path d="M24 22v6M21 25h6" opacity=".6"/>
+  `),
+  research: stroke(`
+    <path d="M19 6h10M22 6v11L13 36a4 4 0 0 0 3.4 6h15.2a4 4 0 0 0 3.4-6L26 17V6"/>
+    <path d="M17 30h14"/>
+    <circle cx="21" cy="35" r="1.6" fill="currentColor" stroke="none"/>
+    <circle cx="27" cy="38" r="1.2" fill="currentColor" stroke="none"/>
+    <path d="M24 24v-4" opacity=".5"/>
+  `),
   derrick: stroke(`
     <path d="M10 41 24 7l14 34"/>
     <path d="m15 41 9-25 9 25"/>

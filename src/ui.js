@@ -5,7 +5,9 @@ import {
   FACTIONS,
   UNITS,
   BUILDINGS,
+  UPGRADES,
   BUILD_ORDER,
+  UPGRADE_ORDER,
   TRAIN_ORDER,
   HQ_TRAIN_ORDER,
   MESSAGES,
@@ -16,7 +18,7 @@ import { randomSeed, seedUrl } from './mapgen.js';
 import { GRAPHICS_LABELS, GRAPHICS_OPTIONS } from './settings.js';
 import { clamp, formatTime, plural, mulberry32, esc } from './utils.js';
 
-const BUILD_HOTKEYS = ['Z', 'X', 'C', 'V'];
+const BUILD_HOTKEYS = ['Z', 'X', 'C', 'V', 'B'];
 
 export class UI {
   constructor(game) {
@@ -445,6 +447,12 @@ export class UI {
       return commands;
     }
 
+    if (b.type === 'lab') {
+      const commands = UPGRADE_ORDER.map((key, i) => this.upgradeCommand(key, b, BUILD_HOTKEYS[i]));
+      if (repair) commands.push(repair);
+      return commands;
+    }
+
     return repair ? [repair] : [];
   }
 
@@ -497,6 +505,60 @@ export class UI {
       },
       tip: this.unitTip(def),
     };
+  }
+
+  upgradeCommand(key, building, hotkey) {
+    const game = this.game;
+    const def = UPGRADES[key];
+    const done = game.upgrades.player.has(key);
+    const queued = building.queue.some((item) => item.upgrade === key);
+    const queueFull = building.queue.length >= building.maxQueue;
+    const disabled = !building.complete || done || queued || queueFull || game.credits < def.cost;
+    const reason = !building.complete ? MESSAGES.notReady
+      : done ? 'Улучшение уже изучено.'
+        : queued ? 'Улучшение уже исследуется.'
+          : queueFull ? MESSAGES.queueFull
+            : `Недостаточно кредитов. Нужно ${def.cost}.`;
+    return {
+      id: `research:${key}`,
+      label: def.name,
+      short: def.name.toUpperCase(),
+      icon: def.icon,
+      hotkey,
+      cost: def.cost,
+      desc: def.desc,
+      kind: 'research',
+      disabled,
+      reason,
+      action: () => {
+        if (game.startUpgrade(building, key)) {
+          this.renderSelection();
+          this.renderCommands();
+        }
+      },
+      tip: this.upgradeTip(def, done, queued),
+    };
+  }
+
+  upgradeTip(def, done, queued) {
+    const labels = {
+      damage: 'УРОН',
+      hp: 'ПРОЧНОСТЬ',
+      range: 'ДАЛЬНОСТЬ',
+      speed: 'СКОРОСТЬ',
+      armor: 'БРОНЯ',
+    };
+    const effects = Object.entries(def.effects).map(([stat, value]) => {
+      const text = stat === 'armor' ? `+${value}` : `+${Math.round((value - 1) * 100)}%`;
+      return `<span><i>${labels[stat] ?? stat.toUpperCase()}</i>${text}</span>`;
+    }).join('');
+    const state = done ? 'уже изучено' : queued ? 'уже в очереди' : 'техцентр';
+    return `
+      <div class="tip-head"><span class="tip-role">ИССЛЕДОВАНИЕ</span><b>${def.name}</b></div>
+      <p>${def.desc}</p>
+      <div class="tip-stats">${effects}</div>
+      <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.time} с · ${state}</span></div>
+    `;
   }
 
   repairCommand(buildings) {
@@ -588,7 +650,12 @@ export class UI {
     if (html !== old) this.hideTooltip();
 
     const selTag = this.game.selectionSummary?.() ?? '';
-    this.el.cmdStatus.textContent = this.commands.length ? (this.commands[0].kind === 'train' ? 'ПРОИЗВОДСТВО' : this.commands[0].kind === 'build' ? 'СТРОИТЕЛЬСТВО' : 'ПРИКАЗЫ') : 'ОЖИДАНИЕ';
+    this.el.cmdStatus.textContent = this.commands.length
+      ? (this.commands[0].kind === 'train' ? 'ПРОИЗВОДСТВО'
+        : this.commands[0].kind === 'build' ? 'СТРОИТЕЛЬСТВО'
+          : this.commands[0].kind === 'research' ? 'ИССЛЕДОВАНИЯ'
+            : 'ПРИКАЗЫ')
+      : 'ОЖИДАНИЕ';
   }
 
   triggerHotkey(key) {
@@ -661,6 +728,13 @@ export class UI {
       const chips = types.length > 1
         ? `<div class="type-chips">${types.map((t) => `<span class="type-chip">${icon(UNITS[t].icon)} ${UNITS[t].name} <b>×${counts.get(t)}</b></span>`).join('')}</div>`
         : '';
+      const upgradeKey = same
+        ? Object.keys(UPGRADES).find((key) => UPGRADES[key].target === primary.type
+          && this.game.upgrades.player.has(key))
+        : null;
+      const upgradeChip = upgradeKey
+        ? `<span class="chip chip--research">${icon('research')} ${UPGRADES[upgradeKey].name}</span>`
+        : '';
       body.innerHTML = `
         <div class="sel-main">
           <div class="portrait" style="--accent:${FACTIONS.player.color}">
@@ -673,11 +747,12 @@ export class UI {
             <div class="sel-name">${name}${same && count > 1 ? ` <em>×${count}</em>` : ''}</div>
             <div class="hpbar"><i style="width:${pct}%"></i><b>${Math.ceil(totalHp)} / ${totalMax}</b></div>
             ${same ? `<div class="sel-stats">
-              <span>УРОН <b>${def.damage}</b></span>
-              <span>ДАЛЬНОСТЬ <b>${def.range}</b></span>
-              <span>СКОРОСТЬ <b>${def.speed}</b></span>
+              <span>УРОН <b>${Math.round(primary.damage ?? def.damage)}</b></span>
+              <span>ДАЛЬНОСТЬ <b>${Math.round(primary.range ?? def.range)}</b></span>
+              <span>СКОРОСТЬ <b>${(primary.speed ?? def.speed).toFixed(1)}</b></span>
             </div>` : `<div class="sel-note">В отряде несколько типов юнитов. Наведите на карточку найма для характеристик.</div>`}
             ${chips}
+            ${upgradeChip}
           </div>
           ${this.sideStatus()}
         </div>
@@ -699,7 +774,12 @@ export class UI {
       : b.repairing
         ? { text: 'РЕМОНТ', cls: 'accent' }
         : b.queue.length
-          ? { text: `ОЧЕРЕДЬ ${b.queue.length}`, cls: 'accent' }
+          ? {
+            text: b.type === 'lab'
+              ? `ИССЛЕДОВАНИЕ ${Math.floor((1 - b.queue[0].remaining / b.queue[0].total) * 100)}%`
+              : `ОЧЕРЕДЬ ${b.queue.length}`,
+            cls: 'accent',
+          }
           : { text: 'ГОТОВО', cls: 'ok' };
     this.el.selTitle.textContent = def.name + (buildings.length > 1 ? ` ×${buildings.length}` : '');
     this.el.selTag.textContent = b.faction === 'player' ? 'ЗДАНИЕ' : 'ПРОТИВНИК';
@@ -712,6 +792,9 @@ export class UI {
     const incomeChip = def.income ? `<span class="chip chip--income">${icon('credits')} ${def.income}/с</span>` : '';
     const repairChip = b.repairing
       ? `<span class="chip chip--repair">${icon('repair')} +${this.game.repairRate(b).toFixed(1)} HP/с</span>`
+      : '';
+    const researchChip = b.type === 'lab' && b.faction === 'player'
+      ? `<span class="chip chip--research">${icon('research')} ИЗУЧЕНО ${this.game.upgrades.player.size}/${Object.keys(UPGRADES).length}</span>`
       : '';
     const queueHTML = this.renderQueue(b);
     const buildHTML = !b.complete
@@ -733,13 +816,20 @@ export class UI {
             ${powerChip}
             ${incomeChip}
             ${repairChip}
+            ${researchChip}
           </div>
         </div>
         ${this.sideStatus()}
       </div>
-      ${b.type === 'barracks' || b.type === 'hq' ? queueHTML : ''}
+      ${b.type === 'barracks' || b.type === 'hq' || b.type === 'lab' ? queueHTML : ''}
       ${buildHTML}
-      <div class="sel-foot"><span class="dot"></span> ${b.type === 'barracks' ? 'ПКМ по земле — точка сбора · клик по очереди — отмена · R — ремонт' : b.type === 'hq' ? 'ПКМ по месторождению — быстрая нефтяная вышка · R — ремонт' : 'Пассивное строение · R — ремонт'}</div>
+      <div class="sel-foot"><span class="dot"></span> ${b.type === 'barracks'
+        ? 'ПКМ по земле — точка сбора · клик по очереди — отмена · R — ремонт'
+        : b.type === 'hq'
+          ? 'ПКМ по месторождению — быстрая нефтяная вышка · R — ремонт'
+          : b.type === 'lab'
+            ? 'Исследования — на панели команд · клик по очереди — отмена · R — ремонт'
+            : 'Пассивное строение · R — ремонт'}</div>
     `;
     this.live = {
       kind: 'building',
@@ -767,10 +857,11 @@ export class UI {
 
   renderQueue(b) {
     if (!b.queue.length) {
-      return `<div class="queue queue--empty"><span>Очередь производства пуста</span><span>${b.complete ? 'ГОТОВ К НАЙМУ' : 'ИДЁТ СТРОЙКА'}</span></div>`;
+      const emptyLabel = b.type === 'lab' ? 'ВЫБЕРИТЕ УЛУЧШЕНИЕ' : 'ГОТОВ К НАЙМУ';
+      return `<div class="queue queue--empty"><span>Очередь производства пуста</span><span>${b.complete ? emptyLabel : 'ИДЁТ СТРОЙКА'}</span></div>`;
     }
     const items = b.queue.map((item, i) => {
-      const def = UNITS[item.type];
+      const def = item.upgrade ? UPGRADES[item.upgrade] : UNITS[item.type];
       const progress = i === 0 ? (1 - item.remaining / item.total) * 100 : 0;
       const time = i === 0 ? item.remaining : item.total;
       return `
@@ -832,7 +923,13 @@ export class UI {
               ? (builders
                 ? `СТРОИТСЯ ${Math.floor(b.construction * 100)}% · ИНЖ. ${builders}`
                 : `ЖДЁТ ИНЖЕНЕРОВ ${Math.floor(b.construction * 100)}%`)
-              : b.repairing ? 'РЕМОНТ' : b.queue.length ? `ОЧЕРЕДЬ ${b.queue.length}` : 'ГОТОВО';
+              : b.repairing
+                ? 'РЕМОНТ'
+                : b.queue.length
+                  ? (b.type === 'lab'
+                    ? `ИССЛЕДОВАНИЕ ${Math.floor((1 - b.queue[0].remaining / b.queue[0].total) * 100)}%`
+                    : `ОЧЕРЕДЬ ${b.queue.length}`)
+                  : 'ГОТОВО';
             const dot = this.live.statusChip.querySelector('i');
             this.live.statusChip.innerHTML = `<i></i>${text}`;
           }
