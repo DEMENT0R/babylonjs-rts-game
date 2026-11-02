@@ -15,6 +15,7 @@ import {
 } from './config.js';
 import { icon } from './icons.js';
 import { randomSeed, seedUrl } from './mapgen.js';
+import { CHANGELOG, GAME_VERSION } from './changelog.js';
 import { GRAPHICS_LABELS, GRAPHICS_OPTIONS } from './settings.js';
 import { clamp, formatTime, plural, mulberry32, esc } from './utils.js';
 
@@ -35,6 +36,7 @@ export class UI {
     this.lastSignature = '';
     this.tooltipVisible = false;
     this.overlayOpen = true;
+    this.overlayBack = null;
     this.minimapBg = null;
     this.buildMinimapBackground();
     this.el.mmSector.textContent = this.game.map.label;
@@ -97,6 +99,8 @@ export class UI {
       else if (action === 'resume') this.resume();
       else if (action === 'restart') window.location.reload();
       else if (action === 'newmap') this.newMap();
+      else if (action === 'changelog') this.openChangelog();
+      else if (action === 'back') this.backFromOverlay();
     });
     this.el.commands.addEventListener('click', (e) => {
       const btn = e.target.closest('.cmd');
@@ -183,10 +187,11 @@ export class UI {
       ${this.graphicsBlock()}
       <div class="overlay-actions">
         <button class="btn-primary" data-action="start">НАЧАТЬ ОПЕРАЦИЮ <span>→</span></button>
+        <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
         <div class="overlay-note">Каждая карта строится из сида: ссылку вида <b>?seed=${map.label}</b> можно сохранить и сыграть на той же карте снова.</div>
       </div>
       <div class="overlay-footer">
-        <span>ГЕЛИОС-7 // КАРТА #${map.label}</span>
+        <span>ГЕЛИОС-7 // КАРТА #${map.label} // ВЕРСИЯ ${GAME_VERSION}</span>
         <span>${map.symmetry.name.toUpperCase()} · ${map.style.name} · BABYLON.JS</span>
       </div>
     `;
@@ -218,6 +223,7 @@ export class UI {
       <div class="overlay-actions">
         <button class="btn-primary" data-action="newmap">НОВАЯ КАРТА <span>↻</span></button>
         <button class="btn-ghost" data-action="restart">ПОВТОРИТЬ ЭТУ КАРТУ</button>
+        <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
       </div>
       <div class="overlay-footer">
         <span>ГЕЛИОС-7 // ИТОГИ</span>
@@ -263,6 +269,7 @@ export class UI {
       ${this.graphicsBlock()}
       <div class="overlay-actions">
         <button class="btn-primary" data-action="resume">ПРОДОЛЖИТЬ <span>→</span></button>
+        <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
         <button class="btn-ghost" data-action="restart">ЗАНОВО</button>
         <button class="btn-ghost" data-action="newmap">НОВАЯ КАРТА</button>
       </div>
@@ -296,6 +303,61 @@ export class UI {
   newMap() {
     document.activeElement?.blur?.();
     window.location.assign(seedUrl(randomSeed()));
+  }
+
+  // --------------------------------------------------------------- changelog
+  /** Открывает журнал изменений, запоминая, куда вернуться по кнопке «Назад». */
+  openChangelog() {
+    if (this.game.started && !this.game.over) this.game.setPaused(true);
+    const back = this.game.over
+      ? () => this.showEnd(this.game.over)
+      : this.game.started
+        ? () => this.openPause()
+        : () => this.showStart();
+    this.overlayBack = back;
+    this.showChangelog();
+  }
+
+  backFromOverlay() {
+    const back = this.overlayBack;
+    this.overlayBack = null;
+    if (back) back();
+    else this.resume();
+  }
+
+  showChangelog() {
+    const releases = CHANGELOG.map((release) => {
+      const sections = release.sections.map((section) => `
+        <div class="log-section">
+          <div class="log-section-title">${esc(section.title)}</div>
+          <ul class="log-list">${section.items.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>
+        </div>`).join('');
+      const meta = release.date ?? release.tag ?? '';
+      return `
+        <article class="log-release${release.current ? ' is-current' : ''}">
+          <div class="log-head">
+            <b>${esc(release.version)}</b>
+            <span>${esc(meta)}</span>
+          </div>
+          ${sections}
+        </article>`;
+    }).join('');
+    const html = `
+      <div class="overlay-top">
+        <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // ЖУРНАЛ ИЗМЕНЕНИЙ</div>
+        <h1 class="log-title">ЧТО НОВОГО</h1>
+        <p class="tagline">История обновлений «Гелиос-7». Текущая сборка — ${esc(GAME_VERSION)}.</p>
+      </div>
+      <div class="log-body">${releases}</div>
+      <div class="overlay-actions">
+        <button class="btn-primary" data-action="back">НАЗАД <span>→</span></button>
+      </div>
+      <div class="overlay-footer">
+        <span>ГЕЛИОС-7 // ЖУРНАЛ ИЗМЕНЕНИЙ</span>
+        <span>ПОЛНАЯ ИСТОРИЯ — CHANGELOG.MD В РЕПОЗИТОРИИ</span>
+      </div>
+    `;
+    this.setOverlay(html, 'overlay--changelog');
   }
 
   hideOverlay() {

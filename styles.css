@@ -1815,6 +1815,107 @@ body.mode-attack #scene {
   color: var(--dim);
 }
 
+/* Журнал изменений */
+.overlay--changelog .overlay-card {
+  width: min(760px, 94vw);
+}
+
+.log-title {
+  font-size: clamp(30px, 4.6vw, 44px) !important;
+  letter-spacing: 0.14em !important;
+}
+
+.log-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.log-release {
+  padding: 12px 14px;
+  border: 1px solid var(--line-soft);
+  background: rgba(8, 20, 27, 0.55);
+}
+
+.log-release.is-current {
+  border-color: rgba(79, 210, 255, 0.45);
+  background: linear-gradient(135deg, rgba(79, 210, 255, 0.08), rgba(8, 20, 27, 0.6) 55%);
+  box-shadow: inset 0 0 24px rgba(79, 210, 255, 0.05);
+}
+
+.log-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  padding-bottom: 7px;
+  border-bottom: 1px dashed rgba(82, 172, 202, 0.2);
+}
+
+.log-head b {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--cyan);
+}
+
+.log-release.is-current .log-head b {
+  color: #eafaff;
+}
+
+.log-head span {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  letter-spacing: 0.16em;
+  color: var(--dim);
+  text-transform: uppercase;
+}
+
+.log-section + .log-section {
+  margin-top: 8px;
+}
+
+.log-section-title {
+  margin-bottom: 4px;
+  font-size: 7.5px;
+  letter-spacing: 0.18em;
+  color: var(--amber);
+  text-transform: uppercase;
+}
+
+.log-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.log-list li {
+  position: relative;
+  padding-left: 12px;
+  font-size: 8.5px;
+  line-height: 1.55;
+  color: #9ab4c0;
+}
+
+.log-list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 4px;
+  height: 4px;
+  background: var(--cyan);
+  box-shadow: 0 0 6px rgba(79, 210, 255, 0.6);
+}
+
 /* Boot */
 .boot {
   min-height: 240px;
