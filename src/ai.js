@@ -103,6 +103,8 @@ export class AIController {
     ).length;
     const target = this.game.elapsed > 90 ? 2 : 1;
     if (count >= target) return;
+    const used = this.game.getArmyUsed('enemy') + this.game.getQueuedSupply('enemy');
+    if (used + (UNITS.engineer.supply ?? 1) > this.game.getArmyCap('enemy')) return;
     const def = UNITS.engineer;
     const reserve = count === 0 ? 90 : 60;
     if (this.credits < def.cost + reserve) return;
@@ -149,6 +151,9 @@ export class AIController {
     else if (power.used >= power.produced) type = 'power';
     else if (armyCap - armyUsed < 6 && depots < 5 && this.credits > BUILDINGS.depot.cost + 30) {
       type = 'depot';
+    } else if (turrets === 0 && game.elapsed > 130) {
+      // Первую турель Рой копит целенаправленно: армия на время замирает.
+      type = 'turret';
     } else if (game.elapsed > 110 && turrets < (game.elapsed > 220 ? 3 : 2)
       && this.credits > BUILDINGS.turret.cost + 80) {
       type = 'turret';

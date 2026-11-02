@@ -1101,15 +1101,20 @@ export class Building extends Entity {
     if (!def) return;
     this.attackCd = Math.max(0, this.attackCd - dt);
     this.recoil = Math.max(0, this.recoil - dt * 6);
-    if (!this.defenseTarget || !this.defenseTarget.alive) {
-      this.defenseTarget = this.acquireDefenseTarget(def.aggro);
+    let target = this.defenseTarget;
+    if (target && target.alive) {
+      const d = dist(this.position.x, this.position.z, target.position.x, target.position.z);
+      if (d > def.aggro * 1.5) target = null;
+    } else {
+      target = null;
     }
+    if (!target) target = this.acquireDefenseTarget(def.aggro);
+    this.defenseTarget = target;
     const head = this.parts?.head;
-    if (!this.defenseTarget) {
+    if (!target) {
       if (head) head.rotation.y = turnTowards(head.rotation.y, 0, dt * 1.1);
       return;
     }
-    const target = this.defenseTarget;
     const dx = target.position.x - this.position.x;
     const dz = target.position.z - this.position.z;
     const desired = yawTo(dx, dz) - this.root.rotation.y;
