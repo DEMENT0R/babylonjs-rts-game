@@ -936,6 +936,7 @@ body.mode-attack #scene {
 
 .cmd-grid.is-dense .cmd-label {
   font-size: 7.2px;
+  line-height: 1.12;
 }
 
 .cmd-grid.is-dense .cmd-cost {

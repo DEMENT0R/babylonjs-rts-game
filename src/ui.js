@@ -717,11 +717,12 @@ export class UI {
     for (let i = 0; i < slots; i++) {
       const cmd = this.commands[i];
       if (cmd) {
+        const label = dense && cmd.short ? cmd.short : cmd.label;
         html += `
           <button class="cmd ${cmd.disabled ? 'is-disabled' : ''}" data-cmd-id="${cmd.id}" aria-disabled="${cmd.disabled ? 'true' : 'false'}">
             <span class="cmd-key">${cmd.hotkey}</span>
             <span class="cmd-icon">${icon(cmd.icon)}</span>
-            <span class="cmd-label">${cmd.label}</span>
+            <span class="cmd-label">${label}</span>
             ${cmd.cost ? `<span class="cmd-cost">${icon('credits')} ${cmd.cost}</span>` : `<span class="cmd-cost cmd-cost--free">${cmd.kind === 'train' ? 'НАЁМ' : 'ПРИКАЗ'}</span>`}
           </button>`;
       } else {
