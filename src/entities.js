@@ -84,6 +84,7 @@ export class Entity {
     this.maxHp = def.hp;
     this.hp = def.hp;
     this.radius = def.radius;
+    this.armor = def.armor ?? 0;
     this.position = new Vector3(x, 0, z);
     this.alive = true;
     this.selected = false;
@@ -95,6 +96,7 @@ export class Entity {
     this.ring = null;
     this.barVisible = false;
     this.lastHitAt = -99;
+    this.lastAttacker = null;
   }
 
   setupVisual() {
@@ -155,10 +157,11 @@ export class Entity {
 
   takeDamage(amount, source) {
     if (!this.alive || this.game.over) return;
-    const armor = this.def.armor ?? 0;
+    const armor = this.armor ?? this.def.armor ?? 0;
     const dmg = Math.max(1, amount - armor);
     this.hp -= dmg;
     this.lastHitAt = this.game.elapsed;
+    if (source?.alive) this.lastAttacker = source;
     this.game.onEntityDamaged(this, source, dmg);
     if (this.hp <= 0) {
       this.hp = 0;
@@ -169,11 +172,19 @@ export class Entity {
         && this.assistBuilding
         && this.assistBuilding.alive
         && !this.assistBuilding.complete;
-      if (!busyBuilding && (!this.order || this.order.type === 'attackMove')) {
-        if (dist(this.position.x, this.position.z, source.position.x, source.position.z) < this.def.aggro + 6) {
-          this.target = source;
-          this.retaliateTimer = 3;
+      // Юнит отвечает на огонь с любой дистанции, с которой его достали:
+      // артиллерия не должна безнаказанно расстреливать отряд с 30+ единиц.
+      const d = dist(this.position.x, this.position.z, source.position.x, source.position.z);
+      const leash = Math.max(this.def.aggro, this.def.range) + 30;
+      const explicitAttack = this.order?.type === 'attack' && this.order.target !== source;
+      if (!busyBuilding && !explicitAttack && d <= leash) {
+        // Приказ на движение сохраняем как точку сбора: после боя юнит
+        // вернётся к выполнению, а не останется стоять на месте.
+        if (this.order?.type === 'move') {
+          this.order = { type: 'attackMove', x: this.order.x, z: this.order.z };
         }
+        this.target = source;
+        this.retaliateTimer = 6;
       }
     }
   }
@@ -327,7 +338,10 @@ export class Unit extends Entity {
     } else if (order && order.type === 'attackMove') {
       if (this.target && this.target.alive) {
         const d = dist(this.position.x, this.position.z, this.target.position.x, this.target.position.z);
-        if (d < this.aggro + this.radius + 4) desired = this.target;
+        const hold = this.retaliateTimer > 0
+          ? Math.max(this.aggro, this.range) + 30
+          : this.aggro + this.radius + 4;
+        if (d < hold) desired = this.target;
         else this.target = null;
       }
       if (!desired) {
@@ -354,7 +368,10 @@ export class Unit extends Entity {
     // не гнаться за целью бесконечно далеко, если приказ не был явным
     if (desired && !(order && order.type === 'attack')) {
       const d = dist(this.position.x, this.position.z, desired.position.x, desired.position.z);
-      if (d > this.aggro + 9) {
+      const leash = this.retaliateTimer > 0
+        ? Math.max(this.aggro, this.range) + 30
+        : this.aggro + 9;
+      if (d > leash) {
         this.target = null;
         desired = null;
         if (order && order.type === 'attackMove') {
