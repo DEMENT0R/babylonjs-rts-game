@@ -872,6 +872,8 @@ export class Game {
         0,
         5,
       );
+      // Карточка выбранного юнита должна сразу показать новые характеристики.
+      if (this.ui) this.ui.onSelectionChanged();
     }
   }
 

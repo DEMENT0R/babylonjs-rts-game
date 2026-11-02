@@ -175,7 +175,7 @@ export class Entity {
       // Юнит отвечает на огонь с любой дистанции, с которой его достали:
       // артиллерия не должна безнаказанно расстреливать отряд с 30+ единиц.
       const d = dist(this.position.x, this.position.z, source.position.x, source.position.z);
-      const leash = Math.max(this.def.aggro, this.def.range) + 30;
+      const leash = Math.max(this.aggro, this.range) + 30;
       const explicitAttack = this.order?.type === 'attack' && this.order.target !== source;
       if (!busyBuilding && !explicitAttack && d <= leash) {
         // Приказ на движение сохраняем как точку сбора: после боя юнит
