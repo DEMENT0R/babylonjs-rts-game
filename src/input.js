@@ -88,6 +88,8 @@ export class Input {
     };
     this.resetTouchControls = clear;
     root.addEventListener('contextmenu', (e) => e.preventDefault());
+    root.addEventListener('pointerup', clear);
+    root.addEventListener('pointercancel', clear);
     root.addEventListener('pointerdown', (e) => {
       const btn = e.target.closest('[data-touch]');
       if (!btn) return;
