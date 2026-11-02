@@ -439,6 +439,16 @@ export class Input {
       if (units.length) this.game.commandAttack(picked.entity);
       return;
     }
+    if (picked.entity && picked.entity.faction === 'player'
+      && picked.entity.isBuilding && !picked.entity.complete) {
+      const builders = units.filter((u) => u.def.builder);
+      if (builders.length) {
+        this.game.assignBuildersTo(picked.entity, builders);
+        this.game.fx.orderMarker(picked.entity.position, 'move');
+        this.game.notify('Инженеры направлены к стройплощадке.', 'hint', 'builders-manual', 0, 3);
+        return;
+      }
+    }
     if (picked.entity && picked.entity.faction === 'player') {
       this.handleClick(clientX, clientY, additive);
       return;
@@ -581,7 +591,8 @@ export class Input {
         return;
       }
       if (this.game.ui?.overlayOpen) {
-        if (this.game.started && !this.game.over) this.game.ui.resume();
+        if (this.game.ui.overlayBack) this.game.ui.backFromOverlay();
+        else if (this.game.started && !this.game.over) this.game.ui.resume();
         return;
       }
       if (this.game.started && !this.game.over) this.game.ui?.openPause();
@@ -606,7 +617,7 @@ export class Input {
 
     const hotkeyMap = {
       KeyZ: 'Z', KeyX: 'X', KeyC: 'C', KeyV: 'V', KeyB: 'B',
-      KeyN: 'N', KeyM: 'M', KeyG: 'G', KeyF: 'F', KeyR: 'R',
+      KeyN: 'N', KeyM: 'M', KeyG: 'G', KeyH: 'H', KeyF: 'F', KeyR: 'R',
     };
     if (hotkeyMap[e.code] && !e.repeat) {
       const handled = this.game.ui?.triggerHotkey(hotkeyMap[e.code]);

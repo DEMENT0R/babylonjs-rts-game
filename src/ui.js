@@ -142,6 +142,7 @@ export class UI {
 
   // --------------------------------------------------------------- overlays
   showStart() {
+    this.overlayBack = null;
     const map = this.game.map;
     const html = `
       <div class="overlay-top">
@@ -175,9 +176,9 @@ export class UI {
           <div><kbd>Q / E</kbd><span>поворот камеры</span></div>
           <div><kbd>Колесо</kbd><span>зум</span></div>
           <div><kbd>СКМ</kbd><span>тащить камеру</span></div>
-          <div><kbd>Z X C V</kbd><span>команды</span></div>
+          <div><kbd>Z X C V B N M</kbd><span>команды</span></div>
           <div><kbd>F</kbd><span>атака по площади</span></div>
-          <div><kbd>B</kbd><span>стоп (инженеры)</span></div>
+          <div><kbd>H</kbd><span>стоп</span></div>
           <div><kbd>R</kbd><span>ремонт здания</span></div>
           <div><kbd>Shift</kbd><span>добавить к выбору</span></div>
           <div><kbd>Пробел</kbd><span>на базу</span></div>
@@ -201,6 +202,7 @@ export class UI {
   }
 
   showEnd(result) {
+    this.overlayBack = null;
     const victory = result === 'victory';
     const s = this.game.stats;
     const map = this.game.map;
@@ -237,12 +239,17 @@ export class UI {
 
   togglePause() {
     if (!this.game.started || this.game.over) return;
-    if (this.overlayOpen) this.resume();
-    else this.openPause();
+    if (this.overlayOpen) {
+      if (this.overlayBack) this.backFromOverlay();
+      else this.resume();
+    } else {
+      this.openPause();
+    }
   }
 
   openPause() {
     if (!this.game.started || this.game.over) return;
+    this.overlayBack = null;
     this.game.setPaused(true);
     const map = this.game.map;
     const html = `
@@ -261,7 +268,7 @@ export class UI {
         <div class="controls-grid">
           <div><kbd>WASD</kbd><span>камера</span></div>
           <div><kbd>Q / E</kbd><span>поворот</span></div>
-          <div><kbd>Z X C V</kbd><span>команды</span></div>
+          <div><kbd>Z X C V B N M</kbd><span>команды</span></div>
           <div><kbd>F</kbd><span>атака по площади</span></div>
           <div><kbd>R</kbd><span>ремонт</span></div>
           <div><kbd>Пробел</kbd><span>на базу</span></div>
@@ -470,7 +477,7 @@ export class UI {
           label: 'Стоп',
           short: 'СТОП',
           icon: 'stop',
-          hotkey: hasEngineer ? 'B' : 'X',
+          hotkey: 'H',
           desc: 'Остановить выбранных юнитов и сбросить приказ.',
           action: () => game.commandStop(),
         },
@@ -1058,7 +1065,7 @@ export class UI {
 
   // --------------------------------------------------------------- tooltip
   showTooltip(btn, cmd) {
-    if (!cmd.tip) return;
+    if (!cmd.tip || this.game.input?.isTouch) return;
     this.el.tooltip.innerHTML = cmd.tip;
     this.el.tooltip.classList.add('is-visible');
     const rect = btn.getBoundingClientRect();
