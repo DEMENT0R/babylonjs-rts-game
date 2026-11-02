@@ -184,6 +184,7 @@ export class UI {
           <div><kbd>Esc</kbd><span>пауза / меню</span></div>
           <div><kbd>ЛКМ</kbd><span>по миникарте — камера</span></div>
         </div>
+        <p class="touch-hint">На сенсорном экране: тап — выбрать или отдать приказ, два пальца — панорама и зум, кнопки справа — камера и отмена режима.</p>
       </div>
       ${this.graphicsBlock()}
       <div class="overlay-actions">
@@ -288,12 +289,14 @@ export class UI {
     if (this.game.started) this.game.setPaused(false);
     this.overlayOpen = false;
     this.el.overlay.classList.remove('is-open');
+    document.body.classList.remove('overlay-open');
   }
 
   startGame() {
     document.activeElement?.blur?.();
     this.overlayOpen = false;
     this.el.overlay.classList.remove('is-open');
+    document.body.classList.remove('overlay-open');
     this.game.begin();
     this.renderHeader();
     this.renderCommands();
@@ -364,6 +367,7 @@ export class UI {
   hideOverlay() {
     this.overlayOpen = false;
     this.el.overlay.classList.remove('is-open');
+    document.body.classList.remove('overlay-open');
   }
 
   setOverlay(html, variant) {
@@ -371,6 +375,7 @@ export class UI {
     this.el.overlayCard.innerHTML = html;
     this.el.overlay.className = `overlay is-open ${variant ?? ''}`;
     this.overlayOpen = true;
+    document.body.classList.add('overlay-open');
   }
 
   // --------------------------------------------------------------- graphics
@@ -696,8 +701,11 @@ export class UI {
     const old = this.el.commands.innerHTML;
     this.commands = this.buildCommands();
     this.commandMap = new Map(this.commands.map((c) => [c.id, c]));
-    this.el.commands.classList.toggle('is-dense', this.commands.length > 8);
-    const slots = Math.max(8, Math.ceil(this.commands.length / 4) * 4);
+    const dense = this.commands.length > 8;
+    this.el.commands.classList.toggle('is-dense', dense);
+    // В плотном режиме на ПК помещаются пять колонок, на мобильных — четыре.
+    const columns = dense ? 5 : 4;
+    const slots = Math.max(8, Math.ceil(this.commands.length / columns) * columns);
     let html = '';
     for (let i = 0; i < slots; i++) {
       const cmd = this.commands[i];

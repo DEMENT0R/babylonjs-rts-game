@@ -30,9 +30,22 @@ export class Input {
     this.placement = null;
     this.lastClick = { time: 0, type: null };
     this.groundY = 0;
+    this.isTouch = Boolean(
+      globalThis.matchMedia?.('(pointer: coarse)')?.matches
+      || (navigator.maxTouchPoints ?? 0) > 0,
+    );
+    this.activePointers = new Map();
+    this.touchGesture = null;
+    this.suppressTouchTap = false;
+    this.touchState = {
+      up: false, down: false, left: false, right: false,
+      zoomin: false, zoomout: false, rotl: false, rotr: false,
+    };
+    if (this.isTouch) document.body.classList.add('is-touch');
 
     game.input = this;
     this.bind();
+    this.bindTouchControls();
     this.setCameraImmediate();
   }
 
@@ -57,6 +70,58 @@ export class Input {
       this.keys.clear();
       this.middleDrag = null;
     });
+  }
+
+  /** Экранные кнопки камеры и отмены режима для сенсорных устройств. */
+  bindTouchControls() {
+    const root = document.querySelector('#touch-controls');
+    if (!root) return;
+    this.touchRoot = root;
+    const clear = () => {
+      let active = false;
+      for (const key of Object.keys(this.touchState)) {
+        if (this.touchState[key]) active = true;
+        this.touchState[key] = false;
+      }
+      if (!active && !root.querySelector('.is-active')) return;
+      root.querySelectorAll('.is-active').forEach((node) => node.classList.remove('is-active'));
+    };
+    this.resetTouchControls = clear;
+    root.addEventListener('contextmenu', (e) => e.preventDefault());
+    root.addEventListener('pointerdown', (e) => {
+      const btn = e.target.closest('[data-touch]');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const action = btn.dataset.touch;
+      if (action === 'base') {
+        this.focusBase();
+        this.game.notify('Камера возвращена к базе.', 'hint', 'touch-base', 4, 2);
+        return;
+      }
+      if (action === 'cancel') {
+        if (this.placement) this.cancelPlacement();
+        else if (this.attackMode) this.setAttackMove(false);
+        return;
+      }
+      if (action === 'deselect') {
+        this.game.clearSelection();
+        return;
+      }
+      if (!Object.prototype.hasOwnProperty.call(this.touchState, action)) return;
+      this.touchState[action] = true;
+      btn.classList.add('is-active');
+      try { btn.setPointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
+      const release = () => {
+        this.touchState[action] = false;
+        btn.classList.remove('is-active');
+        btn.removeEventListener('pointerup', release);
+        btn.removeEventListener('pointercancel', release);
+      };
+      btn.addEventListener('pointerup', release);
+      btn.addEventListener('pointercancel', release);
+    });
+    window.addEventListener('blur', clear);
   }
 
   // ------------------------------------------------------------- math helpers
@@ -140,6 +205,15 @@ export class Input {
     document.activeElement?.blur?.();
     this.pointer = { x: e.clientX, y: e.clientY, has: true };
 
+    if (e.pointerType === 'touch') {
+      this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.activePointers.size >= 2) {
+        e.preventDefault();
+        this.beginTouchGesture();
+        return;
+      }
+    }
+
     if (e.button === 1) {
       e.preventDefault();
       this.middleDrag = { x: e.clientX, y: e.clientY };
@@ -183,6 +257,16 @@ export class Input {
   onPointerMove(e) {
     this.pointer = { x: e.clientX, y: e.clientY, has: true };
 
+    if (e.pointerType === 'touch') {
+      if (this.activePointers.has(e.pointerId)) {
+        this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      }
+      if (this.touchGesture && this.activePointers.size >= 2) {
+        this.updateTouchGesture();
+        return;
+      }
+    }
+
     if (this.middleDrag) {
       const dx = e.clientX - this.middleDrag.x;
       const dy = e.clientY - this.middleDrag.y;
@@ -219,6 +303,28 @@ export class Input {
   }
 
   onPointerUp(e) {
+    const touch = e.pointerType === 'touch';
+    if (touch) {
+      if (this.touchGesture) {
+        this.activePointers.delete(e.pointerId);
+        if (this.activePointers.size < 2) {
+          this.touchGesture = null;
+          this.suppressTouchTap = true;
+          this.drag = null;
+          const box = document.querySelector('#selectBox');
+          if (box) box.style.display = 'none';
+        }
+        try { this.canvas.releasePointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
+        return;
+      }
+      this.activePointers.delete(e.pointerId);
+      if (this.suppressTouchTap) {
+        if (this.activePointers.size === 0) this.suppressTouchTap = false;
+        try { this.canvas.releasePointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
+        return;
+      }
+    }
+
     if (this.middleDrag) {
       this.middleDrag = null;
       try { this.canvas.releasePointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
@@ -240,7 +346,8 @@ export class Input {
       return;
     }
 
-    this.handleClick(e.clientX, e.clientY, drag.shift);
+    if (touch) this.handleTouchTap(e.clientX, e.clientY, drag.shift);
+    else this.handleClick(e.clientX, e.clientY, drag.shift);
   }
 
   handleClick(clientX, clientY, additive) {
@@ -261,6 +368,90 @@ export class Input {
       }
       this._lastClickTime = now;
       this._lastType = this.lastClick.type;
+      return;
+    }
+    if (picked.oil) {
+      this.game.notify('Нефтяное месторождение. Постройте вышку, чтобы качать кредиты.', 'hint', 'oil-info', 0, 5);
+      return;
+    }
+    if (!additive) this.game.clearSelection();
+  }
+
+  // ------------------------------------------------------------- touch gestures
+  beginTouchGesture() {
+    if (this.touchGesture) return;
+    const points = [...this.activePointers.values()];
+    if (points.length < 2) return;
+    const a = points[0];
+    const b = points[1];
+    this.touchGesture = {
+      mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+      distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+      radius: this.desired.radius,
+    };
+    this.drag = null;
+    const box = document.querySelector('#selectBox');
+    if (box) box.style.display = 'none';
+  }
+
+  /** Два пальца: панорама камеры и щипок для зума. */
+  updateTouchGesture() {
+    const points = [...this.activePointers.values()];
+    if (!this.touchGesture || points.length < 2) return;
+    const a = points[0];
+    const b = points[1];
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+    const dx = mid.x - this.touchGesture.mid.x;
+    const dy = mid.y - this.touchGesture.mid.y;
+    const { forward, right } = this.cameraBasis();
+    const k = this.camera.radius * 0.0018;
+    this.desired.target.x += (-right.x * dx + forward.x * dy) * k;
+    this.desired.target.z += (-right.z * dx + forward.z * dy) * k;
+    this.desired.radius = clamp(
+      this.touchGesture.radius * (this.touchGesture.distance / distance),
+      CAMERA.minRadius,
+      CAMERA.maxRadius,
+    );
+    this.touchGesture.mid = mid;
+    this.touchGesture.distance = distance;
+    this.clampTarget();
+  }
+
+  /** Короткий тап по сцене: выбор, приказ или размещение здания. */
+  handleTouchTap(clientX, clientY, additive) {
+    if (this.placement) {
+      this.tryPlaceAt(clientX, clientY);
+      return;
+    }
+    if (this.attackMode) {
+      const point = this.groundPoint(clientX, clientY);
+      if (point) {
+        this.game.commandAttackMove(new Vector3(point.x, 0, point.z));
+        this.setAttackMove(false);
+      }
+      return;
+    }
+
+    const picked = this.pick(clientX, clientY);
+    const units = this.game.selectedUnits();
+    if (picked.entity && picked.entity.faction !== 'player') {
+      if (units.length) this.game.commandAttack(picked.entity);
+      return;
+    }
+    if (picked.entity && picked.entity.faction === 'player') {
+      this.handleClick(clientX, clientY, additive);
+      return;
+    }
+
+    const point = this.groundPoint(clientX, clientY);
+    if (units.length && point) {
+      this.game.commandMove(new Vector3(point.x, 0, point.z));
+      return;
+    }
+    const buildings = this.game.selectedBuildings();
+    if (buildings.length && point) {
+      this.game.setRally(new Vector3(point.x, 0, point.z));
       return;
     }
     if (picked.oil) {
@@ -434,6 +625,9 @@ export class Input {
     if (this.game.paused) {
       if (this.placement) this.cancelPlacement();
       if (this.attackMode) this.setAttackModeVisual(false);
+      this.resetTouchControls?.();
+      this.activePointers.clear();
+      this.touchGesture = null;
       return;
     }
 
@@ -454,6 +648,30 @@ export class Input {
     }
     if (k.has('KeyQ')) this.desired.alpha += dt * 1.25;
     if (k.has('KeyE')) this.desired.alpha -= dt * 1.25;
+
+    // Экранные кнопки на сенсорных устройствах.
+    const t = this.touchState;
+    let tmx = 0;
+    let tmz = 0;
+    if (t.up) tmz += 1;
+    if (t.down) tmz -= 1;
+    if (t.right) tmx += 1;
+    if (t.left) tmx -= 1;
+    if (tmx || tmz) {
+      const { forward, right } = this.cameraBasis();
+      const speed = panSpeed * 1.25 * dt;
+      this.desired.target.x += (forward.x * tmz + right.x * tmx) * speed;
+      this.desired.target.z += (forward.z * tmz + right.z * tmx) * speed;
+      this.clampTarget();
+    }
+    if (t.rotl) this.desired.alpha += dt * 1.25;
+    if (t.rotr) this.desired.alpha -= dt * 1.25;
+    if (t.zoomin) {
+      this.desired.radius = clamp(this.desired.radius * (1 - dt * 1.6), CAMERA.minRadius, CAMERA.maxRadius);
+    }
+    if (t.zoomout) {
+      this.desired.radius = clamp(this.desired.radius * (1 + dt * 1.6), CAMERA.minRadius, CAMERA.maxRadius);
+    }
 
     this.camera.alpha = damp(this.camera.alpha, this.desired.alpha, 7, dt);
     this.camera.beta = damp(this.camera.beta, this.desired.beta, 7, dt);
@@ -578,7 +796,12 @@ export class Input {
       0,
       3,
     );
-    if (this.pointer.has) this.updateGhost(this.pointer.x, this.pointer.y);
+    if (this.pointer.has) {
+      this.updateGhost(this.pointer.x, this.pointer.y);
+    } else if (this.isTouch) {
+      const rect = this.canvas.getBoundingClientRect();
+      this.updateGhost(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    }
   }
 
   updateGhost(clientX, clientY) {

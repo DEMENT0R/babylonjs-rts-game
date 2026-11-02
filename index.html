@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#050b11" />
   <meta name="description" content="ГЕЛИОС-7 — маленькая 3D-RTS в стиле StarCraft на Babylon.js: база, энергия, нефть, инженеры, ремонт и пять типов юнитов." />
   <title>ГЕЛИОС-7 — тактическая RTS</title>
@@ -98,6 +98,24 @@
     <div id="selectBox" aria-hidden="true"></div>
     <div id="tooltip" role="tooltip"></div>
     <div id="pauseBadge">ПАУЗА</div>
+
+    <div id="touch-controls" aria-label="Сенсорное управление камерой">
+      <div class="tc-pad">
+        <button class="tc-btn tc-up" data-touch="up" aria-label="Камера вверх">▲</button>
+        <button class="tc-btn tc-left" data-touch="left" aria-label="Камера влево">◀</button>
+        <button class="tc-btn tc-home" data-touch="base" aria-label="К базе">БАЗА</button>
+        <button class="tc-btn tc-right" data-touch="right" aria-label="Камера вправо">▶</button>
+        <button class="tc-btn tc-down" data-touch="down" aria-label="Камера вниз">▼</button>
+      </div>
+      <div class="tc-tools">
+        <button class="tc-btn" data-touch="zoomin" aria-label="Приблизить">+</button>
+        <button class="tc-btn" data-touch="zoomout" aria-label="Отдалить">−</button>
+        <button class="tc-btn" data-touch="rotl" aria-label="Повернуть камеру влево">⟲</button>
+        <button class="tc-btn" data-touch="rotr" aria-label="Повернуть камеру вправо">⟳</button>
+        <button class="tc-btn tc-deselect" data-touch="deselect" aria-label="Снять выделение">✕</button>
+      </div>
+      <button id="touchCancel" class="tc-cancel" data-touch="cancel">ОТМЕНА</button>
+    </div>
 
     <div id="overlay" class="overlay">
       <div class="overlay-bg" aria-hidden="true"></div>
