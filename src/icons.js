@@ -19,6 +19,14 @@ export const ICONS = {
     <path d="M14 24h7M27 24h7" opacity=".6"/>
     <path d="M24 11V5m0 0-3 3m3-3 3 3"/>
   `),
+  turret: stroke(`
+    <path d="M8 41h32M12 41V33h24v8"/>
+    <path d="M16 33v-6h16v6"/>
+    <path d="M19 27c0-5 2-8 5-8s5 3 5 8"/>
+    <path d="M21 24h12v6H21Z" fill="currentColor" stroke="none" opacity=".8"/>
+    <path d="M33 26h11M35 22l9 4-9 4"/>
+    <circle cx="24" cy="35" r="2.4"/>
+  `),
   depot: stroke(`
     <path d="M5 41h38M8 41V23l7-6v24"/>
     <path d="M15 41V17l9-6 9 6v24"/>

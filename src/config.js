@@ -63,7 +63,7 @@ export const START = {
 };
 
 // order — порядок кнопок в командной панели.
-export const BUILD_ORDER = ['power', 'barracks', 'derrick', 'lab', 'depot'];
+export const BUILD_ORDER = ['power', 'barracks', 'derrick', 'lab', 'turret', 'depot'];
 export const BUILD_HOTKEYS = ['Z', 'X', 'C', 'V', 'B', 'N', 'M'];
 export const TRAIN_ORDER = ['marine', 'scout', 'tank', 'artillery'];
 export const TRAIN_HOTKEYS = ['Z', 'X', 'C', 'V'];
@@ -306,6 +306,30 @@ export const BUILDINGS = {
     powerUse: 2,
     income: 2.2,
     from: 'hq',
+  },
+  turret: {
+    key: 'turret',
+    name: 'Турель «Страж»',
+    role: 'СТАЦИОНАРНОЕ ОРУДИЕ',
+    icon: 'turret',
+    desc: 'Автоматическая пушка для обороны базы. Сама выбирает цели и стреляет по наземным юнитам на подходе. Не двигается, поэтому её нужно прикрывать от танков. Потребляет 3 энергии.',
+    cost: 160,
+    buildTime: 18,
+    hp: 720,
+    armor: 4,
+    radius: 2.8,
+    height: 4.6,
+    powerProduce: 0,
+    powerUse: 3,
+    from: 'hq',
+    defense: {
+      range: 17,
+      damage: 18,
+      cooldown: 0.9,
+      aggro: 20,
+      projectile: 'bullet',
+      muzzleHeight: 2.7,
+    },
   },
   depot: {
     key: 'depot',

@@ -135,6 +135,9 @@ export class AIController {
     const depots = game.buildings.filter(
       (b) => b.alive && b.faction === 'enemy' && b.type === 'depot',
     ).length;
+    const turrets = game.buildings.filter(
+      (b) => b.alive && b.faction === 'enemy' && b.type === 'turret' && b.complete,
+    ).length;
     const buildings = game.buildings.filter((b) => b.alive && b.faction === 'enemy').length;
     const power = game.power.enemy;
     const freePatch = this.findFreePatch(game.elapsed > 180 ? 115 : 72);
@@ -146,12 +149,16 @@ export class AIController {
     else if (power.used >= power.produced) type = 'power';
     else if (armyCap - armyUsed < 6 && depots < 5 && this.credits > BUILDINGS.depot.cost + 30) {
       type = 'depot';
+    } else if (game.elapsed > 110 && turrets < (game.elapsed > 220 ? 3 : 2)
+      && this.credits > BUILDINGS.turret.cost + 80) {
+      type = 'turret';
     } else if (lab === 0 && game.elapsed > 170 && this.credits > 320) type = 'lab';
     else if (freePatch) type = 'derrick';
     else if (barracks < 2 && game.elapsed > 135) type = 'barracks';
     else if (power.produced - power.used < 8) type = 'power';
     else if (game.elapsed > 240 && buildings < 20 && this.credits > 520) {
-      type = Math.random() < 0.45 ? 'power' : Math.random() < 0.5 ? 'barracks' : 'depot';
+      const roll = Math.random();
+      type = roll < 0.4 ? 'power' : roll < 0.7 ? 'barracks' : roll < 0.85 ? 'depot' : 'turret';
     }
 
     this.buildIntent = type;

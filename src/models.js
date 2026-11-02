@@ -231,6 +231,7 @@ export class ModelFactory {
       power: () => this.buildPower(faction),
       barracks: () => this.buildBarracks(faction),
       derrick: () => this.buildDerrick(faction),
+      turret: () => this.buildTurret(faction),
       depot: () => this.buildDepot(faction),
       lab: () => this.buildLab(faction),
     }[type];
@@ -1274,6 +1275,113 @@ export class ModelFactory {
 
     parts.height = 5.4;
     return { root, parts, height: 5.4 };
+  }
+
+  // ---------------------------------------------------------------- BUILDING: TURRET
+  buildTurret(faction) {
+    const m = this.baseMaterials(faction);
+    const root = new TransformNode(`turret_${faction}`, this.scene);
+    const parts = {};
+    const add = (mesh, parent = root, shadow = true) => {
+      mesh.parent = parent;
+      mesh.isPickable = false;
+      mesh.receiveShadows = true;
+      mesh.castShadow = shadow;
+      return mesh;
+    };
+
+    const pad = MeshBuilder.CreateCylinder('pad', { diameter: 6.2, height: 0.34, tessellation: 8 }, this.scene);
+    pad.position.y = 0.17;
+    add(pad, root, false).material = m.concrete;
+
+    const padRing = MeshBuilder.CreateTorus('padring', { diameter: 5.7, thickness: 0.1, tessellation: 32 }, this.scene);
+    padRing.position.y = 0.36;
+    add(padRing, root, false).material = m.accent;
+
+    const base = MeshBuilder.CreateCylinder('base', { diameter: 3.5, height: 1.6, tessellation: 12 }, this.scene);
+    base.position.y = 1.1;
+    add(base).material = m.dark;
+
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      const leg = MeshBuilder.CreateBox(`leg_${i}`, { width: 0.5, height: 1.2, depth: 1.6 }, this.scene);
+      leg.position.set(Math.cos(a) * 1.8, 0.75, Math.sin(a) * 1.8);
+      leg.rotation.y = -a + Math.PI / 2;
+      add(leg).material = m.steel;
+    }
+
+    const collar = MeshBuilder.CreateCylinder('collar', { diameter: 3.0, height: 0.4, tessellation: 12 }, this.scene);
+    collar.position.y = 2.0;
+    add(collar).material = m.steel;
+
+    // Вращающаяся голова: корпус, спаренные стволы и дульный узел.
+    const head = new TransformNode('head', this.scene);
+    head.parent = root;
+    head.position.y = 2.75;
+
+    const shell = MeshBuilder.CreateBox('headshell', { width: 1.9, height: 1.15, depth: 2.2 }, this.scene);
+    shell.position.z = -0.15;
+    add(shell, head).material = m.panel;
+
+    const face = MeshBuilder.CreateBox('headface', { width: 1.55, height: 0.85, depth: 0.5 }, this.scene);
+    face.position.set(0, 0.05, 0.95);
+    add(face, head, false).material = m.hull;
+
+    const eye = MeshBuilder.CreateBox('eye', { width: 1.1, height: 0.16, depth: 0.12 }, this.scene);
+    eye.position.set(0, 0.2, 1.22);
+    add(eye, head, false).material = m.glow;
+
+    const barrels = new TransformNode('barrels', this.scene);
+    barrels.parent = head;
+    barrels.position.set(0, -0.08, 0.8);
+    for (const side of [-1, 1]) {
+      const barrel = MeshBuilder.CreateCylinder(`barrel_${side}`, {
+        diameterTop: 0.16,
+        diameterBottom: 0.24,
+        height: 2.4,
+        tessellation: 8,
+      }, this.scene);
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0.38 * side, 0, 1.2);
+      add(barrel, barrels).material = m.steel;
+
+      const shroud = MeshBuilder.CreateCylinder(`shroud_${side}`, { diameter: 0.42, height: 0.55, tessellation: 8 }, this.scene);
+      shroud.rotation.x = Math.PI / 2;
+      shroud.position.set(0.38 * side, 0, 0.7);
+      add(shroud, barrels, false).material = m.dark;
+    }
+
+    const muzzle = new TransformNode('muzzle', this.scene);
+    muzzle.parent = barrels;
+    muzzle.position.set(0, 0, 2.45);
+    parts.muzzle = muzzle;
+
+    const sight = MeshBuilder.CreateBox('sight', { width: 0.35, height: 0.3, depth: 0.4 }, this.scene);
+    sight.position.set(0, 0.72, -0.2);
+    add(sight, head, false).material = m.trim;
+
+    const antenna = MeshBuilder.CreateCylinder('antenna', { diameter: 0.06, height: 1.5, tessellation: 4 }, this.scene);
+    antenna.position.set(-0.8, 0.95, -0.55);
+    add(antenna, head, false).material = m.steel;
+
+    const antennaTip = MeshBuilder.CreateSphere('antennatip', { diameter: 0.16, segments: 5 }, this.scene);
+    antennaTip.position.set(-0.8, 1.7, -0.55);
+    add(antennaTip, head, false).material = m.warn;
+
+    parts.head = head;
+    parts.barrels = barrels;
+
+    // Мешки с песком и ящики у основания — турель выглядит обжитой.
+    for (let i = 0; i < 5; i++) {
+      const a = -0.8 + i * 0.36;
+      const bag = MeshBuilder.CreateBox(`sandbag_${i}`, { width: 1.15, height: 0.55, depth: 0.8 }, this.scene);
+      bag.position.set(Math.cos(a) * 2.75, 0.35, Math.sin(a) * 2.75);
+      bag.rotation.y = -a;
+      add(bag, root, false).material = m.rust;
+    }
+
+    parts.height = 4.5;
+    return { root, parts, height: 4.5 };
   }
 
   // ---------------------------------------------------------------- BUILDING: DEPOT

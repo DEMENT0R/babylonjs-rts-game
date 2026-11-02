@@ -686,6 +686,7 @@ export class UI {
         <span><i>HP</i>${def.hp}</span>${power ? `<span><i>ЭНЕРГИЯ</i>${power}</span>` : ''}
         ${def.income ? `<span><i>ДОХОД</i>${def.income}/с</span>` : ''}
         ${def.armyCap ? `<span><i>ЛИМИТ АРМИИ</i>+${def.armyCap}</span>` : ''}
+        ${def.defense ? `<span><i>УРОН</i>${def.defense.damage}</span><span><i>ДАЛЬНОСТЬ</i>${def.defense.range}</span>` : ''}
       </div>
       <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.buildTime} с · нужны инженеры рядом</span></div>
     `;
@@ -843,14 +844,16 @@ export class UI {
         : { text: `ЖДЁТ ИНЖЕНЕРОВ ${Math.floor(b.construction * 100)}%`, cls: 'accent' })
       : b.repairing
         ? { text: 'РЕМОНТ', cls: 'accent' }
-        : b.queue.length
-          ? {
-            text: b.type === 'lab'
-              ? `ИССЛЕДОВАНИЕ ${Math.floor((1 - b.queue[0].remaining / b.queue[0].total) * 100)}%`
-              : `ОЧЕРЕДЬ ${b.queue.length}`,
-            cls: 'accent',
-          }
-          : { text: 'ГОТОВО', cls: 'ok' };
+        : b.type === 'turret'
+          ? (b.defenseTarget?.alive ? { text: 'ВЕДЁТ ОГОНЬ', cls: 'warn' } : { text: 'ОХРАНА', cls: 'ok' })
+          : b.queue.length
+            ? {
+              text: b.type === 'lab'
+                ? `ИССЛЕДОВАНИЕ ${Math.floor((1 - b.queue[0].remaining / b.queue[0].total) * 100)}%`
+                : `ОЧЕРЕДЬ ${b.queue.length}`,
+              cls: 'accent',
+            }
+            : { text: 'ГОТОВО', cls: 'ok' };
     this.el.selTitle.textContent = def.name + (buildings.length > 1 ? ` ×${buildings.length}` : '');
     this.el.selTag.textContent = b.faction === 'player' ? 'ЗДАНИЕ' : 'ПРОТИВНИК';
 
@@ -861,6 +864,9 @@ export class UI {
         : '';
     const incomeChip = def.income ? `<span class="chip chip--income">${icon('credits')} ${def.income}/с</span>` : '';
     const armyChip = def.armyCap ? `<span class="chip chip--army">${icon('army')} +${def.armyCap} ЛИМИТ</span>` : '';
+    const defenseChip = def.defense
+      ? `<span class="chip chip--defense">${icon('turret')} ${def.defense.damage} УРОН · ${def.defense.range} ДАЛЬН.</span>`
+      : '';
     const repairChip = b.repairing
       ? `<span class="chip chip--repair">${icon('repair')} +${this.game.repairRate(b).toFixed(1)} HP/с</span>`
       : '';
@@ -887,6 +893,7 @@ export class UI {
             ${powerChip}
             ${incomeChip}
             ${armyChip}
+            ${defenseChip}
             ${repairChip}
             ${researchChip}
           </div>
@@ -998,11 +1005,13 @@ export class UI {
                 : `ЖДЁТ ИНЖЕНЕРОВ ${Math.floor(b.construction * 100)}%`)
               : b.repairing
                 ? 'РЕМОНТ'
-                : b.queue.length
-                  ? (b.type === 'lab'
-                    ? `ИССЛЕДОВАНИЕ ${Math.floor((1 - b.queue[0].remaining / b.queue[0].total) * 100)}%`
-                    : `ОЧЕРЕДЬ ${b.queue.length}`)
-                  : 'ГОТОВО';
+                : b.type === 'turret'
+                  ? (b.defenseTarget?.alive ? 'ВЕДЁТ ОГОНЬ' : 'ОХРАНА')
+                  : b.queue.length
+                    ? (b.type === 'lab'
+                      ? `ИССЛЕДОВАНИЕ ${Math.floor((1 - b.queue[0].remaining / b.queue[0].total) * 100)}%`
+                      : `ОЧЕРЕДЬ ${b.queue.length}`)
+                    : 'ГОТОВО';
             const dot = this.live.statusChip.querySelector('i');
             this.live.statusChip.innerHTML = `<i></i>${text}`;
           }

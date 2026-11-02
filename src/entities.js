@@ -770,6 +770,9 @@ export class Building extends Entity {
     this.builderCount = 0;
     this.stalledTime = 0;
     this.buildFx = 0;
+    this.attackCd = 0.3 + Math.random() * 0.4;
+    this.defenseTarget = null;
+    this.recoil = 0;
 
     this.model = game.factory.building(type, faction);
     this.root = this.model.root;
@@ -952,6 +955,77 @@ export class Building extends Entity {
     return this.queue[0] ?? null;
   }
 
+  // ------------------------------------------------------------- defense
+  /** Ближайший вражеский юнит в радиусе обнаружения орудия. */
+  acquireDefenseTarget(range) {
+    let best = null;
+    let bestScore = Infinity;
+    for (const e of this.game.units) {
+      if (!e.alive || e.faction === this.faction) continue;
+      if (!(e instanceof Unit)) continue;
+      const d = dist(this.position.x, this.position.z, e.position.x, e.position.z);
+      if (d - e.radius > range) continue;
+      const score = d + (e.type === 'tank' ? -1.5 : 0);
+      if (score < bestScore) {
+        bestScore = score;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  /** Стационарное орудие: наводится, стреляет и не требует команд игрока. */
+  updateDefense(dt) {
+    const def = this.def.defense;
+    if (!def) return;
+    this.attackCd = Math.max(0, this.attackCd - dt);
+    this.recoil = Math.max(0, this.recoil - dt * 6);
+    if (!this.defenseTarget || !this.defenseTarget.alive) {
+      this.defenseTarget = this.acquireDefenseTarget(def.aggro);
+    }
+    const head = this.parts?.head;
+    if (!this.defenseTarget) {
+      if (head) head.rotation.y = turnTowards(head.rotation.y, 0, dt * 1.1);
+      return;
+    }
+    const target = this.defenseTarget;
+    const dx = target.position.x - this.position.x;
+    const dz = target.position.z - this.position.z;
+    const desired = yawTo(dx, dz) - this.root.rotation.y;
+    if (head) head.rotation.y = turnTowards(head.rotation.y, desired, dt * 3.4);
+    const aimError = Math.abs(angleDiff(this.root.rotation.y + (head?.rotation.y ?? 0), yawTo(dx, dz)));
+    const d = Math.hypot(dx, dz);
+    const inRange = d - target.radius - this.radius <= def.range;
+    if (inRange && this.attackCd <= 0 && aimError < 0.2) this.fireDefense(target, def);
+  }
+
+  fireDefense(target, def) {
+    if (!this.alive || this.game.over) return;
+    this.attackCd = def.cooldown;
+    this.recoil = 1;
+    const muzzle = this.parts?.muzzle
+      ? this.parts.muzzle.getAbsolutePosition()
+      : new Vector3(this.position.x, def.muzzleHeight ?? 2.4, this.position.z);
+    const targetPoint = new Vector3(
+      target.position.x,
+      Math.min(target.def.height * 0.55, 4),
+      target.position.z,
+    );
+    this.game.fx.muzzle(muzzle, this.faction, 1.15);
+    this.game.fx.fireProjectile({
+      from: muzzle,
+      to: targetPoint,
+      kind: def.projectile ?? 'bullet',
+      faction: this.faction,
+      speed: 96,
+      onImpact: (impact) => {
+        if (this.game.over) return;
+        this.game.dealDamage(target, def.damage, this);
+        this.game.fx.hit(impact, target.faction, 0.65);
+      },
+    });
+  }
+
   update(dt) {
     if (!this.alive) return;
     const game = this.game;
@@ -982,6 +1056,7 @@ export class Building extends Entity {
     }
 
     if (this.repairing) game.repairTick(this, dt);
+    this.updateDefense(dt);
 
     if (this.queue.length) {
       const item = this.queue[0];
@@ -1045,6 +1120,10 @@ export class Building extends Entity {
         const pulse = 1 + Math.sin(t * 2.1) * 0.22;
         parts.beacon.scaling.set(pulse, pulse, pulse);
       }
+    } else if (this.type === 'turret') {
+      // Откат спаренных стволов после выстрела.
+      if (parts.barrels) parts.barrels.position.z = 0.8 - this.recoil * 0.22;
+      if (parts.muzzle) parts.muzzle.position.z = 2.45 - this.recoil * 0.22;
     }
 
     // редкие атмосферные частицы
