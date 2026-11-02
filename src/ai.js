@@ -2,13 +2,13 @@
 
 import { Vector3 } from './babylon.js';
 import { AI, BUILDINGS, MAP, UNITS } from './config.js';
-import { dist, TAU } from './utils.js';
+import { clamp, dist, shuffle, TAU } from './utils.js';
 
 export class AIController {
   constructor(game) {
     this.game = game;
-    this.credits = AI.credits;
-    this.waveTimer = AI.firstWave;
+    this.credits = AI.credits * (0.85 + Math.random() * 0.4);
+    this.waveTimer = AI.firstWave * (0.8 + Math.random() * 0.4);
     this.waveIndex = 0;
     this.rally = this.baseRally();
     this.defenseTimer = 0;
@@ -21,6 +21,10 @@ export class AIController {
     this.buildIntent = null;
     this.buildCount = 0;
     this.lastBuildNoticeAt = -999;
+    // Характер конкретной партии: влияет на размер волн, состав армии и
+    // готовность рисковать. Благодаря этому ИИ не играет одинаково каждый раз.
+    this.aggression = 0.75 + Math.random() * 0.55;
+    this.buildAngle = Math.random() * TAU;
 
     const barracks = game.buildings.find((b) => b.faction === 'enemy' && b.type === 'barracks');
     if (barracks) {
@@ -61,17 +65,17 @@ export class AIController {
     }
 
     if (this.buildTimer <= 0) {
-      this.buildTimer = 2.5;
+      this.buildTimer = 2 + Math.random() * 3;
       this.planBase();
     }
 
     if (this.assignTimer <= 0) {
-      this.assignTimer = 5;
+      this.assignTimer = 4 + Math.random() * 3;
       this.ensureBuildersOnSites();
     }
 
     if (this.repairTimer <= 0) {
-      this.repairTimer = 6;
+      this.repairTimer = 5 + Math.random() * 4;
       this.updateRepairs();
     }
 
@@ -182,7 +186,7 @@ export class AIController {
       const radius = 9 + ring * 4.5;
       const steps = 20;
       for (let i = 0; i < steps; i++) {
-        const angle = (i / steps) * TAU + ring * 0.37;
+        const angle = (i / steps) * TAU + ring * 0.37 + this.buildAngle;
         const x = hq.position.x + Math.cos(angle) * radius;
         const z = hq.position.z + Math.sin(angle) * radius;
         if (Math.abs(x) > MAP.clamp - 4 || Math.abs(z) > MAP.clamp - 4) continue;
@@ -227,11 +231,24 @@ export class AIController {
     if (!barracks.length) return;
 
     const t = game.elapsed;
+    // Случайный, но осмысленный состав: чем агрессивнее партия, тем охотнее
+    // Рой вкладывается в тяжёлую технику; на старте преобладает пехота.
+    const weights = [
+      { type: 'marine', weight: 1 },
+      { type: 'scout', weight: t > 35 ? 0.8 : 0.25 },
+      { type: 'tank', weight: t > 95 ? 0.55 * this.aggression : 0 },
+      { type: 'artillery', weight: t > 170 ? 0.4 * this.aggression : 0 },
+    ];
+    const total = weights.reduce((sum, item) => sum + item.weight, 0);
+    let roll = Math.random() * total;
     let type = 'marine';
-    const roll = Math.random();
-    if (t > 200 && roll < 0.2) type = 'artillery';
-    else if (t > 140 && roll < 0.42) type = 'tank';
-    else if (roll < 0.6) type = 'scout';
+    for (const item of weights) {
+      roll -= item.weight;
+      if (roll <= 0 && item.weight > 0) {
+        type = item.type;
+        break;
+      }
+    }
 
     const def = UNITS[type];
     if (this.credits < def.cost + 40) return;
@@ -315,7 +332,8 @@ export class AIController {
       if (!guard.length) {
         guard = ranked.filter((x) => x.d <= AI.engineerGuardRadius * 1.7).slice(0, 2);
       }
-      for (const { u } of guard.slice(0, AI.engineerGuardCount)) {
+      const wanted = 1 + Math.floor(Math.random() * AI.engineerGuardCount);
+      for (const { u } of guard.slice(0, wanted)) {
         u.issueAttack(attacker);
         u.retaliateTimer = Math.max(u.retaliateTimer ?? 0, 6);
       }
@@ -323,6 +341,23 @@ export class AIController {
   }
 
   // ------------------------------------------------------------- волны
+  /** Точка рядом с целью: один и тот же приказ не выглядит как копия. */
+  pointNear(position, spread) {
+    return {
+      x: clamp(position.x + (Math.random() - 0.5) * spread * 2, -MAP.clamp, MAP.clamp),
+      z: clamp(position.z + (Math.random() - 0.5) * spread * 2, -MAP.clamp, MAP.clamp),
+    };
+  }
+
+  /** Выбирает цель рейда: вышки и электростанции вкуснее казарм. */
+  pickRaidTarget(buildings) {
+    const candidates = buildings.filter((b) => b.alive && b.type !== 'hq');
+    if (!candidates.length) return null;
+    const derricks = candidates.filter((b) => b.type === 'derrick');
+    const pool = derricks.length && Math.random() < 0.7 ? derricks : candidates;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
   updateWave(dt) {
     this.waveTimer -= dt;
     if (this.waveTimer > 0) return;
@@ -331,7 +366,7 @@ export class AIController {
       (u) => u.alive && u.faction === 'enemy' && !u.def.builder,
     );
     if (combat.length < 2) {
-      this.waveTimer = 12;
+      this.waveTimer = 8 + Math.random() * 8;
       return;
     }
 
@@ -343,29 +378,65 @@ export class AIController {
       return;
     }
 
-    // В атаку идёт ограниченный отряд: остальные остаются охранять улей.
-    const squadSize = Math.min(combat.length, 4 + this.waveIndex * 2);
-    const squad = combat
-      .slice()
-      .sort((a, b) => (a.position.x - b.position.x) || (a.position.z - b.position.z))
-      .slice(0, squadSize);
-    for (const u of squad) {
-      u.issueAttackMove(
-        playerHQ.position.x + (Math.random() - 0.5) * 10,
-        playerHQ.position.z + (Math.random() - 0.5) * 10,
-      );
+    // Тактика очередной волны выбирается случайно: полномасштабный штурм,
+    // рейд по экономике, удар с двух направлений или короткая разведка боем.
+    const playerBuildings = this.game.buildings.filter(
+      (b) => b.alive && b.faction === 'player',
+    );
+    const roll = Math.random();
+    let tactic = 'assault';
+    if (this.waveIndex > 0) {
+      if (roll >= 0.5 && roll < 0.75) tactic = 'raid';
+      else if (roll >= 0.75 && roll < 0.9) tactic = 'split';
+      else if (roll >= 0.9) tactic = 'probe';
     }
+    const raidTarget = tactic === 'raid' || tactic === 'split'
+      ? this.pickRaidTarget(playerBuildings)
+      : null;
+    if (!raidTarget && tactic !== 'assault' && tactic !== 'probe') tactic = 'assault';
+
+    const primary = tactic === 'raid' && raidTarget
+      ? this.pointNear(raidTarget.position, 5)
+      : this.pointNear(playerHQ.position, 9);
+    const secondary = tactic === 'split' && raidTarget
+      ? this.pointNear(raidTarget.position, 5)
+      : null;
+
+    // В атаку идёт ограниченный отряд: остальные остаются охранять улей.
+    // Резерв и размер отряда тоже меняются от волны к волне.
+    const reserve = Math.min(3, Math.max(1, Math.floor(combat.length * 0.25)));
+    const available = Math.max(1, combat.length - reserve);
+    let wanted = Math.round((3 + this.waveIndex * 1.7) * this.aggression)
+      + Math.floor(Math.random() * 3) - 1;
+    if (tactic === 'probe') wanted = Math.min(wanted, 2 + Math.floor(Math.random() * 2));
+    const squadSize = Math.max(1, Math.min(available, wanted));
+    const squad = shuffle(combat.slice(), Math.random).slice(0, squadSize);
+
+    squad.forEach((u, i) => {
+      const point = secondary && i % 2 === 0 ? secondary : primary;
+      u.issueAttackMove(
+        point.x + (Math.random() - 0.5) * 4,
+        point.z + (Math.random() - 0.5) * 4,
+      );
+    });
+
     this.waveIndex++;
-    this.waveTimer = AI.waveInterval + Math.random() * 12;
+    this.waveTimer = AI.waveInterval * (0.8 + Math.random() * 0.45);
     this.lastWaveAt = this.game.elapsed;
 
-    const msg = this.waveIndex === 1
-      ? 'Противник начал наступление на нашу базу!'
-      : `Волна противника №${this.waveIndex} приближается!`;
-    this.game.notify(msg, 'danger', `wave_${this.waveIndex}`, 0, 6);
+    const messages = {
+      assault: this.waveIndex === 1
+        ? 'Противник начал наступление на нашу базу!'
+        : `Волна противника №${this.waveIndex} приближается!`,
+      raid: 'Отряд противника идёт на наши постройки!',
+      split: 'Противник атакует с двух направлений!',
+      probe: 'Разведка противника прощупывает оборону.',
+    };
+    this.game.notify(messages[tactic], 'danger', `wave_${this.waveIndex}`, 0, 6);
     if (this.game.ui) {
       this.game.ui.alert();
-      this.game.ui.ping(playerHQ.position.x, playerHQ.position.z, '#ff4b3e');
+      this.game.ui.ping(primary.x, primary.z, '#ff4b3e');
+      if (secondary) this.game.ui.ping(secondary.x, secondary.z, '#ff4b3e');
     }
     this.rally = this.baseRally();
   }
