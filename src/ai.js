@@ -57,6 +57,7 @@ export class AIController {
     if (this.defenseTimer <= 0) {
       this.defenseTimer = 1.5;
       this.defendBase();
+      this.defendEngineers();
     }
 
     if (this.buildTimer <= 0) {
@@ -263,6 +264,60 @@ export class AIController {
       const d = dist(u.position.x, u.position.z, hq.position.x, hq.position.z);
       if (d < 40) {
         if (!u.order || u.order.type === 'move' || u.order.type === 'attackMove') u.issueAttack(intruder);
+      }
+    }
+  }
+
+  /** Защита инженеров: гарнизон отвечает на обстрел строителей и на угрозы рядом. */
+  defendEngineers() {
+    const game = this.game;
+    const threats = [];
+    for (const builder of game.units) {
+      if (!builder.alive || builder.faction !== 'enemy' || !builder.def.builder) continue;
+      let attacker = null;
+      // Инженера уже бьют — мстим тому, кто попал последним.
+      if (builder.lastAttacker?.alive && builder.lastAttacker.faction === 'player'
+        && game.elapsed - builder.lastHitAt < 8) {
+        attacker = builder.lastAttacker;
+      }
+      // Или к инженеру подошёл враг: лучше встретить его на подходе.
+      if (!attacker) {
+        let bestD = 24;
+        for (const e of game.units) {
+          if (!e.alive || e.faction !== 'player') continue;
+          const d = dist(e.position.x, e.position.z, builder.position.x, builder.position.z);
+          if (d < bestD) {
+            bestD = d;
+            attacker = e;
+          }
+        }
+      }
+      if (attacker) threats.push({ builder, attacker });
+    }
+    if (!threats.length) return;
+
+    const defenders = game.units.filter(
+      (u) => u.alive && u.faction === 'enemy' && !u.def.builder,
+    );
+    if (!defenders.length) return;
+
+    for (const { builder, attacker } of threats) {
+      const ranked = defenders
+        .filter((u) => !(u.order?.type === 'attack' && u.order.target?.alive))
+        .map((u) => ({
+          u,
+          d: dist(u.position.x, u.position.z, builder.position.x, builder.position.z),
+        }))
+        .sort((a, b) => a.d - b.d);
+      let guard = ranked.filter((x) => x.d <= AI.engineerGuardRadius);
+      // Если рядом никого нет, снимаем ближайших с базы: инженер важнее
+      // пары секунд марша, но гарнизон улья всё равно не оголяем полностью.
+      if (!guard.length) {
+        guard = ranked.filter((x) => x.d <= AI.engineerGuardRadius * 1.7).slice(0, 2);
+      }
+      for (const { u } of guard.slice(0, AI.engineerGuardCount)) {
+        u.issueAttack(attacker);
+        u.retaliateTimer = Math.max(u.retaliateTimer ?? 0, 6);
       }
     }
   }

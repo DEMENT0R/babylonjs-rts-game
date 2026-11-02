@@ -265,6 +265,10 @@ export const AI = {
   credits: 160,
   armyCap: 16,
   defendRadius: 30,
+  // Инженер — самый ценный юнит ИИ: получив сигнал об атаке, гарнизон
+  // выдвигается на защиту в этом радиусе.
+  engineerGuardRadius: 46,
+  engineerGuardCount: 3,
 };
 
 export const REPAIR = {
