@@ -718,6 +718,7 @@ body.mode-attack #scene {
 .chip--power { color: var(--cyan); }
 .chip--power-use { color: var(--amber); }
 .chip--income { color: var(--green); }
+.chip--army { color: var(--cyan-soft); border-color: rgba(79, 210, 255, 0.28); }
 .chip--repair { color: var(--amber); border-color: rgba(255, 176, 46, 0.28); }
 .chip--research { color: var(--cyan); border-color: rgba(79, 210, 255, 0.28); }
 
@@ -903,9 +904,48 @@ body.mode-attack #scene {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(2, 1fr);
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: minmax(52px, 1fr);
   gap: 5px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.cmd-grid::-webkit-scrollbar {
+  width: 4px;
+}
+
+.cmd-grid::-webkit-scrollbar-thumb {
+  background: rgba(79, 210, 255, 0.25);
+}
+
+.cmd-grid.is-dense {
+  gap: 4px;
+}
+
+.cmd-grid.is-dense .cmd {
+  padding: 4px 5px 3px;
+}
+
+.cmd-grid.is-dense .cmd-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.cmd-grid.is-dense .cmd-label {
+  font-size: 7.2px;
+}
+
+.cmd-grid.is-dense .cmd-cost {
+  margin-top: 1px;
+  font-size: 7px;
+}
+
+.cmd-grid.is-dense .cmd-key {
+  top: 2px;
+  right: 2px;
+  font-size: 7px;
+  line-height: 11px;
 }
 
 .cmd {

@@ -60,6 +60,7 @@ export class Game {
 
     this.setupBases();
     this.recomputePower();
+    this.refreshArmyCap();
     this.ai = new AIController(this);
     this.ui = null;
   }
@@ -253,6 +254,44 @@ export class Game {
     if (result.player.used > result.player.produced && !wasDeficit) {
       this.notify(MESSAGES.lowPower, 'warn', 'low-power', 0, 12);
     }
+    this.refreshArmyCap();
+  }
+
+  // ------------------------------------------------------------- army limit
+  /** Лимит армии фракции: его дают достроенные штаб и жилые модули. */
+  getArmyCap(faction = 'player') {
+    let cap = 0;
+    for (const b of this.buildings) {
+      if (b.alive && b.complete && b.faction === faction) cap += b.def.armyCap || 0;
+    }
+    return cap;
+  }
+
+  /** Сколько лимита уже занимают живые юниты фракции. */
+  getArmyUsed(faction = 'player') {
+    let used = 0;
+    for (const u of this.units) {
+      if (u.alive && u.faction === faction) used += UNITS[u.type]?.supply ?? 1;
+    }
+    return used;
+  }
+
+  /** Лимит, зарезервированный юнитами в очередях производства. */
+  getQueuedSupply(faction = 'player') {
+    let queued = 0;
+    for (const b of this.buildings) {
+      if (!b.alive || b.faction !== faction || !b.queue?.length) continue;
+      for (const item of b.queue) {
+        if (item.type) queued += UNITS[item.type]?.supply ?? 1;
+      }
+    }
+    return queued;
+  }
+
+  /** Синхронизирует публичное поле armyCap, которое читает интерфейс. */
+  refreshArmyCap() {
+    this.armyCap = this.getArmyCap('player');
+    return this.armyCap;
   }
 
   powerFactor(faction) {
@@ -893,7 +932,9 @@ export class Game {
       this.notify(MESSAGES.noCredits, 'warn', 'no-credits', 0, 3);
       return false;
     }
-    if (this.countUnits('player') >= this.armyCap) {
+    const supply = def.supply ?? 1;
+    const used = this.getArmyUsed('player') + this.getQueuedSupply('player');
+    if (used + supply > this.getArmyCap('player')) {
       this.notify(MESSAGES.capReached, 'warn', 'cap', 0, 3);
       return false;
     }
@@ -1000,8 +1041,9 @@ export class Game {
     return {
       credits: Math.floor(this.credits),
       power: this.power.player,
-      army: this.countUnits('player'),
-      cap: this.armyCap,
+      army: this.getArmyUsed('player'),
+      cap: this.getArmyCap('player'),
+      units: this.countUnits('player'),
       time: this.elapsed,
     };
   }

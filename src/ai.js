@@ -132,19 +132,26 @@ export class AIController {
     const lab = game.buildings.filter(
       (b) => b.alive && b.faction === 'enemy' && b.type === 'lab' && b.complete,
     ).length;
+    const depots = game.buildings.filter(
+      (b) => b.alive && b.faction === 'enemy' && b.type === 'depot',
+    ).length;
     const buildings = game.buildings.filter((b) => b.alive && b.faction === 'enemy').length;
     const power = game.power.enemy;
     const freePatch = this.findFreePatch(game.elapsed > 180 ? 115 : 72);
+    const armyUsed = game.getArmyUsed('enemy') + game.getQueuedSupply('enemy');
+    const armyCap = game.getArmyCap('enemy');
 
     let type = null;
     if (barracks === 0) type = 'barracks';
     else if (power.used >= power.produced) type = 'power';
-    else if (lab === 0 && game.elapsed > 170 && this.credits > 320) type = 'lab';
+    else if (armyCap - armyUsed < 6 && depots < 5 && this.credits > BUILDINGS.depot.cost + 30) {
+      type = 'depot';
+    } else if (lab === 0 && game.elapsed > 170 && this.credits > 320) type = 'lab';
     else if (freePatch) type = 'derrick';
     else if (barracks < 2 && game.elapsed > 135) type = 'barracks';
     else if (power.produced - power.used < 8) type = 'power';
-    else if (game.elapsed > 240 && buildings < 16 && this.credits > 520) {
-      type = Math.random() < 0.5 ? 'power' : 'barracks';
+    else if (game.elapsed > 240 && buildings < 20 && this.credits > 520) {
+      type = Math.random() < 0.45 ? 'power' : Math.random() < 0.5 ? 'barracks' : 'depot';
     }
 
     this.buildIntent = type;
@@ -255,7 +262,9 @@ export class AIController {
   // ------------------------------------------------------------- армия
   tryTrain() {
     const game = this.game;
-    if (game.countUnits('enemy') >= AI.armyCap) return;
+    const used = game.getArmyUsed('enemy') + game.getQueuedSupply('enemy');
+    const cap = Math.min(AI.armyCap, game.getArmyCap('enemy'));
+    if (used >= cap) return;
     const barracks = game.buildings.filter(
       (b) => b.alive && b.faction === 'enemy' && b.type === 'barracks'
         && b.complete && b.queue.length === 0,
@@ -282,7 +291,13 @@ export class AIController {
       }
     }
 
-    const def = UNITS[type];
+    let def = UNITS[type];
+    // Если под выбранную машину не хватает лимита, Рой добирает пехоту.
+    if (used + (def.supply ?? 1) > cap) {
+      type = 'marine';
+      def = UNITS.marine;
+      if (used + def.supply > cap) return;
+    }
     if (this.credits < def.cost + 40) return;
     // Пока есть план строительства, армия ждёт: иначе наём съедает
     // кредиты, и база противника никогда не развивается.

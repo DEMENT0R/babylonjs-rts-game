@@ -19,6 +19,14 @@ export const ICONS = {
     <path d="M14 24h7M27 24h7" opacity=".6"/>
     <path d="M24 11V5m0 0-3 3m3-3 3 3"/>
   `),
+  depot: stroke(`
+    <path d="M5 41h38M8 41V23l7-6v24"/>
+    <path d="M15 41V17l9-6 9 6v24"/>
+    <path d="M33 41V23l7-6v24"/>
+    <path d="M21 41v-9h6v9"/>
+    <path d="M9 28h5M34 28h5" opacity=".55"/>
+    <path d="M24 11V5m0 0-3 3m3-3 3 3" opacity=".7"/>
+  `),
   lab: stroke(`
     <path d="M6 40h36M9 40V20l15-9 15 9v20"/>
     <path d="M16 40V29h16v11"/>

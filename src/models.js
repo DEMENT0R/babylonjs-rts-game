@@ -231,6 +231,7 @@ export class ModelFactory {
       power: () => this.buildPower(faction),
       barracks: () => this.buildBarracks(faction),
       derrick: () => this.buildDerrick(faction),
+      depot: () => this.buildDepot(faction),
       lab: () => this.buildLab(faction),
     }[type];
     return this.cloneTemplate(`building:${type}:${faction}`, build);
@@ -1273,6 +1274,106 @@ export class ModelFactory {
 
     parts.height = 5.4;
     return { root, parts, height: 5.4 };
+  }
+
+  // ---------------------------------------------------------------- BUILDING: DEPOT
+  buildDepot(faction) {
+    const m = this.baseMaterials(faction);
+    const root = new TransformNode(`depot_${faction}`, this.scene);
+    const parts = {};
+    const add = (mesh, parent = root, shadow = true) => {
+      mesh.parent = parent;
+      mesh.isPickable = false;
+      mesh.receiveShadows = true;
+      mesh.castShadow = shadow;
+      return mesh;
+    };
+
+    const pad = MeshBuilder.CreateCylinder('pad', { diameter: 8.8, height: 0.28, tessellation: 8 }, this.scene);
+    pad.position.y = 0.14;
+    add(pad, root, false).material = m.concrete;
+
+    const padRing = MeshBuilder.CreateTorus('padring', { diameter: 8.2, thickness: 0.1, tessellation: 32 }, this.scene);
+    padRing.position.y = 0.3;
+    add(padRing, root, false).material = m.accent;
+
+    // Два жилых цилиндра и соединительный коридор — модуль легко узнать на карте.
+    for (const side of [-1, 1]) {
+      const pod = MeshBuilder.CreateCylinder(`pod_${side}`, {
+        diameter: 3.9,
+        height: 4.0,
+        tessellation: 12,
+      }, this.scene);
+      pod.position.set(1.9 * side, 2.3, 0.4);
+      add(pod).material = m.panel;
+
+      const cap = MeshBuilder.CreateCylinder(`podcap_${side}`, {
+        diameterTop: 0.6,
+        diameterBottom: 3.9,
+        height: 1.3,
+        tessellation: 12,
+      }, this.scene);
+      cap.position.set(1.9 * side, 4.9, 0.4);
+      add(cap).material = m.hull;
+
+      const band = MeshBuilder.CreateCylinder(`podband_${side}`, { diameter: 4.0, height: 0.22, tessellation: 12 }, this.scene);
+      band.position.set(1.9 * side, 3.5, 0.4);
+      add(band, root, false).material = m.dark;
+
+      for (let i = 0; i < 3; i++) {
+        const window = MeshBuilder.CreateBox(`podwin_${side}_${i}`, { width: 0.1, height: 0.5, depth: 0.9 }, this.scene);
+        window.position.set(1.9 * side + 1.95 * side, 2.4, -0.6 + i * 1.0);
+        add(window, root, false).material = m.glass;
+      }
+
+      const light = MeshBuilder.CreateBox(`podlight_${side}`, { width: 0.8, height: 0.08, depth: 0.16 }, this.scene);
+      light.position.set(1.9 * side, 1.25, 2.32);
+      add(light, root, false).material = m.accent;
+    }
+
+    const corridor = MeshBuilder.CreateBox('corridor', { width: 2.6, height: 2.1, depth: 2.4 }, this.scene);
+    corridor.position.set(0, 1.15, -0.6);
+    add(corridor).material = m.hull;
+
+    const corridorBand = MeshBuilder.CreateBox('corridorband', { width: 2.7, height: 0.12, depth: 2.5 }, this.scene);
+    corridorBand.position.set(0, 2.2, -0.6);
+    add(corridorBand, root, false).material = m.accent;
+
+    const entry = MeshBuilder.CreateBox('entry', { width: 2.0, height: 1.7, depth: 0.18 }, this.scene);
+    entry.position.set(0, 0.95, 1.62);
+    add(entry, root, false).material = m.dark;
+
+    const entryGlow = MeshBuilder.CreateBox('entryglow', { width: 1.7, height: 0.1, depth: 0.1 }, this.scene);
+    entryGlow.position.set(0, 1.62, 1.72);
+    add(entryGlow, root, false).material = m.accent;
+
+    const roofDeck = MeshBuilder.CreateBox('roofdeck', { width: 3.0, height: 0.18, depth: 2.0 }, this.scene);
+    roofDeck.position.set(0, 2.42, -0.6);
+    add(roofDeck, root, false).material = m.dark;
+
+    const mast = MeshBuilder.CreateCylinder('mast', { diameter: 0.1, height: 2.2, tessellation: 4 }, this.scene);
+    mast.position.set(-0.8, 3.6, -0.6);
+    add(mast, root, false).material = m.steel;
+
+    const beacon = MeshBuilder.CreateSphere('beacon', { diameter: 0.34, segments: 6 }, this.scene);
+    beacon.position.set(-0.8, 4.75, -0.6);
+    add(beacon, root, false).material = m.warn;
+    parts.beacon = beacon;
+
+    const dish = MeshBuilder.CreateCylinder('dish', { diameterTop: 1.3, diameterBottom: 0.25, height: 0.28, tessellation: 12 }, this.scene);
+    dish.position.set(1.0, 2.7, -1.5);
+    dish.rotation.z = Math.PI / 2;
+    add(dish, root, false).material = m.trim;
+
+    for (let i = 0; i < 3; i++) {
+      const crate = MeshBuilder.CreateBox(`crate_${i}`, { width: 0.7, height: 0.7, depth: 0.7 }, this.scene);
+      crate.position.set(-3.2 + i * 0.8, 0.5, -2.2);
+      crate.rotation.y = i * 0.35;
+      add(crate, root, false).material = i === 1 ? m.rust : m.dark;
+    }
+
+    parts.height = 5.6;
+    return { root, parts, height: 5.6 };
   }
 
   // ---------------------------------------------------------------- BUILDING: LAB

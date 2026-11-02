@@ -7,9 +7,12 @@ import {
   BUILDINGS,
   UPGRADES,
   BUILD_ORDER,
+  BUILD_HOTKEYS,
   UPGRADE_ORDER,
   TRAIN_ORDER,
+  TRAIN_HOTKEYS,
   HQ_TRAIN_ORDER,
+  HQ_TRAIN_HOTKEYS,
   MESSAGES,
   MAP,
 } from './config.js';
@@ -18,8 +21,6 @@ import { randomSeed, seedUrl } from './mapgen.js';
 import { CHANGELOG, GAME_VERSION } from './changelog.js';
 import { GRAPHICS_LABELS, GRAPHICS_OPTIONS } from './settings.js';
 import { clamp, formatTime, plural, mulberry32, esc } from './utils.js';
-
-const BUILD_HOTKEYS = ['Z', 'X', 'C', 'V', 'B'];
 
 export class UI {
   constructor(game) {
@@ -251,7 +252,7 @@ export class UI {
       </div>
       <div class="pause-stats">
         <div><b>${Math.floor(this.game.credits)}</b><span>КРЕДИТЫ</span></div>
-        <div><b>${this.game.countUnits('player')} / ${this.game.armyCap}</b><span>АРМИЯ</span></div>
+        <div><b>${this.game.getArmyUsed('player')} / ${this.game.getArmyCap('player')}</b><span>ЛИМИТ АРМИИ</span></div>
         <div><b>${formatTime(this.game.elapsed)}</b><span>ВРЕМЯ</span></div>
       </div>
       <div class="controls-block compact">
@@ -497,14 +498,14 @@ export class UI {
     if (b.type === 'hq') {
       const commands = BUILD_ORDER.map((type, i) => this.buildCommand(type, BUILD_HOTKEYS[i]));
       HQ_TRAIN_ORDER.forEach((type, i) => {
-        commands.push(this.trainCommand(type, b, BUILD_HOTKEYS[BUILD_ORDER.length + i]));
+        commands.push(this.trainCommand(type, b, HQ_TRAIN_HOTKEYS[i]));
       });
       if (repair) commands.push(repair);
       return commands;
     }
 
     if (b.type === 'barracks') {
-      const commands = TRAIN_ORDER.map((type, i) => this.trainCommand(type, b, BUILD_HOTKEYS[i]));
+      const commands = TRAIN_ORDER.map((type, i) => this.trainCommand(type, b, TRAIN_HOTKEYS[i]));
       if (repair) commands.push(repair);
       return commands;
     }
@@ -543,7 +544,8 @@ export class UI {
     const game = this.game;
     const def = UNITS[type];
     const queueFull = building.queue.length >= building.maxQueue;
-    const cap = game.countUnits('player') >= game.armyCap;
+    const supply = def.supply ?? 1;
+    const cap = game.getArmyUsed('player') + game.getQueuedSupply('player') + supply > game.getArmyCap('player');
     const disabled = !building.complete || queueFull || game.credits < def.cost || cap;
     return {
       id: `train:${type}`,
@@ -552,6 +554,7 @@ export class UI {
       icon: def.icon,
       hotkey,
       cost: def.cost,
+      supply,
       desc: def.desc,
       kind: 'train',
       disabled,
@@ -667,6 +670,7 @@ export class UI {
       <div class="tip-stats">
         <span><i>HP</i>${def.hp}</span><span><i>УРОН</i>${def.damage}</span>
         <span><i>ДАЛЬНОСТЬ</i>${def.range}</span><span><i>СКОРОСТЬ</i>${def.speed}</span>
+        <span><i>ЛИМИТ АРМИИ</i>${def.supply ?? 1}</span>
         ${def.builder ? '<span><i>СТРОЙКА</i>до ×4</span>' : ''}
       </div>
       <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.buildTime} с · ${def.from === 'barracks' ? 'казармы' : 'штаб'}</span></div>
@@ -681,6 +685,7 @@ export class UI {
       <div class="tip-stats">
         <span><i>HP</i>${def.hp}</span>${power ? `<span><i>ЭНЕРГИЯ</i>${power}</span>` : ''}
         ${def.income ? `<span><i>ДОХОД</i>${def.income}/с</span>` : ''}
+        ${def.armyCap ? `<span><i>ЛИМИТ АРМИИ</i>+${def.armyCap}</span>` : ''}
       </div>
       <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.buildTime} с · нужны инженеры рядом</span></div>
     `;
@@ -690,8 +695,10 @@ export class UI {
     const old = this.el.commands.innerHTML;
     this.commands = this.buildCommands();
     this.commandMap = new Map(this.commands.map((c) => [c.id, c]));
+    this.el.commands.classList.toggle('is-dense', this.commands.length > 8);
+    const slots = Math.max(8, Math.ceil(this.commands.length / 4) * 4);
     let html = '';
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < slots; i++) {
       const cmd = this.commands[i];
       if (cmd) {
         html += `
@@ -812,6 +819,7 @@ export class UI {
               <span>УРОН <b>${Math.round(primary.damage ?? def.damage)}</b></span>
               <span>ДАЛЬНОСТЬ <b>${Math.round(primary.range ?? def.range)}</b></span>
               <span>СКОРОСТЬ <b>${(primary.speed ?? def.speed).toFixed(1)}</b></span>
+              <span>ЛИМИТ <b>${def.supply ?? 1}</b></span>
             </div>` : `<div class="sel-note">В отряде несколько типов юнитов. Наведите на карточку найма для характеристик.</div>`}
             ${chips}
             ${upgradeChip}
@@ -852,6 +860,7 @@ export class UI {
         ? `<span class="chip chip--power-use">${icon('bolt')} −${def.powerUse}</span>`
         : '';
     const incomeChip = def.income ? `<span class="chip chip--income">${icon('credits')} ${def.income}/с</span>` : '';
+    const armyChip = def.armyCap ? `<span class="chip chip--army">${icon('army')} +${def.armyCap} ЛИМИТ</span>` : '';
     const repairChip = b.repairing
       ? `<span class="chip chip--repair">${icon('repair')} +${this.game.repairRate(b).toFixed(1)} HP/с</span>`
       : '';
@@ -877,6 +886,7 @@ export class UI {
             <span class="chip chip--status ${status.cls}"><i></i>${status.text}</span>
             ${powerChip}
             ${incomeChip}
+            ${armyChip}
             ${repairChip}
             ${researchChip}
           </div>
@@ -913,7 +923,7 @@ export class UI {
       <div class="sel-side">
         <div><span>ДОХОД</span><b>+${income.toFixed(1)}/с</b></div>
         <div><span>СЕТЬ</span><b class="${deficit ? 'bad' : ''}">${s.power.produced}/${s.power.used}</b></div>
-        <div><span>АРМИЯ</span><b>${s.army}/${s.cap}</b></div>
+        <div><span>ЛИМИТ</span><b>${s.army}/${s.cap}</b></div>
       </div>`;
   }
 
@@ -948,6 +958,7 @@ export class UI {
     this.el.credits.textContent = s.credits;
     this.el.power.textContent = `${s.power.produced} / ${s.power.used}`;
     this.el.army.textContent = `${s.army} / ${s.cap}`;
+    this.el.army.parentElement.title = `Лимит армии: занято ${s.army} из ${s.cap}. Юнитов: ${s.units}.`;
     this.el.clock.textContent = formatTime(s.time);
     const deficit = s.power.used > s.power.produced;
     this.el.resPower.classList.toggle('is-deficit', deficit);

@@ -413,7 +413,10 @@ export class Input {
       return;
     }
 
-    const hotkeyMap = { KeyZ: 'Z', KeyX: 'X', KeyC: 'C', KeyV: 'V', KeyB: 'B', KeyF: 'F', KeyR: 'R' };
+    const hotkeyMap = {
+      KeyZ: 'Z', KeyX: 'X', KeyC: 'C', KeyV: 'V', KeyB: 'B',
+      KeyN: 'N', KeyM: 'M', KeyG: 'G', KeyF: 'F', KeyR: 'R',
+    };
     if (hotkeyMap[e.code] && !e.repeat) {
       const handled = this.game.ui?.triggerHotkey(hotkeyMap[e.code]);
       if (handled) e.preventDefault();

@@ -1039,6 +1039,12 @@ export class Building extends Entity {
         const pulse = 1 + Math.sin(t * 2.4) * (this.queue.length ? 0.16 : 0.07);
         parts.orb.scaling.set(pulse, pulse, pulse);
       }
+    } else if (this.type === 'depot') {
+      // Маяк жилого модуля медленно пульсирует, показывая, что лимит активен.
+      if (parts.beacon) {
+        const pulse = 1 + Math.sin(t * 2.1) * 0.22;
+        parts.beacon.scaling.set(pulse, pulse, pulse);
+      }
     }
 
     // редкие атмосферные частицы

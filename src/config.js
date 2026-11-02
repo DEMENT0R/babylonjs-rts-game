@@ -49,7 +49,8 @@ export const FACTIONS = {
 
 export const START = {
   credits: 500,
-  armyCap: 50,
+  // Лимит армии считается по зданиям: командный центр даёт 10, жилой модуль — ещё 10.
+  armyCap: 10,
   // Стартовые позиции баз и месторождений строит генератор карт (mapgen.js).
   player: {
     marines: 2,
@@ -62,9 +63,12 @@ export const START = {
 };
 
 // order — порядок кнопок в командной панели.
-export const BUILD_ORDER = ['power', 'barracks', 'derrick', 'lab'];
+export const BUILD_ORDER = ['power', 'barracks', 'derrick', 'lab', 'depot'];
+export const BUILD_HOTKEYS = ['Z', 'X', 'C', 'V', 'B', 'N', 'M'];
 export const TRAIN_ORDER = ['marine', 'scout', 'tank', 'artillery'];
+export const TRAIN_HOTKEYS = ['Z', 'X', 'C', 'V'];
 export const HQ_TRAIN_ORDER = ['engineer'];
+export const HQ_TRAIN_HOTKEYS = ['G'];
 
 // Улучшения техцентра: каждое покупается один раз и усиливает все юниты
 // указанного типа — и уже построенные, и будущие.
@@ -125,6 +129,7 @@ export const UNITS = {
     icon: 'engineer',
     desc: 'Возводит здания. Чем больше инженеров рядом со стройплощадкой, тем быстрее идёт стройка. Слаб в бою, берегите его.',
     cost: 70,
+    supply: 1,
     buildTime: 10,
     hp: 90,
     armor: 0,
@@ -147,6 +152,7 @@ export const UNITS = {
     icon: 'marine',
     desc: 'Универсальный стрелок. Дешёвый, быстро нанимается и отлично работает в массе.',
     cost: 60,
+    supply: 1,
     buildTime: 8,
     hp: 110,
     armor: 0,
@@ -168,6 +174,7 @@ export const UNITS = {
     icon: 'scout',
     desc: 'Быстрый рейдер. Молниеносно добирается до вышек и добивает отступающих.',
     cost: 85,
+    supply: 2,
     buildTime: 7,
     hp: 80,
     armor: 0,
@@ -189,6 +196,7 @@ export const UNITS = {
     icon: 'tank',
     desc: 'Тяжёлая машина с площадным уроном. Медленная, но разносит скопления пехоты.',
     cost: 170,
+    supply: 4,
     buildTime: 18,
     hp: 330,
     armor: 2,
@@ -211,6 +219,7 @@ export const UNITS = {
     icon: 'artillery',
     desc: 'Установка залпового огня: пять ракет накрывают площадь с безопасного расстояния. Очень хрупкая и дорогая — держите её в тылу под прикрытием.',
     cost: 360,
+    supply: 5,
     buildTime: 26,
     hp: 170,
     armor: 0,
@@ -237,7 +246,7 @@ export const BUILDINGS = {
     name: 'Командный центр',
     role: 'ШТАБ',
     icon: 'hq',
-    desc: 'Сердце колонии. Строит здания и обеспечивает базовую энергию. Потеря означает поражение.',
+    desc: 'Сердце колонии. Строит здания, обеспечивает базовую энергию и даёт 10 единиц лимита армии. Потеря означает поражение.',
     cost: 0,
     buildTime: 0,
     hp: 1800,
@@ -246,6 +255,7 @@ export const BUILDINGS = {
     height: 10,
     powerProduce: 5,
     powerUse: 0,
+    armyCap: 10,
     from: 'hq',
   },
   power: {
@@ -297,6 +307,23 @@ export const BUILDINGS = {
     income: 2.2,
     from: 'hq',
   },
+  depot: {
+    key: 'depot',
+    name: 'Жилой модуль',
+    role: 'ЛИМИТ АРМИИ',
+    icon: 'depot',
+    desc: 'Расширяет лимит армии на 10 единиц. Стройте модули заранее: тяжелая техника занимает много места в отряде. Потребляет 3 энергии.',
+    cost: 130,
+    buildTime: 16,
+    hp: 620,
+    armor: 2,
+    radius: 3.2,
+    height: 5.4,
+    powerProduce: 0,
+    powerUse: 3,
+    armyCap: 10,
+    from: 'hq',
+  },
   lab: {
     key: 'lab',
     name: 'Техцентр',
@@ -330,7 +357,8 @@ export const AI = {
   waveInterval: 80,
   baseIncome: 0.5,
   credits: 160,
-  armyCap: 16,
+  // Жёсткий потолок для ИИ: даже с жилыми модулями он не растит бесконечную армию.
+  armyCap: 52,
   defendRadius: 30,
   // Инженер — самый ценный юнит ИИ: получив сигнал об атаке, гарнизон
   // выдвигается на защиту в этом радиусе.
@@ -352,7 +380,7 @@ export const MESSAGES = {
   noCredits: 'Недостаточно кредитов.',
   queueFull: 'Очередь производства заполнена.',
   notReady: 'Здание ещё строится.',
-  capReached: 'Достигнут предел армии.',
+  capReached: 'Достигнут лимит армии. Постройте жилой модуль.',
   badPlace: 'Здесь нельзя строить.',
   needOil: 'Вышку можно поставить только на месторождение.',
   noPowerPlace: 'Недостаточно энергии для запуска.',
