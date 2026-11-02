@@ -30,7 +30,7 @@ export const CHANGELOG = [
   },
   {
     version: '1.0.0',
-    date: '2025',
+    date: '2026-10-30',
     sections: [
       {
         title: 'Базовая версия',
