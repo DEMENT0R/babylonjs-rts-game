@@ -253,6 +253,11 @@ export class Unit extends Entity {
     this.detourSign = Math.random() < 0.5 ? -1 : 1;
     this.lastDirX = 0;
     this.lastDirZ = 1;
+    this.path = null;
+    this.pathIndex = 0;
+    this.pathTimer = 0;
+    this.pathGoal = null;
+    this.repathDelay = 0;
 
     this.model = game.factory.unit(type, faction);
     this.root = this.model.root;
@@ -287,10 +292,19 @@ export class Unit extends Entity {
     this.updateBar?.();
   }
 
+  resetPath() {
+    this.path = null;
+    this.pathIndex = 0;
+    this.pathTimer = 0;
+    this.pathGoal = null;
+    this.repathDelay = 0;
+  }
+
   issueMove(x, z) {
     this.order = { type: 'move', x, z };
     this.target = null;
     this.stuckTime = 0;
+    this.resetPath();
   }
 
   issueAttack(target) {
@@ -298,18 +312,21 @@ export class Unit extends Entity {
     this.order = { type: 'attack', target };
     this.target = target;
     this.stuckTime = 0;
+    this.resetPath();
   }
 
   issueAttackMove(x, z) {
     this.order = { type: 'attackMove', x, z };
     this.target = null;
     this.stuckTime = 0;
+    this.resetPath();
   }
 
   stop() {
     this.order = null;
     this.target = null;
     this.moving = false;
+    this.resetPath();
   }
 
   acquireTarget(range) {
@@ -418,10 +435,10 @@ export class Unit extends Entity {
         if (this.attackCd <= 0 && this.canFireAt(desired)) this.fire(desired);
       } else {
         const stop = this.range + targetRadius + this.radius - 0.35;
-        this.moveToward(desired.position.x, desired.position.z, dt, stop);
+        this.navigateTo(desired.position.x, desired.position.z, dt, stop);
       }
     } else if (moveX !== null) {
-      const arrived = this.moveToward(moveX, moveZ, dt, 0.55 + this.radius * 0.35);
+      const arrived = this.navigateTo(moveX, moveZ, dt, 0.55 + this.radius * 0.35);
       if (arrived) {
         this.order = null;
         this.moving = false;
@@ -574,6 +591,71 @@ export class Unit extends Entity {
     return new Vector3(this.position.x, this.def.height * 0.6, this.position.z);
   }
 
+  /**
+   * Движение по навигационной сетке: юнит запрашивает путь A*, идёт по
+   * сглаженным точкам и перестраивает маршрут, если цель сместилась или
+   * путь заблокировали новой постройкой.
+   */
+  navigateTo(tx, tz, dt, stopDist) {
+    const pos = this.position;
+    const goalDist = Math.hypot(tx - pos.x, tz - pos.z);
+    if (goalDist <= stopDist) {
+      this.moving = false;
+      this.path = null;
+      this.pathIndex = 0;
+      return true;
+    }
+
+    const nav = this.game.nav;
+    if (!nav) return this.moveToward(tx, tz, dt, stopDist);
+
+    this.pathTimer = Math.max(0, this.pathTimer - dt);
+    this.repathDelay = Math.max(0, this.repathDelay - dt);
+    const goalMoved = !this.pathGoal
+      || Math.hypot(tx - this.pathGoal.x, tz - this.pathGoal.z) > 1.5;
+    const needsPath = !this.path
+      || this.pathTimer <= 0
+      || (goalMoved && this.repathDelay <= 0);
+
+    if (needsPath) {
+      this.path = nav.findPath(pos.x, pos.z, tx, tz, this.radius + 0.55);
+      this.pathIndex = 0;
+      this.pathGoal = { x: tx, z: tz };
+      this.pathTimer = 0.85 + Math.random() * 0.35;
+      this.repathDelay = 0.45;
+    }
+
+    let wx = tx;
+    let wz = tz;
+    let waypointStop = Math.max(0.5, Math.min(1.0, stopDist));
+    const hasWaypoints = this.path && this.path.length > 0;
+    if (hasWaypoints) {
+      while (this.pathIndex < this.path.length - 1) {
+        const point = this.path[this.pathIndex];
+        if (Math.hypot(point.x - pos.x, point.z - pos.z) > 0.7) break;
+        this.pathIndex++;
+      }
+      const point = this.path[this.pathIndex];
+      wx = point.x;
+      wz = point.z;
+      if (this.pathIndex < this.path.length - 1) {
+        waypointStop = Math.max(0.45, Math.min(0.8, this.radius * 0.5));
+      }
+    }
+
+    const arrived = this.moveToward(wx, wz, dt, waypointStop);
+    if (arrived) {
+      if (hasWaypoints && this.pathIndex < this.path.length - 1) {
+        this.pathIndex++;
+        return false;
+      }
+      this.path = null;
+      this.pathIndex = 0;
+      return true;
+    }
+    return false;
+  }
+
   moveToward(tx, tz, dt, stopDist) {
     const pos = this.position;
     let dx = tx - pos.x;
@@ -631,8 +713,12 @@ export class Unit extends Entity {
       az += dirX * this.detourSign * 2.0;
     }
 
-    let vx = dirX + sx * 1.15 + ax * 0.85;
-    let vz = dirZ + sz * 1.15 + az * 0.85;
+    // Если маршрут уже проложен, статические препятствия объезжает A*.
+    // Сильное локальное отталкивание оставляем только для движения напрямую,
+    // иначе юнит «залипает» в локальном минимуме у угла здания.
+    const obstacleWeight = this.path && this.path.length ? 0.18 : 0.85;
+    let vx = dirX + sx * 1.15 + ax * obstacleWeight;
+    let vz = dirZ + sz * 1.15 + az * obstacleWeight;
     const len = Math.hypot(vx, vz);
     if (len > 0.001) {
       vx = (vx / len) * this.speed;
@@ -666,6 +752,9 @@ export class Unit extends Entity {
         this.detourTimer = 0.8;
         this.detourSign = Math.random() < 0.5 ? -1 : 1;
         this.stuckTime = 0;
+        // Маршрут мог устареть: перестроим его при следующем кадре.
+        this.path = null;
+        this.pathTimer = 0;
       }
     } else {
       this.stuckTime = Math.max(0, this.stuckTime - dt * 2);

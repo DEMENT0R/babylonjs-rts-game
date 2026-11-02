@@ -14,6 +14,7 @@ import {
 } from './config.js';
 import { clamp, dist, formatTime } from './utils.js';
 import { Unit, Building } from './entities.js';
+import { NavGrid } from './nav.js';
 import { AIController } from './ai.js';
 
 let nextBuildingId = 1;
@@ -57,8 +58,10 @@ export class Game {
     this.tutorialStep = 0;
     this.derrickIncomeAcc = 0;
     this.enemyDerrickAcc = 0;
+    this.nav = new NavGrid({ half: MAP.half, cell: 2, margin: 1.0 });
 
     this.setupBases();
+    this.refreshNav();
     this.recomputePower();
     this.refreshArmyCap();
     this.ai = new AIController(this);
@@ -411,6 +414,7 @@ export class Game {
     }
     this.entities.push(b);
     this.buildings.push(b);
+    this.refreshNav();
     if (!opts.silent) {
       this.notify(
         `Начато строительство: ${def.name}`,
@@ -513,6 +517,25 @@ export class Game {
       clamp(building.position.x + Math.cos(angle) * r, -MAP.clamp, MAP.clamp),
       clamp(building.position.z + Math.sin(angle) * r, -MAP.clamp, MAP.clamp),
     );
+  }
+
+  /** Пересобирает навигационную сетку после постройки или сноса здания. */
+  refreshNav() {
+    if (!this.nav) return;
+    const circles = this.world.obstacles.map((o) => ({
+      x: o.x,
+      z: o.z,
+      radius: o.radius,
+    }));
+    for (const b of this.buildings) {
+      if (!b.alive) continue;
+      circles.push({
+        x: b.position.x,
+        z: b.position.z,
+        radius: b.radius * 0.96,
+      });
+    }
+    this.nav.setBlockers(circles, this.world.walls ?? []);
   }
 
   getObstaclesNear(x, z, range) {
@@ -1024,6 +1047,7 @@ export class Game {
     if (this.selected.delete(entity)) {
       if (this.primary === entity) this.primary = [...this.selected].at(-1) ?? null;
     }
+    if (entity.isBuilding) this.refreshNav();
   }
 
   // ------------------------------------------------------------- ui helpers
