@@ -5,6 +5,7 @@
 // стартовых баз и разнообразие карт на большой выборке сидов.
 
 import { createMap, formatSeed, formatSeedLabel, normalizeSeed } from '../src/mapgen.js';
+import { NavGrid, segmentDistance } from '../src/nav.js';
 import { MAP } from '../src/config.js';
 
 const EDGE = MAP.clamp;
@@ -31,6 +32,7 @@ const signatures = new Set();
 const symmetryHits = new Map();
 let totalOil = 0;
 let totalRocks = 0;
+let totalWalls = 0;
 
 for (const seed of seeds) {
   const map = createMap(seed);
@@ -113,6 +115,36 @@ for (const seed of seeds) {
   const mirroredHome = transform(playerHome);
   check(close(enemyHome.x, mirroredHome.x) && close(enemyHome.z, mirroredHome.z), `${label}: стартовые вышки не симметричны`);
 
+  // --- руины стен
+  const wallKey = (wall) => {
+    const a = key(wall.x1, wall.z1);
+    const b = key(wall.x2, wall.z2);
+    return a < b ? `${a}|${b}` : `${b}|${a}`;
+  };
+  const wallLookup = new Map();
+  for (const wall of map.walls) {
+    check(Math.abs(wall.x1) <= EDGE && Math.abs(wall.z1) <= EDGE, `${label}: стена начинается за картой`);
+    check(Math.abs(wall.x2) <= EDGE && Math.abs(wall.z2) <= EDGE, `${label}: стена заканчивается за картой`);
+    check(Math.hypot(wall.x2 - wall.x1, wall.z2 - wall.z1) >= 6, `${label}: стена слишком короткая`);
+    wallLookup.set(wallKey(wall), wall);
+  }
+  check(map.walls.length % 2 === 0, `${label}: непарное число стен`);
+  check(map.walls.length >= 2, `${label}: на карте нет руин стен`);
+  totalWalls += map.walls.length;
+  for (const wall of map.walls) {
+    const [ax, az] = symmetry.transform(wall.x1, wall.z1);
+    const [bx, bz] = symmetry.transform(wall.x2, wall.z2);
+    const mirror = { x1: ax, z1: az, x2: bx, z2: bz };
+    check(!!wallLookup.get(wallKey(mirror)), `${label}: у стены нет отражения`);
+    for (const base of [player, enemy]) {
+      check(segmentDistance(base.hq.x, base.hq.z, wall).distance > 8, `${label}: стена перекрывает базу`);
+    }
+  }
+  const nav = new NavGrid({ half: MAP.half, cell: 2, margin: 1 });
+  nav.setBlockers([], map.walls);
+  const route = nav.findPath(player.hq.x, player.hq.z, enemy.hq.x, enemy.hq.z, 1);
+  check(route.length > 0, `${label}: стены полностью перекрывают путь между базами`);
+
   // --- декор
   const checkPairs = (list, labelPart, sameProps = []) => {
     const lookup = new Map();
@@ -168,8 +200,9 @@ if (fail.length) {
 
 const oilAverage = (totalOil / seeds.length).toFixed(1);
 const rockAverage = (totalRocks / seeds.length).toFixed(1);
+const wallAverage = (totalWalls / seeds.length).toFixed(1);
 console.log(`Проверено карт: ${seeds.length}`);
 console.log(`Уникальных компоновок: ${signatures.size}`);
 console.log(`Симметрия: ${[...symmetryHits.entries()].map(([k, v]) => `${k}=${v}`).join(', ')}`);
-console.log(`В среднем на карту: месторождений ${oilAverage}, камней ${rockAverage}`);
+console.log(`В среднем на карту: месторождений ${oilAverage}, камней ${rockAverage}, стен ${wallAverage}`);
 console.log('Все проверки пройдены.');

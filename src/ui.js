@@ -1129,6 +1129,18 @@ export class UI {
       ctx.fill();
     }
 
+    // руины стен
+    ctx.strokeStyle = 'rgba(172,160,136,0.85)';
+    ctx.lineWidth = 3;
+    for (const wall of this.game.world.walls ?? []) {
+      const a = toMap(wall.x1, wall.z1);
+      const b = toMap(wall.x2, wall.z2);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+
     // месторождения
     for (const patch of this.game.world.oilPatches) {
       const p = toMap(patch.x, patch.z);

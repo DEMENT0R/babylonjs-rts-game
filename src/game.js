@@ -14,7 +14,7 @@ import {
 } from './config.js';
 import { clamp, dist, formatTime } from './utils.js';
 import { Unit, Building } from './entities.js';
-import { NavGrid } from './nav.js';
+import { NavGrid, segmentDistance } from './nav.js';
 import { AIController } from './ai.js';
 
 let nextBuildingId = 1;
@@ -538,6 +538,18 @@ export class Game {
     this.nav.setBlockers(circles, this.world.walls ?? []);
   }
 
+  /** Стены рядом с точкой: для столкновений и проверки места застройки. */
+  getWallsNear(x, z, range) {
+    const out = [];
+    for (const wall of this.world.walls ?? []) {
+      const hit = segmentDistance(x, z, wall);
+      if (hit.distance < range + wall.radius) {
+        out.push({ ...wall, distance: hit.distance, nearX: hit.x, nearZ: hit.z });
+      }
+    }
+    return out;
+  }
+
   getObstaclesNear(x, z, range) {
     const out = [];
     for (const o of this.world.obstacles) {
@@ -558,6 +570,9 @@ export class Game {
     if (Math.abs(x) > MAP.clamp || Math.abs(z) > MAP.clamp) return false;
     for (const o of this.world.obstacles) {
       if (dist(x, z, o.x, o.z) < radius + o.radius + 0.2) return false;
+    }
+    for (const wall of this.world.walls ?? []) {
+      if (segmentDistance(x, z, wall).distance < radius + wall.radius + 0.2) return false;
     }
     for (const b of this.buildings) {
       if (!b.alive) continue;
@@ -721,6 +736,11 @@ export class Game {
     for (const o of this.world.obstacles) {
       if (dist(px, pz, o.x, o.z) < r + o.radius + 0.5) {
         return { valid: false, reason: 'rock', x: px, z: pz, patch };
+      }
+    }
+    for (const wall of this.world.walls ?? []) {
+      if (segmentDistance(px, pz, wall).distance < r + wall.radius + 0.5) {
+        return { valid: false, reason: 'wall', x: px, z: pz, patch };
       }
     }
     for (const b of this.buildings) {

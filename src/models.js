@@ -232,6 +232,7 @@ export class ModelFactory {
       barracks: () => this.buildBarracks(faction),
       derrick: () => this.buildDerrick(faction),
       turret: () => this.buildTurret(faction),
+      wall: () => this.buildWall(faction),
       depot: () => this.buildDepot(faction),
       lab: () => this.buildLab(faction),
     }[type];
@@ -1382,6 +1383,64 @@ export class ModelFactory {
 
     parts.height = 4.5;
     return { root, parts, height: 4.5 };
+  }
+
+  // ---------------------------------------------------------------- BUILDING: WALL
+  buildWall(faction) {
+    const m = this.baseMaterials(faction);
+    const root = new TransformNode(`wall_${faction}`, this.scene);
+    const parts = {};
+    const add = (mesh, parent = root, shadow = true) => {
+      mesh.parent = parent;
+      mesh.isPickable = false;
+      mesh.receiveShadows = true;
+      mesh.castShadow = shadow;
+      return mesh;
+    };
+
+    const base = MeshBuilder.CreateBox('base', { width: 5.2, height: 0.34, depth: 2.6 }, this.scene);
+    base.position.y = 0.17;
+    add(base, root, false).material = m.concrete;
+
+    const body = MeshBuilder.CreateBox('body', { width: 4.8, height: 2.2, depth: 1.35 }, this.scene);
+    body.position.y = 1.35;
+    add(body).material = m.panel;
+
+    const cap = MeshBuilder.CreateBox('cap', { width: 5.0, height: 0.22, depth: 1.6 }, this.scene);
+    cap.position.y = 2.56;
+    add(cap).material = m.dark;
+
+    for (const side of [-1, 1]) {
+      const buttress = MeshBuilder.CreateBox(`buttress_${side}`, { width: 1.2, height: 1.9, depth: 2.05 }, this.scene);
+      buttress.position.set(2.15 * side, 0.95, 0);
+      buttress.rotation.z = -0.18 * side;
+      add(buttress).material = m.concrete;
+
+      const plate = MeshBuilder.CreateBox(`plate_${side}`, { width: 0.16, height: 1.7, depth: 1.5 }, this.scene);
+      plate.position.set(2.4 * side, 1.3, 0);
+      add(plate, root, false).material = m.steel;
+
+      const lamp = MeshBuilder.CreateBox(`lamp_${side}`, { width: 0.14, height: 0.18, depth: 0.5 }, this.scene);
+      lamp.position.set(2.3 * side, 2.25, 0.72);
+      add(lamp, root, false).material = m.accent;
+    }
+
+    for (let i = 0; i < 3; i++) {
+      const stripe = MeshBuilder.CreateBox(`stripe_${i}`, { width: 1.2, height: 0.2, depth: 0.08 }, this.scene);
+      stripe.position.set(-1.4 + i * 1.4, 1.05 + (i % 2) * 0.55, 0.69);
+      stripe.rotation.z = 0.28;
+      add(stripe, root, false).material = m.warn;
+    }
+
+    for (let i = 0; i < 3; i++) {
+      const bag = MeshBuilder.CreateBox(`sandbag_${i}`, { width: 1.0, height: 0.44, depth: 0.65 }, this.scene);
+      bag.position.set(-1.4 + i * 1.4, 0.22, 1.55);
+      bag.rotation.y = (i - 1) * 0.16;
+      add(bag, root, false).material = m.rust;
+    }
+
+    parts.height = 2.8;
+    return { root, parts, height: 2.8 };
   }
 
   // ---------------------------------------------------------------- BUILDING: DEPOT

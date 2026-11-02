@@ -4,6 +4,7 @@ import {
   Scene,
   MeshBuilder,
   Mesh,
+  TransformNode,
   StandardMaterial,
   DynamicTexture,
   Texture,
@@ -50,6 +51,7 @@ export class World {
     this.oilPatches = [];
     this.rocks = [];
     this.obstacles = [];
+    this.walls = [];
     this.decor = [];
     this.shadow = null;
     this.shadowMode = 'medium';
@@ -59,6 +61,7 @@ export class World {
     this._buildSky();
     this._buildGround();
     this._buildOil();
+    this._buildWalls();
     this._buildDecor();
     this._buildHorizon();
     this._buildDust();
@@ -314,6 +317,89 @@ export class World {
         inst.metadata = { oilPatch: patch };
       }
       this.oilPatches.push(patch);
+    });
+  }
+
+  _buildWalls() {
+    const list = this.map.walls ?? [];
+    if (!list.length) return;
+    const concrete = this.factory.mat('ruinConcrete', { color: '#5a554c', specular: 0.03 });
+    const dark = this.factory.mat('ruinDark', { color: '#2f302c', specular: 0.04 });
+    const rust = this.factory.mat('ruinRust', { color: '#6d4b36', specular: 0.05 });
+    const warn = this.factory.mat('ruinWarn', { color: '#b9842a', emissive: '#3a2506', specular: 0.1 });
+
+    list.forEach((info, index) => {
+      const dx = info.x2 - info.x1;
+      const dz = info.z2 - info.z1;
+      const length = Math.hypot(dx, dz);
+      if (length < 1) return;
+      const angle = Math.atan2(-dz, dx);
+      const root = new TransformNode(`wall_${index}`, this.scene);
+      const rng = mulberry32((this.map.seed ^ (0x51f00d + index * 7919)) >>> 0);
+      const concreteParts = [];
+      const darkParts = [];
+      const rustParts = [];
+      const warnParts = [];
+
+      const box = (parts, width, height, depth, x, y, z, rotation = 0) => {
+        const mesh = MeshBuilder.CreateBox(`wallpart_${index}_${parts.length}`, {
+          width,
+          height,
+          depth,
+        }, this.scene);
+        mesh.position.set(x, y, z);
+        mesh.rotation.y = rotation;
+        parts.push(mesh);
+      };
+
+      // Основание и отдельные разрушенные секции: стена выглядит собранной
+      // из бетонных блоков, но с проломами.
+      box(concreteParts, length, 0.38, 1.55, 0, 0.19, 0);
+      const sections = Math.max(2, Math.round(length / 2.6));
+      const sectionLength = length / sections;
+      for (let i = 0; i < sections; i++) {
+        const x = -length / 2 + (i + 0.5) * sectionLength;
+        const height = 1.45 + rng() * 0.95;
+        box(concreteParts, sectionLength * 0.94, height, 1.18, x, 0.35 + height * 0.5, 0);
+        if (i % 2 === 0) {
+          box(darkParts, sectionLength * 0.96, 0.16, 1.28, x, 0.35 + height, 0);
+        }
+      }
+      for (let i = 0; i < 3; i++) {
+        const x = -length / 2 + 0.8 + rng() * (length - 1.6);
+        const y = 0.65 + rng() * 0.9;
+        box(rustParts, 1.1 + rng() * 0.6, 0.1, 0.1, x, y, 0.66, 0);
+        box(warnParts, 0.75, 0.12, 0.06, x + 0.4, y, 0.72, 0);
+      }
+
+      const merge = (parts, material) => {
+        if (!parts.length) return;
+        const merged = Mesh.MergeMeshes(parts, true, true, undefined, false, false);
+        if (!merged) return;
+        merged.material = material;
+        merged.parent = root;
+        merged.position.set(0, 0, 0);
+        merged.rotation.set(0, 0, 0);
+        merged.isPickable = false;
+        merged.receiveShadows = true;
+        merged.castShadow = true;
+        merged.name = `wall_${index}_${material.name}`;
+      };
+      merge(concreteParts, concrete);
+      merge(darkParts, dark);
+      merge(rustParts, rust);
+      merge(warnParts, warn);
+
+      root.position.set((info.x1 + info.x2) * 0.5, 0, (info.z1 + info.z2) * 0.5);
+      root.rotation.y = angle;
+      this.addCaster(root, 4);
+      this.walls.push({
+        x1: info.x1,
+        z1: info.z1,
+        x2: info.x2,
+        z2: info.z2,
+        radius: Math.max(0.65, info.radius ?? 0.65),
+      });
     });
   }
 

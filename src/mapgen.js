@@ -10,6 +10,7 @@
 // а вторую получаем отражением или поворотом на 180°.
 
 import { MAP, START } from './config.js';
+import { segmentDistance } from './nav.js';
 import { mulberry32 } from './utils.js';
 
 const TAU = Math.PI * 2;
@@ -229,7 +230,10 @@ export function mapSignature(map) {
   const patches = map.oilPatches
     .map((p) => `${Math.round(p.x)},${Math.round(p.z)},${p.role}`)
     .join('|');
-  return `${map.symmetry.key}/${map.style.key}/${patches}`;
+  const walls = (map.walls ?? [])
+    .map((w) => `${Math.round(w.x1)},${Math.round(w.z1)},${Math.round(w.x2)},${Math.round(w.z2)}`)
+    .join('|');
+  return `${map.symmetry.key}/${map.style.key}/${patches}/${walls}`;
 }
 
 // ------------------------------------------------------------- вспомогательное
@@ -566,6 +570,73 @@ export function createMap(seedInput, options = {}) {
     rng, enemyHq, playerHq, START.enemy.marines, enemyPower, oilPatches,
   );
 
+  // ----------------------------------------------------------------- руины стен
+  // Короткие разрушенные стены дают укрытия и узкие проходы. Они строятся
+  // зеркальными парами, поэтому не дают преимущества ни одной стороне.
+  const walls = [];
+  const wallRadius = 0.65;
+  const wallPairs = 2 + (rng() < 0.35 ? 1 : 0);
+
+  const makeWall = (x, z, angle, length) => {
+    const hx = Math.cos(angle) * length * 0.5;
+    const hz = Math.sin(angle) * length * 0.5;
+    return {
+      x1: x - hx,
+      z1: z - hz,
+      x2: x + hx,
+      z2: z + hz,
+      radius: wallRadius,
+    };
+  };
+
+  const wallAvoidPoints = [
+    { point: playerHq, margin: 15 },
+    { point: enemyHq, margin: 15 },
+    { point: playerPower, margin: 10 },
+    { point: enemyPower, margin: 10 },
+    { point: enemyBarracks, margin: 10 },
+    ...oilPatches.map((patch) => ({ point: patch, margin: 7.5 })),
+    ...spawn.player.marines.map((marine) => ({ point: marine, margin: 5 })),
+    ...spawn.enemy.marines.map((marine) => ({ point: marine, margin: 5 })),
+  ];
+
+  const wallSegmentValid = (segment) => {
+    const samples = [
+      { x: segment.x1, z: segment.z1 },
+      { x: segment.x2, z: segment.z2 },
+      { x: (segment.x1 + segment.x2) * 0.5, z: (segment.z1 + segment.z2) * 0.5 },
+    ];
+    if (samples.some((sample) => !inside(sample.x, sample.z, FIELD))) return false;
+    for (const { point, margin } of wallAvoidPoints) {
+      if (segmentDistance(point.x, point.z, segment).distance < margin * S) return false;
+    }
+    for (const other of walls) {
+      if (segmentDistance(other.x1, other.z1, segment).distance < 6 * S) return false;
+      if (segmentDistance(other.x2, other.z2, segment).distance < 6 * S) return false;
+    }
+    return true;
+  };
+
+  for (let i = 0; i < wallPairs; i++) {
+    let placed = false;
+    for (let attempt = 0; attempt < 260 && !placed; attempt++) {
+      const x = range(rng, -FIELD, FIELD);
+      const z = range(rng, -FIELD, FIELD);
+      const [mx, mz] = symmetry.transform(x, z);
+      if (dist(x, z, mx, mz) < 12 * S) continue;
+      const angle = rng() * TAU;
+      const length = range(rng, 8, 15) * S;
+      const first = makeWall(x, z, angle, length);
+      const [ax, az] = symmetry.transform(first.x1, first.z1);
+      const [bx, bz] = symmetry.transform(first.x2, first.z2);
+      const second = { x1: ax, z1: az, x2: bx, z2: bz, radius: wallRadius };
+      if (!wallSegmentValid(first) || !wallSegmentValid(second)) continue;
+      if (segmentDistance(second.x1, second.z1, first).distance < 3 * S) continue;
+      walls.push(first, second);
+      placed = true;
+    }
+  }
+
   // ------------------------------------------------------------------ декор
   const rocks = [];
   const crates = [];
@@ -581,6 +652,9 @@ export function createMap(seedInput, options = {}) {
     return true;
   };
   const oilClear = (x, z, margin) => oilPatches.every((p) => dist(x, z, p.x, p.z) >= margin * S);
+  const wallClear = (x, z, margin) => walls.every(
+    (wall) => segmentDistance(x, z, wall).distance >= margin * S + wall.radius,
+  );
 
   const mirrorYaw = (yaw) => symmetry.mirrorYaw(yaw);
   const pushPair = (list, x, z, props) => {
@@ -602,6 +676,7 @@ export function createMap(seedInput, options = {}) {
     const spot = pickPairSpot(rng, symmetry, (x, z) => (
       baseClear(x, z, 16, 13)
       && oilClear(x, z, 9.5)
+      && wallClear(x, z, 3.5)
       && rocks.every((r) => dist(x, z, r.x, r.z) > 8 * S)
     ));
     if (!spot) continue;
@@ -620,6 +695,7 @@ export function createMap(seedInput, options = {}) {
     const spot = pickPairSpot(rng, symmetry, (x, z) => (
       baseClear(x, z, 11, 9.5)
       && oilClear(x, z, 8)
+      && wallClear(x, z, 3)
       && rocks.every((r) => dist(x, z, r.x, r.z) > 5.5 * S)
       && crates.every((c) => dist(x, z, c.x, c.z) > 7 * S)
     ));
@@ -636,6 +712,7 @@ export function createMap(seedInput, options = {}) {
   const crystalTest = (x, z) => (
     baseClear(x, z, 9.5, 8)
     && oilClear(x, z, 7)
+    && wallClear(x, z, 2.8)
     && rocks.every((r) => dist(x, z, r.x, r.z) > 4.5 * S)
     && crates.every((c) => dist(x, z, c.x, c.z) > 4 * S)
     && crystalCenters.every((c) => dist(x, z, c.x, c.z) > 6 * S)
@@ -680,6 +757,7 @@ export function createMap(seedInput, options = {}) {
     const spot = pickPairSpot(rng, symmetry, (x, z) => (
       baseClear(x, z, 7, 6)
       && oilClear(x, z, 5.5)
+      && wallClear(x, z, 2)
       && rocks.every((r) => dist(x, z, r.x, r.z) > 4.2)
       && pebbles.every((p) => dist(x, z, p.x, p.z) > 0.8)
     ));
@@ -695,6 +773,9 @@ export function createMap(seedInput, options = {}) {
   const matches = (patches) => patches
     .map((p) => `${Math.round(p.x)},${Math.round(p.z)}`)
     .join('|');
+  const wallMatches = walls
+    .map((w) => `${Math.round(w.x1)},${Math.round(w.z1)},${Math.round(w.x2)},${Math.round(w.z2)}`)
+    .join('|');
 
   const map = {
     seed,
@@ -705,6 +786,7 @@ export function createMap(seedInput, options = {}) {
     bounds: { half: MAP.half, clamp: MAP.clamp },
     spawn,
     oilPatches,
+    walls,
     decor: { rocks, crates, crystals, pebbles },
     stats: {
       oil: oilPatches.length,
@@ -712,10 +794,11 @@ export function createMap(seedInput, options = {}) {
       crates: crates.length,
       crystals: crystals.length,
       pebbles: pebbles.length,
+      walls: walls.length,
     },
     signature: '',
   };
-  map.signature = `${symmetry.key}/${style.key}/${matches(oilPatches)}/${matches(rocks)}`;
+  map.signature = `${symmetry.key}/${style.key}/${matches(oilPatches)}/${matches(rocks)}/${wallMatches}`;
   return map;
 }
 

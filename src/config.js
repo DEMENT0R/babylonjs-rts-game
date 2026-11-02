@@ -63,7 +63,7 @@ export const START = {
 };
 
 // order — порядок кнопок в командной панели.
-export const BUILD_ORDER = ['power', 'barracks', 'derrick', 'lab', 'turret', 'depot'];
+export const BUILD_ORDER = ['power', 'barracks', 'derrick', 'lab', 'turret', 'depot', 'wall'];
 export const BUILD_HOTKEYS = ['Z', 'X', 'C', 'V', 'B', 'N', 'M'];
 export const TRAIN_ORDER = ['marine', 'scout', 'tank', 'artillery'];
 export const TRAIN_HOTKEYS = ['Z', 'X', 'C', 'V'];
@@ -330,6 +330,22 @@ export const BUILDINGS = {
       projectile: 'bullet',
       muzzleHeight: 2.7,
     },
+  },
+  wall: {
+    key: 'wall',
+    name: 'Баррикада',
+    role: 'ОБОРОНА',
+    icon: 'wall',
+    desc: 'Дешёвый сегмент стены. Перекрывает путь наземным юнитам: из баррикад можно собрать линию обороны или узкий проход. Не потребляет энергию.',
+    cost: 30,
+    buildTime: 5,
+    hp: 420,
+    armor: 3,
+    radius: 2.4,
+    height: 3.0,
+    powerProduce: 0,
+    powerUse: 0,
+    from: 'hq',
   },
   depot: {
     key: 'depot',

@@ -10,6 +10,7 @@ import {
 } from './babylon.js';
 import { UNITS, BUILDINGS, UPGRADES, FACTIONS, MAP, MESSAGES } from './config.js';
 import { clamp, dist, turnTowards, damp, angleDiff } from './utils.js';
+import { segmentDistance } from './nav.js';
 
 let nextId = 1;
 
@@ -707,6 +708,18 @@ export class Unit extends Entity {
       }
     }
 
+    // Стены — отрезки, поэтому их обходим отдельно от круглых препятствий.
+    for (const wall of this.game.getWallsNear(pos.x, pos.z, this.radius + 3.5)) {
+      const hit = segmentDistance(pos.x, pos.z, wall);
+      if (hit.distance > 0.0001 && hit.distance < wall.radius + this.radius + 2.5) {
+        const nx = (pos.x - hit.x) / hit.distance;
+        const nz = (pos.z - hit.z) / hit.distance;
+        const weight = 1 - clamp((hit.distance - wall.radius - this.radius) / 2.5, 0, 1);
+        ax += nx * weight * 1.6;
+        az += nz * weight * 1.6;
+      }
+    }
+
     if (this.detourTimer > 0) {
       this.detourTimer -= dt;
       ax += -dirZ * this.detourSign * 2.0;
@@ -744,6 +757,25 @@ export class Unit extends Entity {
         pos.z = o.z + (oz / dd) * clear;
       }
     }
+    for (const wall of this.game.getWallsNear(pos.x, pos.z, this.radius + 1.2)) {
+      const hit = segmentDistance(pos.x, pos.z, wall);
+      const clear = wall.radius + this.radius;
+      if (hit.distance < clear) {
+        let nx;
+        let nz;
+        if (hit.distance > 0.0001) {
+          nx = (pos.x - hit.x) / hit.distance;
+          nz = (pos.z - hit.z) / hit.distance;
+        } else {
+          nx = -this.lastDirZ;
+          nz = this.lastDirX;
+        }
+        pos.x = hit.x + nx * clear;
+        pos.z = hit.z + nz * clear;
+      }
+    }
+    pos.x = clamp(pos.x, -MAP.clamp, MAP.clamp);
+    pos.z = clamp(pos.z, -MAP.clamp, MAP.clamp);
 
     const moved = Math.hypot(pos.x - beforeX, pos.z - beforeZ);
     if (moved < this.speed * dt * 0.16) {

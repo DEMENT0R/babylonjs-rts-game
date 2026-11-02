@@ -19,6 +19,11 @@ export const ICONS = {
     <path d="M14 24h7M27 24h7" opacity=".6"/>
     <path d="M24 11V5m0 0-3 3m3-3 3 3"/>
   `),
+  wall: stroke(`
+    <path d="M5 39h38M6 39V27h7v5h7v-5h7v5h7v-5h7v12"/>
+    <path d="M6 32h7M20 32h7M34 32h7" opacity=".55"/>
+    <path d="M10 27v-5h5v5M23 27v-5h5v5M36 27v-5h5v5" opacity=".8"/>
+  `),
   turret: stroke(`
     <path d="M8 41h32M12 41V33h24v8"/>
     <path d="M16 33v-6h16v6"/>
