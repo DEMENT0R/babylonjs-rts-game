@@ -724,23 +724,27 @@ export class ModelFactory {
     const wheels = [];
     for (const side of [-1, 1]) {
       for (let i = 0; i < 3; i++) {
+        // Колесо катится вокруг собственной оси. Ось выносим в отдельный
+        // узел: если крутить rotation.y самого цилиндра, наклон rotation.z
+        // превращает вращение в качание вокруг вертикали.
+        const axle = new TransformNode(`artaxle_${side}_${i}`, this.scene);
+        axle.parent = root;
+        axle.position.set(1.3 * side, 0.5, -1.45 + i * 1.45);
+        axle.rotation.z = Math.PI / 2;
+
         const wheel = MeshBuilder.CreateCylinder(`artwheel_${side}_${i}`, {
           diameter: 0.92,
           height: 0.58,
           tessellation: 12,
         }, this.scene);
-        wheel.rotation.z = Math.PI / 2;
-        wheel.position.set(1.3 * side, 0.5, -1.45 + i * 1.45);
-        add(wheel).material = m.rubber;
+        add(wheel, axle).material = m.rubber;
 
         const hub = MeshBuilder.CreateCylinder(`arthub_${side}_${i}`, {
           diameter: 0.34,
           height: 0.62,
           tessellation: 8,
         }, this.scene);
-        hub.rotation.z = Math.PI / 2;
-        hub.position.set(1.3 * side, 0.5, -1.45 + i * 1.45);
-        add(hub).material = m.steel;
+        add(hub, axle).material = m.steel;
         wheels.push(wheel);
       }
 
