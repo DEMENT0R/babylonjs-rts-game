@@ -1,7 +1,7 @@
 // Простой противник: экономика, инженеры, застройка, ремонт и волны атак.
 
 import { Vector3 } from './babylon.js';
-import { AI, BUILDINGS, MAP, UNITS } from './config.js';
+import { AI, BUILDINGS, MAP, UNITS, UPGRADES } from './config.js';
 import { clamp, dist, shuffle, TAU } from './utils.js';
 
 export class AIController {
@@ -17,6 +17,7 @@ export class AIController {
     this.targetPoint = null;
     this.buildTimer = 5;
     this.repairTimer = 9;
+    this.researchTimer = 25;
     this.assignTimer = 7;
     this.buildIntent = null;
     this.buildCount = 0;
@@ -56,6 +57,7 @@ export class AIController {
     this.defenseTimer -= dt;
     this.buildTimer -= dt;
     this.repairTimer -= dt;
+    this.researchTimer -= dt;
     this.assignTimer -= dt;
 
     if (this.defenseTimer <= 0) {
@@ -77,6 +79,11 @@ export class AIController {
     if (this.repairTimer <= 0) {
       this.repairTimer = 5 + Math.random() * 4;
       this.updateRepairs();
+    }
+
+    if (this.researchTimer <= 0) {
+      this.researchTimer = 6 + Math.random() * 8;
+      this.tryResearch();
     }
 
     if (this.trainTimer <= 0) {
@@ -122,6 +129,9 @@ export class AIController {
     const barracks = game.buildings.filter(
       (b) => b.alive && b.faction === 'enemy' && b.type === 'barracks' && b.complete,
     ).length;
+    const lab = game.buildings.filter(
+      (b) => b.alive && b.faction === 'enemy' && b.type === 'lab' && b.complete,
+    ).length;
     const buildings = game.buildings.filter((b) => b.alive && b.faction === 'enemy').length;
     const power = game.power.enemy;
     const freePatch = this.findFreePatch(game.elapsed > 180 ? 115 : 72);
@@ -129,6 +139,7 @@ export class AIController {
     let type = null;
     if (barracks === 0) type = 'barracks';
     else if (power.used >= power.produced) type = 'power';
+    else if (lab === 0 && game.elapsed > 170 && this.credits > 320) type = 'lab';
     else if (freePatch) type = 'derrick';
     else if (barracks < 2 && game.elapsed > 135) type = 'barracks';
     else if (power.produced - power.used < 8) type = 'power';
@@ -218,6 +229,27 @@ export class AIController {
     for (const b of buildings) {
       if (b.hp < b.maxHp * 0.7) b.repairing = true;
     }
+  }
+
+  /** ИИ тоже исследует улучшения в техцентре, когда накопил на них кредиты. */
+  tryResearch() {
+    const game = this.game;
+    const labs = game.buildings.filter(
+      (b) => b.alive && b.faction === 'enemy' && b.type === 'lab'
+        && b.complete && b.queue.length === 0,
+    );
+    if (!labs.length) return;
+    const available = Object.keys(UPGRADES).filter(
+      (key) => !game.upgrades.enemy.has(key),
+    );
+    if (!available.length) return;
+    // Иногда Рой откладывает науку в пользу армии — ещё одна вариация.
+    if (Math.random() < 0.25) return;
+    const key = available[Math.floor(Math.random() * available.length)];
+    const def = UPGRADES[key];
+    if (!def || this.credits < def.cost + 80) return;
+    const lab = labs[Math.floor(Math.random() * labs.length)];
+    game.startUpgrade(lab, key);
   }
 
   // ------------------------------------------------------------- армия
