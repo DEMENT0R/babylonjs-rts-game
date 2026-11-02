@@ -2838,3 +2838,43 @@ body.is-touch .touch-hint {
     grid-template-columns: repeat(5, 1fr);
   }
 }
+
+@media (orientation: portrait) and (max-height: 640px) {
+  :root {
+    --hud-bottom-height: 250px;
+  }
+
+  #hud-bottom {
+    grid-template-rows: 88px minmax(0, 1fr);
+  }
+
+  #minimap-panel,
+  #selection-panel {
+    height: 88px;
+  }
+
+  #minimap-panel .minimap-frame {
+    width: 68px;
+    height: 68px;
+    margin-top: 0;
+  }
+
+  .portrait {
+    width: 40px;
+    height: 40px;
+  }
+
+  .portrait svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .sel-empty p {
+    display: none;
+  }
+
+  .cmd-grid,
+  .cmd-grid.is-dense {
+    grid-auto-rows: minmax(34px, 1fr);
+  }
+}
