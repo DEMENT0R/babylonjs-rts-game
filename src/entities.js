@@ -496,6 +496,7 @@ export class Unit extends Entity {
     const faction = this.faction;
     this.game.fx.muzzle(muzzle, faction, this.type === 'tank' ? 1.7 : 1);
     this.game.fx.casing(muzzle, this.root.rotation.y, kind === 'shell' ? 'shell' : 'rifle');
+    this.game.audio?.shot(this.type, muzzle);
 
     const speed = kind === 'shell' ? 54 : 94;
     const shotDistance = dist(this.position.x, this.position.z, target.position.x, target.position.z);
@@ -512,6 +513,7 @@ export class Unit extends Entity {
           if (this.game.over) return;
           this.game.splashDamage(impact, this.def.splash, this.damage, this);
           this.game.fx.explode(impact, 0.8, { scorch: true });
+          this.game.audio?.explosion(impact, 0.8);
         },
       });
       return;
@@ -527,6 +529,7 @@ export class Unit extends Entity {
         if (this.game.over) return;
         this.game.dealDamage(target, this.damage, this);
         this.game.fx.hit(targetPoint, target.faction, 0.7);
+        this.game.audio?.impact(targetPoint);
       },
     });
   }
@@ -562,6 +565,7 @@ export class Unit extends Entity {
     const point = new Vector3(next.x, next.y, next.z);
     const shotDistance = dist(this.position.x, this.position.z, point.x, point.z);
     this.game.fx.muzzle(muzzle, this.faction, 1.35);
+    this.game.audio?.shot('artillery', muzzle);
     this.recoil = Math.max(this.recoil, 0.65);
     this.game.fx.fireProjectile({
       from: muzzle,
@@ -575,6 +579,7 @@ export class Unit extends Entity {
         this.game.splashDamage(impact, this.def.splash, this.damage, this);
         this.game.fx.explode(impact, 0.72, { scorch: true });
         this.game.fx.impactDust(impact, 1.1);
+        this.game.audio?.explosion(impact, 0.72);
       },
     });
   }
@@ -1141,6 +1146,7 @@ export class Building extends Entity {
     this.game.fx.muzzle(muzzle, this.faction, 1.15);
     const aimYaw = Math.atan2(target.position.x - this.position.x, target.position.z - this.position.z);
     this.game.fx.casing(muzzle, aimYaw, 'turret');
+    this.game.audio?.shot('turret', muzzle);
     this.game.fx.fireProjectile({
       from: muzzle,
       to: targetPoint,

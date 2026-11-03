@@ -20,7 +20,7 @@ import { AIController } from './ai.js';
 let nextBuildingId = 1;
 
 export class Game {
-  constructor({ scene, camera, factory, world, fx, graphics }) {
+  constructor({ scene, camera, factory, world, fx, graphics, audio, audioSettings }) {
     this.scene = scene;
     this.camera = camera;
     this.factory = factory;
@@ -28,6 +28,8 @@ export class Game {
     this.map = world.map;
     this.fx = fx;
     this.graphics = graphics;
+    this.audio = audio ?? null;
+    this.audioSettings = audioSettings ?? null;
     this.ui = null;
     this.input = null;
 
@@ -215,6 +217,7 @@ export class Game {
     }
     this.alertCd = 10;
     this.notify('Наша база под атакой!', 'danger', 'base-attack', 0, 9);
+    this.audio?.ui('alert');
     if (this.ui) {
       this.ui.alert();
       this.ui.ping(attacker.position.x, attacker.position.z, '#ff4b3e');
@@ -592,6 +595,7 @@ export class Game {
       this.primary = e;
     }
     if (this.selected.size === 0) this.primary = null;
+    if (this.selected.size > 0) this.audio?.ui('select');
     if (this.ui) this.ui.onSelectionChanged();
   }
 
@@ -686,12 +690,14 @@ export class Game {
     const units = this.selectedUnits();
     if (!units.length) return;
     this.issueFormationMove(units, point, 'move');
+    this.audio?.order('move');
   }
 
   commandAttackMove(point) {
     const units = this.selectedUnits();
     if (!units.length) return;
     this.issueFormationMove(units, point, 'attackMove');
+    this.audio?.order('attack');
   }
 
   commandAttack(target) {
@@ -699,6 +705,7 @@ export class Game {
     if (!units.length || !target || !target.alive) return;
     for (const u of units) u.issueAttack(target);
     this.fx.orderMarker(target.position, 'attack');
+    this.audio?.order('attack');
   }
 
   commandStop() {
@@ -1031,6 +1038,7 @@ export class Game {
     pos.y = entity.isBuilding ? 1.6 : 0.9;
     this.fx.explode(pos, scale, { scorch: entity.isBuilding || entity.type === 'tank' });
     this.fx.buildDust(entity.position, entity.isBuilding ? 1.5 : 0.5);
+    this.audio?.explosion(pos, scale);
 
     if (entity.faction === 'enemy') this.stats.kills++;
     if (entity.faction === 'player') this.stats.losses++;

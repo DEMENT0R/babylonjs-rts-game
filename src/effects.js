@@ -286,9 +286,10 @@ export class Effects {
     this.casingPos = new Vector3();
     this.casingQuat = new Quaternion();
     this.casingMatrix = new Matrix();
+    // Колбэк на первое касание земли: звук гильзы подключается снаружи.
+    this.onCasingLand = null;
 
-    this.light = new PointLight('fxFlash', new Vector3(0, 5, 0), scene);
-    this.light.intensity = 0;
+    this.light = new PointLight('fxFlash', new Vector3(0, 5, 0), scene);    this.light.intensity = 0;
     this.light.range = 26;
     this.light.diffuse = color('#ffae5a');
     this.light.specular = color('#ff8a3a');
@@ -765,6 +766,7 @@ export class Effects {
           c.sy *= 0.45;
           c.sz *= 0.45;
           c.bounces++;
+          if (c.bounces === 1) this.onCasingLand?.({ x: c.x, y: c.y, z: c.z });
           // Мелкая гильза быстро успокаивается, тяжёлая ещё катится.
           if (Math.abs(c.vy) < 0.6 || c.bounces > 4) {
             c.settled = true;

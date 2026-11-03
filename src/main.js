@@ -16,7 +16,8 @@ import { Effects } from './effects.js';
 import { Game } from './game.js';
 import { UI } from './ui.js';
 import { Input } from './input.js';
-import { GraphicsSettings } from './settings.js';
+import { GraphicsSettings, AudioSettings } from './settings.js';
+import { AudioEngine } from './audio.js';
 
 function fatal(err) {
   console.error(err);
@@ -106,11 +107,27 @@ function boot() {
   if (world.sky) glow.addExcludedMesh(world.sky);
   const fx = new Effects(scene);
 
+  const audio = new AudioEngine({ camera, map });
+  fx.onCasingLand = (position) => audio.casing(position);
+
   const graphics = new GraphicsSettings({ engine, glow, world });
   graphics.load();
   graphics.apply();
 
-  const game = new Game({ scene, camera, factory, world, fx, graphics });
+  const audioSettings = new AudioSettings({ audio });
+  audioSettings.load();
+  audioSettings.apply();
+
+  const game = new Game({
+    scene,
+    camera,
+    factory,
+    world,
+    fx,
+    graphics,
+    audio,
+    audioSettings,
+  });
   const ui = new UI(game);
   const input = new Input(game);
 
@@ -128,6 +145,7 @@ function boot() {
     if (game.started && !game.paused && !game.over) game.update(dt);
     input.update(dt);
     world.update(dt, camera);
+    audio.update(dt);
     ui.tick(dt);
     scene.render();
 
@@ -136,7 +154,7 @@ function boot() {
 
   // Отладочные инструменты доступны только с ?debug и не мешают обычной игре.
   if (new URLSearchParams(window.location.search).has('debug')) {
-    window.__GAME__ = { engine, scene, camera, game, ui, input, world, map, fx, factory, graphics };
+    window.__GAME__ = { engine, scene, camera, game, ui, input, world, map, fx, factory, graphics, audio, audioSettings };
     window.game = game;
     window.__MAP__ = map;
     window.__advance = (seconds = 1) => {

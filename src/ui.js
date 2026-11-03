@@ -19,7 +19,7 @@ import {
 import { icon } from './icons.js';
 import { randomSeed, seedUrl } from './mapgen.js';
 import { CHANGELOG, GAME_VERSION } from './changelog.js';
-import { GRAPHICS_LABELS, GRAPHICS_OPTIONS } from './settings.js';
+import { GRAPHICS_LABELS, GRAPHICS_OPTIONS, AUDIO_LABELS } from './settings.js';
 import { clamp, formatTime, plural, mulberry32, esc } from './utils.js';
 
 export class UI {
@@ -94,14 +94,19 @@ export class UI {
         this.refreshGraphicsControls();
         return;
       }
-      const action = e.target.closest('[data-action]')?.dataset.action;
-      if (!action) return;
+      const action = e.target.closest('[data-action]')?.dataset.action;      if (!action) return;
       if (action === 'start') this.startGame();
       else if (action === 'resume') this.resume();
       else if (action === 'restart') window.location.reload();
       else if (action === 'newmap') this.newMap();
       else if (action === 'changelog') this.openChangelog();
       else if (action === 'back') this.backFromOverlay();
+    });
+    this.el.overlay.addEventListener('input', (e) => {
+      const range = e.target.closest('[data-audio]');
+      if (!range) return;
+      this.game.audioSettings?.set(range.dataset.audio, range.value);
+      this.refreshAudioControls();
     });
     this.el.commands.addEventListener('click', (e) => {
       const btn = e.target.closest('.cmd');
@@ -188,6 +193,7 @@ export class UI {
         <p class="touch-hint">На сенсорном экране: тап — выбрать или отдать приказ, два пальца — панорама и зум, кнопки справа — камера и отмена режима.</p>
       </div>
       ${this.graphicsBlock()}
+      ${this.audioBlock()}
       <div class="overlay-actions">
         <button class="btn-primary" data-action="start">НАЧАТЬ ОПЕРАЦИЮ <span>→</span></button>
         <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
@@ -276,6 +282,7 @@ export class UI {
         </div>
       </div>
       ${this.graphicsBlock()}
+      ${this.audioBlock()}
       <div class="overlay-actions">
         <button class="btn-primary" data-action="resume">ПРОДОЛЖИТЬ <span>→</span></button>
         <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
@@ -414,6 +421,37 @@ export class UI {
       const active = values[btn.dataset.graphics] === btn.dataset.value;
       btn.classList.toggle('is-active', active);
       btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  // ------------------------------------------------------------------ звук
+  audioBlock() {
+    const values = this.game.audioSettings?.get?.() ?? {};
+    const rows = Object.entries(AUDIO_LABELS).map(([key, label]) => {
+      const value = Number(values[key] ?? 0);
+      return `
+        <div class="audio-row">
+          <span class="graphics-label">${label}</span>
+          <input class="audio-range" type="range" min="0" max="100" step="5"
+            value="${value}" data-audio="${key}" aria-label="${label}" />
+          <output class="audio-value" data-audio-value="${key}">${value}%</output>
+        </div>`;
+    }).join('');
+    return `
+      <div class="graphics-block audio-block">
+        <div class="controls-title">ЗВУК <span>// синтез без файлов</span></div>
+        <div class="audio-grid">${rows}</div>
+      </div>`;
+  }
+
+  refreshAudioControls() {
+    const values = this.game.audioSettings?.get?.();
+    if (!values) return;
+    this.el.overlay.querySelectorAll('[data-audio]').forEach((input) => {
+      const value = Number(values[input.dataset.audio] ?? 0);
+      if (Number(input.value) !== value) input.value = String(value);
+      const out = this.el.overlay.querySelector(`[data-audio-value="${input.dataset.audio}"]`);
+      if (out) out.textContent = `${value}%`;
     });
   }
 

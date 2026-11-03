@@ -1,6 +1,7 @@
-// Настройки графики: значения по умолчанию, хранение и применение.
+// Настройки графики и звука: значения по умолчанию, хранение и применение.
 
 const STORAGE_KEY = 'gelios.graphics.v1';
+const AUDIO_KEY = 'gelios.audio.v1';
 
 export const GRAPHICS_DEFAULTS = Object.freeze({
   shadows: 'medium',
@@ -96,5 +97,81 @@ export class GraphicsSettings {
     }
     if (this.glow) this.glow.isEnabled = this.values.glow === 'on';
     this.world.setShadowMode(this.values.shadows);
+  }
+}
+
+// ------------------------------------------------------------------ звук
+
+export const AUDIO_DEFAULTS = Object.freeze({
+  master: '70',
+  sfx: '80',
+});
+
+export const AUDIO_LABELS = {
+  master: 'ОБЩАЯ ГРОМКОСТЬ',
+  sfx: 'ЭФФЕКТЫ',
+};
+
+/** Звук живёт в процентах: 0 — тишина, 100 — полная громкость. */
+export class AudioSettings {
+  constructor({ audio }) {
+    this.audio = audio;
+    this.values = { ...AUDIO_DEFAULTS };
+    this.onChange = null;
+  }
+
+  load() {
+    try {
+      const raw = localStorage.getItem(AUDIO_KEY);
+      if (!raw) return this.values;
+      const saved = JSON.parse(raw);
+      for (const key of Object.keys(AUDIO_DEFAULTS)) {
+        if (this.isValid(key, saved?.[key])) this.values[key] = String(saved[key]);
+      }
+    } catch {
+      // localStorage может быть недоступен — играем на значениях по умолчанию.
+    }
+    return this.values;
+  }
+
+  isValid(key, value) {
+    if (!(key in AUDIO_DEFAULTS)) return false;
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 0 && n <= 100;
+  }
+
+  get(key) {
+    return key ? this.values[key] : { ...this.values };
+  }
+
+  set(key, value) {
+    const n = Math.round(Number(value));
+    if (!this.isValid(key, n)) return false;
+    const next = String(n);
+    if (this.values[key] === next) return false;
+    this.values[key] = next;
+    this.save();
+    this.apply();
+    this.onChange?.(this.get());
+    return true;
+  }
+
+  reset() {
+    this.values = { ...AUDIO_DEFAULTS };
+    this.save();
+    this.apply();
+    this.onChange?.(this.get());
+  }
+
+  save() {
+    try {
+      localStorage.setItem(AUDIO_KEY, JSON.stringify(this.values));
+    } catch {
+      // Приватный режим или запрет хранилища не должны ломать игру.
+    }
+  }
+
+  apply() {
+    this.audio?.setVolumes(this.values);
   }
 }
