@@ -178,12 +178,11 @@ export class Entity {
       const d = dist(this.position.x, this.position.z, source.position.x, source.position.z);
       const leash = Math.max(this.aggro, this.range) + 30;
       const explicitAttack = this.order?.type === 'attack' && this.order.target !== source;
-      if (!busyBuilding && !explicitAttack && d <= leash) {
-        // Приказ на движение сохраняем как точку сбора: после боя юнит
-        // вернётся к выполнению, а не останется стоять на месте.
-        if (this.order?.type === 'move') {
-          this.order = { type: 'attackMove', x: this.order.x, z: this.order.z };
-        }
+      // Явный приказ на перемещение важнее ответного огня: отряд идёт в
+      // указанную точку, даже если по нему стреляют. Разворачивается он уже
+      // после прибытия или когда игрок сам отдаст приказ атаковать.
+      const explicitMove = this.order?.type === 'move';
+      if (!busyBuilding && !explicitAttack && !explicitMove && d <= leash) {
         this.target = source;
         this.retaliateTimer = 6;
       }
