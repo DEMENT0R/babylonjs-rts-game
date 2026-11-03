@@ -17,31 +17,30 @@ import {
   ParticleSystem,
 } from './babylon.js';
 import { MAP } from './config.js';
-import { mulberry32, rngRange, rngPick } from './utils.js';
+import { clamp, mulberry32, rngRange, rngPick } from './utils.js';
 
 const SUN_DIR = new Vector3(-0.52, 0.46, 0.54).normalize();
 
-// Солнце и карта теней закреплены над центром поля боя. Дистанция до света
-// задаёт глубину теневой камеры, а extent с запасом накрывает углы карты.
-const SUN_DISTANCE = 150;
-const SHADOW_EXTENT = 132;
-const SHADOW_MIN_Z = 10;
-const SHADOW_MAX_Z = 320;
-const SHADOW_DARKNESS = 0.33;
+// Теневая камера закреплена над центром поля боя: квадрат со стороной
+// 2 * SHADOW_EXTENT накрывает игровую зону целиком, поэтому тени есть по всей
+// карте, а не только там, куда случайно попал взгляд камеры.
+//
+// Двигать солнце вслед за камерой нельзя: карта теней тогда рисуется новой
+// камерой, а материалы получают прежнюю матрицу тени, и тени уезжают в
+// сторону — на экране они остаются только в одном месте, либо пропадают.
+const SHADOW_EXTENT = 128;
+const SUN_DISTANCE = 170;
+const SHADOW_MIN_Z = 60;
+const SHADOW_MAX_Z = SUN_DISTANCE + 150;
+const SHADOW_DARKNESS = 0.42;
 
 const SHADOW_MODES = {
-  high: { mapSize: 2048, blurKernel: 24 },
-  medium: { mapSize: 1024, blurKernel: 18 },
-  low: { mapSize: 512, blurKernel: 12 },
+  high: { mapSize: 2048, quality: 2 },
+  medium: { mapSize: 1024, quality: 1 },
+  low: { mapSize: 512, quality: 0 },
   off: null,
 };
 
-// Оси теневой камеры: по ним удобно привязывать её к сетке текселей.
-const LIGHT_DIR = SUN_DIR.scale(-1);
-const LIGHT_RIGHT = Vector3.Cross(Vector3.Up(), LIGHT_DIR).normalize();
-const LIGHT_UP = Vector3.Cross(LIGHT_DIR, LIGHT_RIGHT).normalize();
-// Babylon расширяет фиксированный ортобокс на shadowOrthoScale (10% с каждой стороны).
-const SHADOW_HALF_EXTENT = SHADOW_EXTENT * 1.2;
 
 export class World {
   constructor(scene, factory, map) {
@@ -85,8 +84,8 @@ export class World {
     this.sun.specular = Color3.FromHexString(style.sunSpecular);
     this.sun.intensity = 1.7;
 
-    // Теневой объём центрирован на мире и не следует за камерой: так вся карта
-    // получает тени, а при панорамировании они не «уезжают» и не мерцают.
+    // Теневая камера смотрит из точки над центром поля вниз по направлению
+    // солнца. Ортобокс фиксирован и повторяет карту, поэтому свет неподвижен.
     this.sun.shadowMinZ = SHADOW_MIN_Z;
     this.sun.shadowMaxZ = SHADOW_MAX_Z;
     this.sun.autoUpdateExtends = false;
@@ -575,58 +574,57 @@ export class World {
     this.dust.start();
   }
 
-  /** Держит теневой объём над точкой, куда смотрит камера. */
-  update(dt, camera) {
-    if (!this.shadow || !camera) return;
-    const focus = camera.target;
-    const texel = (2 * SHADOW_HALF_EXTENT) / this.shadow.mapSize;
-    const lx = focus.x * LIGHT_RIGHT.x + focus.z * LIGHT_RIGHT.z;
-    const ly = focus.x * LIGHT_UP.x + focus.z * LIGHT_UP.z;
-    // Привязка к текселям убирает дрожание теней при панорамировании.
-    const sx = (Math.floor(lx / texel) + 0.5) * texel;
-    const sy = (Math.floor(ly / texel) + 0.5) * texel;
-    const ox = (sx - lx) * LIGHT_RIGHT.x + (sy - ly) * LIGHT_UP.x;
-    const oz = (sx - lx) * LIGHT_RIGHT.z + (sy - ly) * LIGHT_UP.z;
-    this.sun.position.set(
-      focus.x + ox + SUN_DIR.x * SUN_DISTANCE,
-      SUN_DIR.y * SUN_DISTANCE,
-      focus.z + oz + SUN_DIR.z * SUN_DISTANCE,
-    );
-  }
-
   _createShadow(quality) {
-    this.shadow = new ShadowGenerator(quality.mapSize, this.sun);
-    this.shadow.useBlurExponentialShadowMap = true;
-    this.shadow.blurKernel = quality.blurKernel;
-    this.shadow.setDarkness(SHADOW_DARKNESS);
+    const generator = new ShadowGenerator(quality.mapSize, this.sun);
+    // PCF вместо ESM: мягкие и предсказуемые тени на любой видеокарте.
+    // ESM заметно «плывёт» на половине драйверов и оставляет тени только
+    // там, где хранилище глубины успело усредниться.
+    generator.usePercentageCloserFiltering = true;
+    generator.filteringQuality = quality.quality;
+    generator.setDarkness(SHADOW_DARKNESS);
+    generator.bias = 0.0009;
+    generator.normalBias = 0.035;
+    this.shadow = generator;
     this.shadow.getShadowMap().refreshRate = 1;
     this.casterRoots.forEach((max, root) => this._addCasterMeshes(root, max));
   }
 
-  /** Переключает качество теней из меню графики. */
+  /**
+   * Переключает качество теней из меню графики.
+   *
+   * Тени не выключаются «по-настоящему»: если убрать тени у света, материалы
+   * пересобирают шейдер и часть зданий пропадает с экрана. Вместо этого
+   * «выключено» очищает список отбрасывающих тень объектов: карта теней
+   * остаётся пустой, теневая выборка ничего не затемняет, а лишние draw call'ы
+   * действительно исчезают.
+   */
   setShadowMode(mode = 'medium') {
     const next = Object.prototype.hasOwnProperty.call(SHADOW_MODES, mode) ? mode : 'medium';
     if (next === this.shadowMode) return;
     this.shadowMode = next;
-    if (next === 'off') {
-      this.sun.shadowEnabled = false;
-      this.shadow?.dispose();
-      this.shadow = null;
-      return;
-    }
-    this.sun.shadowEnabled = true;
-    const quality = SHADOW_MODES[next];
     if (!this.shadow) {
-      this._createShadow(quality);
+      this._createShadow(SHADOW_MODES[next] ?? SHADOW_MODES.medium);
       return;
     }
+    if (next === 'off') {
+      this.shadow.getShadowMap().renderList.length = 0;
+      return;
+    }
+    const quality = SHADOW_MODES[next];
     if (this.shadow.mapSize !== quality.mapSize) this.shadow.mapSize = quality.mapSize;
-    this.shadow.blurKernel = quality.blurKernel;
+    this.shadow.filteringQuality = quality.quality;
     this.shadow.getShadowMap().refreshRate = 1;
+    this._rebuildShadowList();
+  }
+
+  _rebuildShadowList() {
+    if (!this.shadow) return;
+    this.shadow.getShadowMap().renderList.length = 0;
+    this.casterRoots.forEach((max, root) => this._addCasterMeshes(root, max));
   }
 
   _addCasterMeshes(root, max = 8) {
-    if (!this.shadow) return;
+    if (!this.shadow || this.shadowMode === 'off') return;
     if (!root.getChildMeshes) {
       this.shadow.addShadowCaster(root);
       return;
