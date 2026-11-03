@@ -305,7 +305,13 @@ export class Unit extends Entity {
       return null;
     }
     // Под обстрелом инженер сначала отвечает, а не подставляет спину.
-    if (this.def.repairer && this.canFight && this.acquireTarget(this.range)) return null;
+    if (
+      this.def.repairer
+      && this.canFight
+      && (this.retaliateTimer > 0 || this.acquireTarget(this.range))
+    ) {
+      return null;
+    }
     const seek = this.def.healer ? FIELD_SUPPORT.medicSeekRadius : FIELD_SUPPORT.engineerSeekRadius;
     let best = null;
     let bestScore = Infinity;
