@@ -19,6 +19,8 @@ export class AIController {
     this.repairTimer = 9;
     this.researchTimer = 25;
     this.assignTimer = 7;
+    this.scoutTimer = 12 + Math.random() * 8;
+    this.lastScoutNoticeAt = -999;
     this.buildIntent = null;
     this.buildCount = 0;
     this.lastBuildNoticeAt = -999;
@@ -59,6 +61,7 @@ export class AIController {
     this.repairTimer -= dt;
     this.researchTimer -= dt;
     this.assignTimer -= dt;
+    this.scoutTimer -= dt;
 
     if (this.defenseTimer <= 0) {
       this.defenseTimer = 1.5;
@@ -84,6 +87,11 @@ export class AIController {
     if (this.researchTimer <= 0) {
       this.researchTimer = 6 + Math.random() * 8;
       this.tryResearch();
+    }
+
+    if (this.scoutTimer <= 0) {
+      this.scoutTimer = 10 + Math.random() * 8;
+      this.sendScouts();
     }
 
     if (this.trainTimer <= 0) {
@@ -142,13 +150,15 @@ export class AIController {
     ).length;
     const buildings = game.buildings.filter((b) => b.alive && b.faction === 'enemy').length;
     const power = game.power.enemy;
-    const freePatch = this.findFreePatch(game.elapsed > 180 ? 115 : 72);
+    const freePatch = this.findFreePatch();
     const armyUsed = game.getArmyUsed('enemy') + game.getQueuedSupply('enemy');
     const armyCap = game.getArmyCap('enemy');
 
     let type = null;
     if (barracks === 0) type = 'barracks';
     else if (power.used >= power.produced) type = 'power';
+    // Разведанное месторождение — приоритет: вышка дешёвая и сразу платит.
+    else if (freePatch && this.credits > BUILDINGS.derrick.cost + 60) type = 'derrick';
     else if (armyCap - armyUsed < 6 && depots < 5 && this.credits > BUILDINGS.depot.cost + 30) {
       type = 'depot';
     } else if (turrets === 0 && game.elapsed > 130) {
@@ -158,7 +168,6 @@ export class AIController {
       && this.credits > BUILDINGS.turret.cost + 80) {
       type = 'turret';
     } else if (lab === 0 && game.elapsed > 170 && this.credits > 320) type = 'lab';
-    else if (freePatch) type = 'derrick';
     else if (barracks < 2 && game.elapsed > 135) type = 'barracks';
     else if (power.produced - power.used < 8) type = 'power';
     else if (game.elapsed > 240 && buildings < 20 && this.credits > 520) {
@@ -169,14 +178,17 @@ export class AIController {
     this.buildIntent = type;
     if (!type) return;
     const def = BUILDINGS[type];
-    if (!def || this.credits < def.cost + 30) return;
+    // На вышку Рой копит без запаса: она сразу возвращает вложенное, а с
+    // резервом в 30 кредитов ИИ не мог накопить на неё полминуты.
+    const reserve = type === 'derrick' ? 0 : 30;
+    if (!def || this.credits < def.cost + reserve) return;
     this.buildStructure(type);
   }
 
   buildStructure(type) {
     if (!type || this.credits < BUILDINGS[type].cost) return false;
     const spot = type === 'derrick'
-      ? this.findFreePatch(this.game.elapsed > 180 ? 115 : 72)
+      ? this.findFreePatch()
       : this.findBuildSpot(type);
     if (!spot) {
       this.buildIntent = null;
@@ -202,10 +214,80 @@ export class AIController {
     return true;
   }
 
-  findFreePatch(range) {
+  findFreePatch() {
     const hq = this.enemyHq();
     if (!hq) return null;
-    return this.game.findOilPatch(hq.position.x, hq.position.z, range);
+    const game = this.game;
+    // Чем дольше идёт бой, тем дальше Рой готов тянуться за нефтью. Важно
+    // только то, что месторождение уже разведано: в тумане его не видно.
+    const limit = Math.min(200, 62 + game.elapsed * 0.55);
+    let best = null;
+    let bestD = Infinity;
+    for (const patch of game.world.oilPatches ?? []) {
+      if (patch.derrick && patch.derrick.alive) continue;
+      if (!game.isExploredBy('enemy', patch.x, patch.z)) continue;
+      const d = dist(hq.position.x, hq.position.z, patch.x, patch.z);
+      if (d > limit || d >= bestD) continue;
+      bestD = d;
+      best = patch;
+    }
+    return best;
+  }
+
+  /**
+   * Куда отправить разведку: сначала к неразведанным месторождениям — они
+   * окупают разведку, — и только потом к любой неисследованной точке.
+   */
+  scoutTarget(point) {
+    const game = this.game;
+    let best = null;
+    let bestD = Infinity;
+    for (const patch of game.world.oilPatches ?? []) {
+      if (patch.derrick && patch.derrick.alive) continue;
+      if (game.isExploredBy('enemy', patch.x, patch.z)) continue;
+      const d = dist(point.x, point.z, patch.x, patch.z);
+      if (d < bestD) {
+        bestD = d;
+        best = { x: patch.x, z: patch.z };
+      }
+    }
+    if (best) return best;
+    return game.fog.nearestUnexplored(point.x, point.z, 'enemy');
+  }
+
+  /**
+   * Разведка: если у Роя есть свободные бойцы, они идут к ближайшей
+   * неисследованной области. Без этого ИИ не находил ни новых месторождений,
+   * ни подходящих путей к базе игрока.
+   */
+  sendScouts() {
+    const game = this.game;
+    const hq = this.enemyHq();
+    if (!hq || !game.fog) return;
+    const target = this.scoutTarget(hq.position);
+    if (!target) return;
+    const free = game.units.filter((u) => (
+      u.alive
+      && u.faction === 'enemy'
+      && !u.def.builder
+      && (!u.order || u.order.type === 'move' || u.order.type === 'attackMove' || u.order.type === 'hold')
+    ));
+    if (!free.length) return;
+    // Быстрые юниты справляются с разведкой лучше: они успевают вернуться.
+    free.sort((a, b) => (b.speed ?? 0) - (a.speed ?? 0));
+    const count = Math.min(free.length, 1 + Math.floor(Math.random() * 2));
+    for (let i = 0; i < count; i++) {
+      const u = free[i];
+      u.issueAttackMove(
+        target.x + (Math.random() - 0.5) * 8,
+        target.z + (Math.random() - 0.5) * 8,
+      );
+      u.retaliateTimer = Math.max(u.retaliateTimer ?? 0, 8);
+    }
+    if (game.elapsed - this.lastScoutNoticeAt > 150) {
+      this.lastScoutNoticeAt = game.elapsed;
+      game.notify('Разведка противника прощупывает сектор.', 'warn', 'ai-scout', 0, 4);
+    }
   }
 
   /** Свободное место под здание в окрестностях улья. */
@@ -412,7 +494,13 @@ export class AIController {
 
   /** Выбирает цель рейда: вышки и электростанции вкуснее казарм. */
   pickRaidTarget(buildings) {
-    const candidates = buildings.filter((b) => b.alive && b.type !== 'hq');
+    const candidates = buildings.filter((b) => (
+      b.alive
+      && b.type !== 'hq'
+      // Рейд идёт по разведанным постройкам: того, чего Рой не видел,
+      // он просто не знает.
+      && this.game.isExploredBy('enemy', b.position.x, b.position.z)
+    ));
     if (!candidates.length) return null;
     const derricks = candidates.filter((b) => b.type === 'derrick');
     const pool = derricks.length && Math.random() < 0.7 ? derricks : candidates;

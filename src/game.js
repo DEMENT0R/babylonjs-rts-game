@@ -483,7 +483,9 @@ export class Game {
     for (const u of this.units) {
       if (!u.alive || u.faction !== faction || !u.def.builder) continue;
       const d = dist(u.position.x, u.position.z, building.position.x, building.position.z);
-      if (d > 90) continue;
+      // Инженер может дойти и до дальнего месторождения: стройплощадку на
+      // другом конце карты иначе было бы просто не с кем начать.
+      if (d > 240) continue;
       const assignedElsewhere = u.assistBuilding
         && u.assistBuilding !== building
         && u.assistBuilding.alive
