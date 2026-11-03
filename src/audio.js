@@ -3,6 +3,7 @@
 // страницы, а в бою только воспроизводятся.
 
 import { Ambient } from './ambient.js';
+import { RADIO_SPECS } from './radio.js';
 
 const SAMPLE_RATE = 44100;
 const MAX_VOICES = 24;
@@ -230,47 +231,6 @@ function buildBeep(ctx, seed, variant, p) {
   osc.stop(p.dur + 0.05);
 }
 
-/** Рация: щелчок, шорох и короткий ответный бип. */
-function buildRadio(ctx, seed, variant) {
-  const out = ctx.createGain();
-  out.gain.value = 0.4;
-  out.connect(ctx.destination);
-
-  const click = ctx.createBufferSource();
-  click.buffer = noiseBuffer(ctx, 0.05, seed);
-  const clickHigh = ctx.createBiquadFilter();
-  clickHigh.type = 'highpass';
-  clickHigh.frequency.value = 1800;
-  const clickGain = decayGain(ctx, 0.8, 0.002, 0.03);
-  click.connect(clickHigh).connect(clickGain).connect(out);
-  click.start(0);
-  click.stop(0.05);
-
-  const hiss = ctx.createBufferSource();
-  hiss.buffer = noiseBuffer(ctx, 0.2, seed + 41);
-  const hissBand = ctx.createBiquadFilter();
-  hissBand.type = 'bandpass';
-  hissBand.frequency.value = 1100;
-  hissBand.Q.value = 1.8;
-  const hissGain = decayGain(ctx, 0.22, 0.01, 0.14);
-  hiss.connect(hissBand).connect(hissGain).connect(out);
-  hiss.start(0.03);
-  hiss.stop(0.2);
-
-  const beep = ctx.createOscillator();
-  beep.type = 'sine';
-  beep.frequency.setValueAtTime(760 + variant * 30, 0.05);
-  beep.frequency.setValueAtTime(560, 0.13);
-  const beepGain = ctx.createGain();
-  beepGain.gain.setValueAtTime(0.0001, 0.05);
-  beepGain.gain.exponentialRampToValueAtTime(0.3, 0.06);
-  beepGain.gain.setValueAtTime(0.3, 0.12);
-  beepGain.gain.exponentialRampToValueAtTime(0.0001, 0.18);
-  beep.connect(beepGain).connect(out);
-  beep.start(0.05);
-  beep.stop(0.2);
-}
-
 /** Тревога: два настойчивых сигнала. */
 function buildAlert(ctx, seed, variant) {
   const out = ctx.createGain();
@@ -393,11 +353,6 @@ const SOUND_SPECS = {
     count: 2,
     build: (ctx, seed, v) => buildBeep(ctx, seed, v, { level: 0.22, from: 1180 + v * 40, to: 980, dur: 0.06 }),
   },
-  uiOrder: {
-    seconds: 0.3,
-    count: 2,
-    build: (ctx, seed, v) => buildRadio(ctx, seed, v),
-  },
   uiError: {
     seconds: 0.2,
     count: 2,
@@ -423,6 +378,16 @@ const SHOT_KINDS = {
   tank: { name: 'cannon', volume: 1.15 },
   artillery: { name: 'rocket', volume: 0.9 },
   turret: { name: 'turret', volume: 0.9 },
+};
+
+// Какой ответственный «голос» отвечает на приказ.
+const RADIO_KINDS = {
+  move: 'radioMove',
+  attackMove: 'radioAttack',
+  attack: 'radioAttack',
+  stop: 'radioStop',
+  build: 'radioBuild',
+  train: 'radioTrain',
 };
 
 // ------------------------------------------------------------------ движок
@@ -597,7 +562,7 @@ export class AudioEngine {
     const Ctor = window.OfflineAudioContext || window.webkitOfflineAudioContext;
     if (!Ctor) return;
     const queue = [];
-    for (const [name, spec] of Object.entries(SOUND_SPECS)) {
+    for (const [name, spec] of Object.entries({ ...SOUND_SPECS, ...RADIO_SPECS })) {
       this.buffers[name] = new Array(spec.count).fill(null);
       for (let v = 0; v < spec.count; v++) queue.push({ name, spec, v });
     }
@@ -622,7 +587,7 @@ export class AudioEngine {
   // ---------------------------------------------------------- воспроизведение
 
   /** Общий путь: источник → фильтр дистанции → панорама → шина. */
-  _play(name, position = null, { volume = 1, send = 0.16, rate = 1 } = {}) {
+  _play(name, position = null, { volume = 1, send = 0.16, rate = 1, pan = 0 } = {}) {
     if (!this.ctx || !this.ready || this.muted) return false;
     if (this.voices >= MAX_VOICES) return false;
     const list = this.buffers[name];
@@ -643,7 +608,7 @@ export class AudioEngine {
 
     const gain = ctx.createGain();
     let level = volume;
-    let pan = 0;
+    let panValue = pan;
     if (position) {
       const focus = this.camera?.target ?? this.camera?.position ?? null;
       if (focus) {
@@ -655,7 +620,7 @@ export class AudioEngine {
         if (falloff < 0.035) return false;
         level *= falloff;
         filter.frequency.value = Math.max(600, 16000 / (1 + distance / 26));
-        pan = this._pan(dx, dz) * Math.min(1, distance / 5) * Math.max(0.25, 1 - distance / 110);
+        panValue = this._pan(dx, dz) * Math.min(1, distance / 5) * Math.max(0.25, 1 - distance / 110);
       }
     }
     gain.gain.value = level;
@@ -664,7 +629,7 @@ export class AudioEngine {
     let tail = gain;
     if (this.pannerSupported) {
       const panner = ctx.createStereoPanner();
-      panner.pan.value = Math.max(-0.85, Math.min(0.85, pan * 0.85));
+      panner.pan.value = Math.max(-0.85, Math.min(0.85, panValue * 0.85));
       gain.connect(panner);
       tail = panner;
     }
@@ -749,8 +714,14 @@ export class AudioEngine {
   }
 
   order(kind = 'move') {
-    if (!this._throttle('order', 320)) return;
-    this._play('uiOrder', null, { volume: 0.65, send: 0.08, rate: kind === 'attack' ? 1.06 : 1 });
+    const name = RADIO_KINDS[kind] ?? 'radioMove';
+    if (!this._throttle('order', 420)) return;
+    this._play(name, null, {
+      volume: 0.8,
+      send: 0.05,
+      rate: 0.96 + Math.random() * 0.08,
+      pan: (Math.random() - 0.5) * 0.3,
+    });
   }
 
   /** Гильза коснулась земли — тихий металлический звук рядом с камерой. */

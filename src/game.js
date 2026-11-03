@@ -709,7 +709,10 @@ export class Game {
   }
 
   commandStop() {
-    for (const u of this.selectedUnits()) u.stop();
+    const units = this.selectedUnits();
+    if (!units.length) return;
+    for (const u of units) u.stop();
+    this.audio?.order('stop');
   }
 
   setRally(point) {
@@ -804,6 +807,7 @@ export class Game {
       if (!assigned) {
         this.notify(MESSAGES.noEngineerAssigned, 'warn', 'no-engineer-assigned', 0, 5);
       }
+      this.audio?.order('build');
     }
     return b;
   }
@@ -991,6 +995,7 @@ export class Game {
     this.credits -= def.cost;
     building.enqueue(type);
     if (this.ui) this.ui.onQueueChanged(building);
+    this.audio?.order('train');
     return true;
   }
 
