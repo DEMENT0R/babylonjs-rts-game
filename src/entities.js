@@ -498,6 +498,9 @@ export class Unit extends Entity {
         } else {
           moveX = order.x;
           moveZ = order.z;
+          // Медик в наступающем отряде не бросает раненых: по пути он
+          // останавливается, чтобы подлечить пехоту, а потом идёт дальше.
+          support = this.findSupportTarget();
         }
       }
     } else if (order && order.type === 'move') {
@@ -570,13 +573,6 @@ export class Unit extends Entity {
         const stop = this.range + targetRadius + this.radius - 0.35;
         this.navigateTo(desired.position.x, desired.position.z, dt, stop);
       }
-    } else if (moveX !== null) {
-      this.supportTarget = null;
-      const arrived = this.navigateTo(moveX, moveZ, dt, 0.55 + this.radius * 0.35);
-      if (arrived) {
-        this.order = null;
-        this.moving = false;
-      }
     } else if (support && !holdPosition) {
       this.supportTarget = support;
       const stop = this.supportStopDistance(support);
@@ -586,6 +582,13 @@ export class Unit extends Entity {
       // На позиции поддержка работает, но не подходит к цели.
       this.supportTarget = support;
       this.applySupport(dt, support);
+    } else if (moveX !== null) {
+      this.supportTarget = null;
+      const arrived = this.navigateTo(moveX, moveZ, dt, 0.55 + this.radius * 0.35);
+      if (arrived) {
+        this.order = null;
+        this.moving = false;
+      }
     } else {
       this.supportTarget = null;
       this.moving = false;
