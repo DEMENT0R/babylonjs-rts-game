@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "verify:maps": "node scripts/verify-maps.mjs"
+    "verify:maps": "node scripts/verify-maps.mjs",
+    "changelog:build": "node scripts/build-changelog.mjs"
   },
   "engines": {
     "node": ">=18"

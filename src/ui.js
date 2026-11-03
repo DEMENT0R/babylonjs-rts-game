@@ -350,12 +350,15 @@ export class UI {
           <div class="log-section-title">${esc(section.title)}</div>
           <ul class="log-list">${section.items.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>
         </div>`).join('');
-      const meta = release.date ?? release.tag ?? '';
+      const dateLabel = release.date ?? release.tag ?? '';
+      const kindLabel = release.version === 'ОБНОВЛЕНИЕ'
+        ? 'ОБНОВЛЕНИЕ'
+        : `ВЕРСИЯ ${release.version}`;
       return `
         <article class="log-release${release.current ? ' is-current' : ''}">
           <div class="log-head">
-            <b>${esc(release.version)}</b>
-            <span>${esc(meta)}</span>
+            <b>${esc(dateLabel)}</b>
+            <span>${esc(kindLabel)}</span>
           </div>
           ${sections}
         </article>`;
@@ -364,7 +367,7 @@ export class UI {
       <div class="overlay-top">
         <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // ЖУРНАЛ ИЗМЕНЕНИЙ</div>
         <h1 class="log-title">ЧТО НОВОГО</h1>
-        <p class="tagline">История обновлений «Гелиос-7». Текущая сборка — ${esc(GAME_VERSION)}.</p>
+        <p class="tagline">История обновлений «Гелиос-7»: даты — это даты сборок. Текущая версия — ${esc(GAME_VERSION)}.</p>
       </div>
       <div class="log-body">${releases}</div>
       <div class="overlay-actions">
