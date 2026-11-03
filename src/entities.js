@@ -495,6 +495,7 @@ export class Unit extends Entity {
     );
     const faction = this.faction;
     this.game.fx.muzzle(muzzle, faction, this.type === 'tank' ? 1.7 : 1);
+    this.game.fx.casing(muzzle, this.root.rotation.y, kind === 'shell' ? 'shell' : 'rifle');
 
     const speed = kind === 'shell' ? 54 : 94;
     const shotDistance = dist(this.position.x, this.position.z, target.position.x, target.position.z);
@@ -1138,6 +1139,8 @@ export class Building extends Entity {
       target.position.z,
     );
     this.game.fx.muzzle(muzzle, this.faction, 1.15);
+    const aimYaw = Math.atan2(target.position.x - this.position.x, target.position.z - this.position.z);
+    this.game.fx.casing(muzzle, aimYaw, 'turret');
     this.game.fx.fireProjectile({
       from: muzzle,
       to: targetPoint,

@@ -9,6 +9,7 @@ import {
   Color4,
   Vector3,
   Quaternion,
+  Matrix,
   Mesh,
   PointLight,
   Engine,
@@ -243,6 +244,49 @@ export class Effects {
     }
     this.decalCursor = 0;
 
+    // Гильзы: маленькие латунные цилиндры, вылетающие из оружия. Все они —
+    // thin instances одного меша, поэтому куча гильз на земле стоит один draw call.
+    this.casingMax = 72;
+    this.casings = [];
+    this.casingCursor = 0;
+    this.casingData = new Float32Array(this.casingMax * 16);
+    const brass = new StandardMaterial('fxBrassMat', scene);
+    brass.diffuseColor = color('#b58b38');
+    brass.specularColor = color('#ffe7b0');
+    brass.specularPower = 72;
+    brass.emissiveColor = color('#2b2007');
+    brass.fogEnabled = true;
+    const casingMesh = MeshBuilder.CreateCylinder(
+      'casingMesh',
+      { height: 1, diameter: 1, tessellation: 6, cap: Mesh.CAP_ALL },
+      scene,
+    );
+    casingMesh.material = brass;
+    casingMesh.isPickable = false;
+    casingMesh.alwaysSelectAsActiveMesh = true;
+    casingMesh.doNotSyncBoundingInfo = true;
+    casingMesh.thinInstanceSetBuffer('matrix', this.casingData, 16, false);
+    casingMesh.thinInstanceCount = 0;
+    this.casingMesh = casingMesh;
+    for (let i = 0; i < this.casingMax; i++) {
+      this.casings.push({
+        active: false,
+        age: 0,
+        life: 4,
+        size: 0.09,
+        settled: false,
+        bounces: 0,
+        x: 0, y: 0, z: 0,
+        vx: 0, vy: 0, vz: 0,
+        rx: 0, ry: 0, rz: 0,
+        sx: 0, sy: 0, sz: 0,
+      });
+    }
+    this.casingScale = new Vector3();
+    this.casingPos = new Vector3();
+    this.casingQuat = new Quaternion();
+    this.casingMatrix = new Matrix();
+
     this.light = new PointLight('fxFlash', new Vector3(0, 5, 0), scene);
     this.light.intensity = 0;
     this.light.range = 26;
@@ -266,6 +310,7 @@ export class Effects {
     this.tracers.forEach((t) => exclude(t.mesh));
     this.rings.forEach((r) => exclude(r.mesh));
     this.decals.forEach((d) => exclude(d.mesh));
+    exclude(this.casingMesh);
   }
 
   _projectileMat(name, diffuse, emissive) {
@@ -647,6 +692,100 @@ export class Effects {
     }
   }
 
+  /**
+   * Выбрасывает гильзу из оружия. `yaw` — направление ствола, чтобы гильза
+   * летела вправо от стрелка, а не в случайную сторону.
+   */
+  casing(position, yaw = 0, kind = 'rifle') {
+    const c = this._freeCasing();
+    if (!c) return;
+    const shell = kind === 'shell';
+    const size = shell ? 1.6 : kind === 'turret' ? 1.25 : 1;
+    const rightX = Math.cos(yaw);
+    const rightZ = -Math.sin(yaw);
+    const fwdX = Math.sin(yaw);
+    const fwdZ = Math.cos(yaw);
+    // У турелей нет «лица»: гильзы летят в обе стороны.
+    const side = kind === 'turret' && Math.random() < 0.5 ? -1 : 1;
+    c.active = true;
+    c.age = 0;
+    c.life = shell ? 5.5 : 3.4 + Math.random() * 1.4;
+    c.size = 0.085 * size;
+    c.settled = false;
+    c.bounces = 0;
+    c.x = position.x + rightX * 0.22 * side;
+    c.y = position.y;
+    c.z = position.z + rightZ * 0.22 * side;
+    c.vx = rightX * (1.7 + Math.random() * 1.5) * side + fwdX * (Math.random() - 0.5) * 0.9;
+    c.vy = (shell ? 2.0 : 2.5) + Math.random() * 1.2;
+    c.vz = rightZ * (1.7 + Math.random() * 1.5) * side + fwdZ * (Math.random() - 0.5) * 0.9;
+    c.rx = Math.random() * Math.PI * 2;
+    c.ry = Math.random() * Math.PI * 2;
+    c.rz = Math.random() * Math.PI * 2;
+    c.sx = (Math.random() - 0.5) * 34;
+    c.sy = (Math.random() - 0.5) * 34;
+    c.sz = (Math.random() - 0.5) * 34;
+  }
+
+  _freeCasing() {
+    for (let i = 0; i < this.casingMax; i++) {
+      const c = this.casings[this.casingCursor];
+      this.casingCursor = (this.casingCursor + 1) % this.casingMax;
+      if (!c.active) return c;
+    }
+    const oldest = this.casings[this.casingCursor];
+    this.casingCursor = (this.casingCursor + 1) % this.casingMax;
+    return oldest;
+  }
+
+  _updateCasings(dt) {
+    const data = this.casingData;
+    let count = 0;
+    for (const c of this.casings) {
+      if (!c.active) continue;
+      c.age += dt;
+      if (c.age >= c.life) {
+        c.active = false;
+        continue;
+      }
+      if (!c.settled) {
+        c.vy -= 22 * dt;
+        c.x += c.vx * dt;
+        c.y += c.vy * dt;
+        c.z += c.vz * dt;
+        c.rx += c.sx * dt;
+        c.ry += c.sy * dt;
+        c.rz += c.sz * dt;
+        if (c.y <= 0.04) {
+          c.y = 0.04;
+          c.vy = -c.vy * 0.34;
+          c.vx *= 0.55;
+          c.vz *= 0.55;
+          c.sx *= 0.45;
+          c.sy *= 0.45;
+          c.sz *= 0.45;
+          c.bounces++;
+          // Мелкая гильза быстро успокаивается, тяжёлая ещё катится.
+          if (Math.abs(c.vy) < 0.6 || c.bounces > 4) {
+            c.settled = true;
+            c.vx = c.vy = c.vz = 0;
+            c.sx = c.sy = c.sz = 0;
+          }
+        }
+      }
+      const fade = Math.min(1, (c.life - c.age) / 0.9);
+      const s = c.size * (0.55 + 0.45 * fade);
+      this.casingScale.set(s, s * 1.85, s);
+      this.casingPos.set(c.x, c.y, c.z);
+      Quaternion.RotationYawPitchRollToRef(c.ry, c.rx, c.rz, this.casingQuat);
+      Matrix.ComposeToRef(this.casingScale, this.casingQuat, this.casingPos, this.casingMatrix);
+      data.set(this.casingMatrix.m, count * 16);
+      count++;
+    }
+    this.casingMesh.thinInstanceCount = count;
+    if (count > 0) this.casingMesh.thinInstanceBufferUpdated('matrix');
+  }
+
   update(dt) {
     for (const p of this.puffs) {
       if (!p.active) continue;
@@ -758,6 +897,8 @@ export class Effects {
     } else {
       this.light.intensity = 0;
     }
+
+    this._updateCasings(dt);
   }
 }
 
