@@ -29,13 +29,12 @@ export class FogOfWar {
     this.game = game;
     this.scene = game.scene;
     this.timer = 0;
-    this.dirty = true;
     this.grids = {
       player: { visible: new Uint8Array(SIZE * SIZE), explored: new Uint8Array(SIZE * SIZE) },
       enemy: { visible: new Uint8Array(SIZE * SIZE), explored: new Uint8Array(SIZE * SIZE) },
     };
     this._buildTerrain();
-    this.refresh(true);
+    this.refresh();
     this.applyVisibility();
     this.drawTerrain();
   }
@@ -79,7 +78,7 @@ export class FogOfWar {
   }
 
   /** Пересобирает обзор обеих сторон по всем живым юнитам и зданиям. */
-  refresh(force = false) {
+  refresh() {
     const grids = this.grids;
     for (const faction of ['player', 'enemy']) {
       grids[faction].visible.fill(0);
@@ -90,8 +89,6 @@ export class FogOfWar {
       if (!grid) continue;
       this.reveal(grid, entity.position.x, entity.position.z, this.visionOf(entity));
     }
-    // Нефтяные месторождения: вышку на них видно, если клетка исследована.
-    if (force) this.dirty = true;
   }
 
   update(dt) {
@@ -99,7 +96,6 @@ export class FogOfWar {
     if (this.timer > 0) return;
     this.timer = 0.2;
     this.refresh();
-    this.dirty = true;
     this.applyVisibility();
     this.game.world.applyFogVisibility(this);
     this.drawTerrain();
