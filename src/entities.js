@@ -8,7 +8,7 @@ import {
   Vector3,
   Color3,
 } from './babylon.js';
-import { UNITS, BUILDINGS, UPGRADES, FACTIONS, MAP, MESSAGES } from './config.js';
+import { UNITS, BUILDINGS, UPGRADES, FACTIONS, MAP, MESSAGES, FIELD_SUPPORT } from './config.js';
 import { clamp, dist, turnTowards, damp, angleDiff } from './utils.js';
 import { segmentDistance } from './nav.js';
 
@@ -168,7 +168,7 @@ export class Entity {
       this.hp = 0;
       this.die(source);
     }
-    if (this instanceof Unit && this.alive && source?.alive) {
+    if (this instanceof Unit && this.alive && source?.alive && this.canFight) {
       const busyBuilding = this.def.builder
         && this.assistBuilding
         && this.assistBuilding.alive
@@ -261,6 +261,9 @@ export class Unit extends Entity {
     this.pathTimer = 0;
     this.pathGoal = null;
     this.repathDelay = 0;
+    // Полевая поддержка: медик лечит пехоту, инженер ремонтирует технику.
+    this.supportTarget = null;
+    this.supportFx = 0;
 
     this.model = game.factory.unit(type, faction);
     this.root = this.model.root;
@@ -274,6 +277,96 @@ export class Unit extends Entity {
 
   get isUnit() {
     return true;
+  }
+
+  /** Есть ли у юнита оружие: медики безоружны и не выбирают цели. */
+  get canFight() {
+    return (this.def.damage ?? 0) > 0;
+  }
+
+  isSupportTarget(candidate) {
+    if (!candidate || !candidate.alive || candidate.faction !== this.faction) return false;
+    return this.def.healer ? Boolean(candidate.def.infantry) : Boolean(candidate.def.vehicle);
+  }
+
+  supportRange() {
+    return this.def.healer ? FIELD_SUPPORT.medicRange : FIELD_SUPPORT.engineerRange;
+  }
+
+  /** Раненый пехотинец или повреждённая машина поблизости. */
+  findSupportTarget() {
+    if (!this.def.healer && !this.def.repairer) return null;
+    // Инженер на активной стройплощадке занят строительством.
+    if (
+      this.def.builder
+      && this.assistBuilding
+      && this.assistBuilding.alive
+      && !this.assistBuilding.complete
+    ) {
+      return null;
+    }
+    // Под обстрелом инженер сначала отвечает, а не подставляет спину.
+    if (this.def.repairer && this.canFight && this.acquireTarget(this.range)) return null;
+    const seek = this.def.healer ? FIELD_SUPPORT.medicSeekRadius : FIELD_SUPPORT.engineerSeekRadius;
+    let best = null;
+    let bestScore = Infinity;
+    for (const unit of this.game.units) {
+      if (!this.isSupportTarget(unit)) continue;
+      if (unit === this) continue;
+      if (unit.hp >= unit.maxHp - 0.5) continue;
+      const d = dist(this.position.x, this.position.z, unit.position.x, unit.position.z);
+      if (d - unit.radius > seek) continue;
+      // Сначала добираем самых тяжёлых: они нужнее в строю.
+      const score = d + (unit.hp / unit.maxHp) * 6;
+      if (score < bestScore) {
+        bestScore = score;
+        best = unit;
+      }
+    }
+    return best;
+  }
+
+  supportStopDistance(target) {
+    return Math.max(
+      0.5,
+      target.radius + this.radius + this.supportRange() - 0.35,
+    );
+  }
+
+  supportInRange(target) {
+    const d = dist(this.position.x, this.position.z, target.position.x, target.position.z);
+    return d - target.radius - this.radius <= this.supportRange();
+  }
+
+  applySupport(dt, target) {
+    if (!target || !target.alive || this.game.over) {
+      this.supportTarget = null;
+      return;
+    }
+    const dx = target.position.x - this.position.x;
+    const dz = target.position.z - this.position.z;
+    this.root.rotation.y = turnTowards(this.root.rotation.y, yawTo(dx, dz), dt * 6);
+    this.moving = false;
+    this.workTimer = 0.22;
+    this.supportTarget = target;
+    this.supportFx -= dt;
+    if (this.def.healer) {
+      const before = target.hp;
+      target.hp = Math.min(target.maxHp, target.hp + FIELD_SUPPORT.medicRate * dt);
+      if (this.supportFx <= 0) {
+        this.supportFx = 0.35 + Math.random() * 0.2;
+        this.game.fx.healSparks(target.position, 0.9);
+      }
+      if (target.hp !== before) target.updateBar?.();
+    } else if (this.def.repairer) {
+      const before = target.hp;
+      target.hp = Math.min(target.maxHp, target.hp + FIELD_SUPPORT.engineerRate * dt);
+      if (this.supportFx <= 0) {
+        this.supportFx = 0.22 + Math.random() * 0.16;
+        this.game.fx.repairSparks(target.position, Math.min(1.5, 0.55 + target.radius * 0.25));
+      }
+      if (target.hp !== before) target.updateBar?.();
+    }
   }
 
   /** Пересчитывает характеристики с учётом изученных улучшений фракции. */
@@ -333,6 +426,7 @@ export class Unit extends Entity {
   }
 
   acquireTarget(range) {
+    if (!this.canFight) return null;
     // Инженер на активной стройплощадке не отвлекается на случайные цели:
     // иначе он уходит в бой и стройка останавливается.
     if (
@@ -373,6 +467,7 @@ export class Unit extends Entity {
     let desired = null;
     let moveX = null;
     let moveZ = null;
+    let support = null;
 
     if (order && order.type === 'attack') {
       if (order.target && order.target.alive) desired = order.target;
@@ -400,11 +495,15 @@ export class Unit extends Entity {
       moveX = order.x;
       moveZ = order.z;
     } else {
-      if (!this.target || !this.target.alive) {
-        this.target = this.acquireTarget(this.aggro);
+      // Свободный юнит: сначала полевая поддержка, потом поиск цели.
+      support = this.findSupportTarget();
+      if (!support) {
+        if (!this.target || !this.target.alive) {
+          this.target = this.acquireTarget(this.aggro);
+        }
+        if (this.target && this.target.alive) desired = this.target;
+        else this.target = null;
       }
-      if (this.target && this.target.alive) desired = this.target;
-      else this.target = null;
     }
 
     // не гнаться за целью бесконечно далеко, если приказ не был явным
@@ -427,6 +526,7 @@ export class Unit extends Entity {
 
     if (desired) {
       this.target = desired;
+      this.supportTarget = null;
       const d = dist(this.position.x, this.position.z, desired.position.x, desired.position.z);
       const targetRadius = Math.min(desired.radius, 2.6);
       const inRange = d - targetRadius - this.radius <= this.range;
@@ -443,12 +543,19 @@ export class Unit extends Entity {
         this.navigateTo(desired.position.x, desired.position.z, dt, stop);
       }
     } else if (moveX !== null) {
+      this.supportTarget = null;
       const arrived = this.navigateTo(moveX, moveZ, dt, 0.55 + this.radius * 0.35);
       if (arrived) {
         this.order = null;
         this.moving = false;
       }
+    } else if (support) {
+      this.supportTarget = support;
+      const stop = this.supportStopDistance(support);
+      const arrived = this.navigateTo(support.position.x, support.position.z, dt, stop);
+      if (arrived || this.supportInRange(support)) this.applySupport(dt, support);
     } else {
+      this.supportTarget = null;
       this.moving = false;
     }
 
@@ -481,7 +588,7 @@ export class Unit extends Entity {
   }
 
   fire(target) {
-    if (!this.alive || this.game.over) return;
+    if (!this.alive || this.game.over || !this.canFight) return;
     this.attackCd = this.def.cooldown;
     this.recoil = 1;
 
@@ -846,6 +953,22 @@ export class Unit extends Entity {
         this.parts.arms[0].rotation.x = damp(this.parts.arms[0].rotation.x, -swing * 0.45, 10, dt);
         this.parts.arms[1].rotation.x = damp(this.parts.arms[1].rotation.x, swing * 0.45 - 0.05, 10, dt);
         this.parts.wrench.rotation.z = damp(this.parts.wrench.rotation.z, 0, 8, dt);
+      }
+    } else if (this.type === 'medic') {
+      const swing = moving ? Math.sin(this.walkPhase) * 0.48 : 0;
+      this.parts.hips[0].rotation.x = damp(this.parts.hips[0].rotation.x, swing, 12, dt);
+      this.parts.hips[1].rotation.x = damp(this.parts.hips[1].rotation.x, -swing, 12, dt);
+      if (this.workTimer > 0) {
+        const work = this.game.elapsed * 12;
+        this.parts.arms[0].rotation.x = -1.05 + Math.sin(work) * 0.14;
+        this.parts.arms[0].rotation.z = 0.14;
+        this.parts.arms[1].rotation.x = -0.5 + Math.cos(work * 0.8) * 0.1;
+        if (this.parts.medkit) this.parts.medkit.rotation.z = Math.sin(work * 1.3) * 0.16;
+      } else {
+        this.parts.arms[0].rotation.x = damp(this.parts.arms[0].rotation.x, -swing * 0.4, 10, dt);
+        this.parts.arms[0].rotation.z = damp(this.parts.arms[0].rotation.z, 0, 8, dt);
+        this.parts.arms[1].rotation.x = damp(this.parts.arms[1].rotation.x, swing * 0.4 - 0.05, 10, dt);
+        if (this.parts.medkit) this.parts.medkit.rotation.z = damp(this.parts.medkit.rotation.z, 0, 8, dt);
       }
     } else if (this.type === 'scout') {
       const spin = moving ? 13 * dt : 0;

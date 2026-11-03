@@ -270,6 +270,7 @@ export class AIController {
       u.alive
       && u.faction === 'enemy'
       && !u.def.builder
+      && !u.def.healer
       && (!u.order || u.order.type === 'move' || u.order.type === 'attackMove' || u.order.type === 'hold')
     ));
     if (!free.length) return;
@@ -370,6 +371,7 @@ export class AIController {
     // Рой вкладывается в тяжёлую технику; на старте преобладает пехота.
     const weights = [
       { type: 'marine', weight: 1 },
+      { type: 'medic', weight: t > 40 ? 0.4 : 0 },
       { type: 'scout', weight: t > 35 ? 0.8 : 0.25 },
       { type: 'tank', weight: t > 95 ? 0.55 * this.aggression : 0 },
       { type: 'artillery', weight: t > 170 ? 0.4 * this.aggression : 0 },
@@ -457,7 +459,7 @@ export class AIController {
     if (!threats.length) return;
 
     const defenders = game.units.filter(
-      (u) => u.alive && u.faction === 'enemy' && !u.def.builder,
+      (u) => u.alive && u.faction === 'enemy' && !u.def.builder && !u.def.healer,
     );
     if (!defenders.length) return;
 

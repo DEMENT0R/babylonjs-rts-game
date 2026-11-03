@@ -15,6 +15,7 @@ import {
   HQ_TRAIN_HOTKEYS,
   MESSAGES,
   MAP,
+  FIELD_SUPPORT,
 } from './config.js';
 import { icon } from './icons.js';
 import { randomSeed, seedUrl } from './mapgen.js';
@@ -717,6 +718,11 @@ export class UI {
   }
 
   unitTip(def) {
+    const support = def.healer
+      ? `<span><i>ЛЕЧЕНИЕ</i>${FIELD_SUPPORT.medicRate}/с</span><span><i>РАДИУС</i>${FIELD_SUPPORT.medicSeekRadius}</span>`
+      : def.repairer
+        ? `<span><i>РЕМОНТ ТЕХНИКИ</i>${FIELD_SUPPORT.engineerRate}/с</span>`
+        : '';
     return `
       <div class="tip-head"><span class="tip-role">${def.role}</span><b>${def.name}</b></div>
       <p>${def.desc}</p>
@@ -725,6 +731,7 @@ export class UI {
         <span><i>ДАЛЬНОСТЬ</i>${def.range}</span><span><i>СКОРОСТЬ</i>${def.speed}</span>
         <span><i>ЛИМИТ АРМИИ</i>${def.supply ?? 1}</span>
         ${def.builder ? '<span><i>СТРОЙКА</i>до ×4</span>' : ''}
+        ${support}
       </div>
       <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.buildTime} с · ${def.from === 'barracks' ? 'казармы' : 'штаб'}</span></div>
     `;
@@ -874,10 +881,14 @@ export class UI {
             <div class="sel-name">${name}${same && count > 1 ? ` <em>×${count}</em>` : ''}</div>
             <div class="hpbar"><i style="width:${pct}%"></i><b>${Math.ceil(totalHp)} / ${totalMax}</b></div>
             ${same ? `<div class="sel-stats">
-              <span>УРОН <b>${Math.round(primary.damage ?? def.damage)}</b></span>
-              <span>ДАЛЬНОСТЬ <b>${Math.round(primary.range ?? def.range)}</b></span>
+              ${def.healer
+                ? `<span>ЛЕЧЕНИЕ <b>${FIELD_SUPPORT.medicRate}/с</b></span>
+                   <span>РАДИУС <b>${FIELD_SUPPORT.medicSeekRadius}</b></span>`
+                : `<span>УРОН <b>${Math.round(primary.damage ?? def.damage)}</b></span>
+                   <span>ДАЛЬНОСТЬ <b>${Math.round(primary.range ?? def.range)}</b></span>`}
               <span>СКОРОСТЬ <b>${(primary.speed ?? def.speed).toFixed(1)}</b></span>
               <span>ЛИМИТ <b>${def.supply ?? 1}</b></span>
+              ${def.repairer ? `<span>РЕМОНТ ТЕХНИКИ <b>${FIELD_SUPPORT.engineerRate}/с</b></span>` : ''}
             </div>` : `<div class="sel-note">В отряде несколько типов юнитов. Наведите на карточку найма для характеристик.</div>`}
             ${chips}
             ${upgradeChip}

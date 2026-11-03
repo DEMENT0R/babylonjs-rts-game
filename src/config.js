@@ -75,10 +75,23 @@ export const START = {
 // order — порядок кнопок в командной панели.
 export const BUILD_ORDER = ['power', 'barracks', 'derrick', 'lab', 'turret', 'depot', 'wall'];
 export const BUILD_HOTKEYS = ['Z', 'X', 'C', 'V', 'B', 'N', 'M'];
-export const TRAIN_ORDER = ['marine', 'scout', 'tank', 'artillery'];
-export const TRAIN_HOTKEYS = ['Z', 'X', 'C', 'V'];
+export const TRAIN_ORDER = ['marine', 'scout', 'tank', 'artillery', 'medic'];
+export const TRAIN_HOTKEYS = ['Z', 'X', 'C', 'V', 'B'];
 export const HQ_TRAIN_ORDER = ['engineer'];
 export const HQ_TRAIN_HOTKEYS = ['G'];
+
+// Поддержка в поле: медики лечат пехоту, инженеры ремонтируют технику.
+export const FIELD_SUPPORT = {
+  // Радиус, в котором медик ищет раненого пехотинца.
+  medicSeekRadius: 13,
+  // С какой дистанции (от края цели) медик начинает лечить.
+  medicRange: 7,
+  medicRate: 10,
+  // Инженер идёт к повреждённой машине в этом радиусе.
+  engineerSeekRadius: 10,
+  engineerRange: 5.5,
+  engineerRate: 14,
+};
 
 // Улучшения техцентра: каждое покупается один раз и усиливает все юниты
 // указанного типа — и уже построенные, и будущие.
@@ -154,6 +167,8 @@ export const UNITS = {
     muzzleHeight: 1.45,
     from: 'hq',
     builder: true,
+    repairer: true,
+    infantry: true,
   },
   marine: {
     key: 'marine',
@@ -176,6 +191,7 @@ export const UNITS = {
     projectile: null,
     muzzleHeight: 1.55,
     from: 'barracks',
+    infantry: true,
   },
   scout: {
     key: 'scout',
@@ -198,6 +214,7 @@ export const UNITS = {
     projectile: null,
     muzzleHeight: 1.1,
     from: 'barracks',
+    vehicle: true,
   },
   tank: {
     key: 'tank',
@@ -221,6 +238,7 @@ export const UNITS = {
     projectile: 'shell',
     muzzleHeight: 2.1,
     from: 'barracks',
+    vehicle: true,
   },
   artillery: {
     key: 'artillery',
@@ -247,6 +265,31 @@ export const UNITS = {
     projectile: 'rocket',
     muzzleHeight: 2.1,
     from: 'barracks',
+    vehicle: true,
+  },
+  medic: {
+    key: 'medic',
+    name: 'Медик',
+    role: 'МЕДИЦИНА',
+    icon: 'medic',
+    desc: 'Автоматически лечит раненую пехоту рядом: пехотинцев, инженеров и других медиков. Безоружен, поэтому держите его за спинами бойцов.',
+    cost: 80,
+    supply: 1,
+    buildTime: 9,
+    hp: 95,
+    armor: 0,
+    radius: 0.95,
+    speed: 7.6,
+    range: 0,
+    damage: 0,
+    cooldown: 1,
+    aggro: 0,
+    height: 2.35,
+    projectile: null,
+    muzzleHeight: 1.55,
+    from: 'barracks',
+    healer: true,
+    infantry: true,
   },
 };
 

@@ -114,6 +114,7 @@ export class ModelFactory {
       glass: this.mat('glass', { color: '#8eeeff', emissive: '#2b8ca3', alpha: 0.55, specular: 0.8 }),
       warn: this.mat('warn', { color: '#ffb02e', emissive: '#ff8a1e', unlit: true }),
       white: this.mat('white', { color: '#d8e5ea', specular: 0.35 }),
+      cross: this.mat('medicCross', { color: '#ef4b3f', emissive: '#5c120c', specular: 0.1 }),
       oil: this.mat('oil', { color: '#090807', specular: 0.9, shininess: 120 }),
     };
   }
@@ -218,6 +219,7 @@ export class ModelFactory {
     const build = {
       marine: () => this.buildMarine(faction),
       engineer: () => this.buildEngineer(faction),
+      medic: () => this.buildMedic(faction),
       scout: () => this.buildScout(faction),
       tank: () => this.buildTank(faction),
       artillery: () => this.buildArtillery(faction),
@@ -347,6 +349,119 @@ export class ModelFactory {
     parts.muzzle = muzzle;
     parts.height = 2.3;
     return { root, parts, height: 2.3 };
+  }
+
+  // ---------------------------------------------------------------- UNIT: MEDIC
+  buildMedic(faction) {
+    const m = this.baseMaterials(faction);
+    const root = new TransformNode(`medic_${faction}`, this.scene);
+    const parts = {};
+    const add = (mesh, parent = root) => {
+      mesh.parent = parent;
+      mesh.isPickable = false;
+      mesh.receiveShadows = false;
+      return mesh;
+    };
+
+    const hips = [];
+    for (const side of [-1, 1]) {
+      const hip = new TransformNode(`med_hip_${side}`, this.scene);
+      hip.parent = root;
+      hip.position.set(0.24 * side, 0.92, 0);
+      const leg = MeshBuilder.CreateBox(`med_leg_${side}`, { width: 0.29, height: 0.78, depth: 0.33 }, this.scene);
+      leg.position.y = -0.4;
+      add(leg, hip).material = m.panel;
+      const boot = MeshBuilder.CreateBox(`med_boot_${side}`, { width: 0.38, height: 0.22, depth: 0.52 }, this.scene);
+      boot.position.set(0, -0.84, 0.09);
+      add(boot, hip).material = m.rubber;
+      hips.push(hip);
+    }
+
+    const torso = MeshBuilder.CreateBox('med_torso', { width: 0.92, height: 0.8, depth: 0.56 }, this.scene);
+    torso.position.y = 1.37;
+    add(torso).material = m.white;
+
+    const vest = MeshBuilder.CreateBox('med_vest', { width: 0.84, height: 0.52, depth: 0.16 }, this.scene);
+    vest.position.set(0, 1.42, 0.31);
+    add(vest).material = m.panel;
+
+    const crossV = MeshBuilder.CreateBox('med_crossv', { width: 0.12, height: 0.34, depth: 0.05 }, this.scene);
+    crossV.position.set(0, 1.42, 0.39);
+    add(crossV).material = m.cross;
+    const crossH = MeshBuilder.CreateBox('med_crossh', { width: 0.34, height: 0.12, depth: 0.05 }, this.scene);
+    crossH.position.set(0, 1.42, 0.39);
+    add(crossH).material = m.cross;
+
+    const belt = MeshBuilder.CreateBox('med_belt', { width: 0.94, height: 0.16, depth: 0.58 }, this.scene);
+    belt.position.y = 0.95;
+    add(belt).material = m.dark;
+
+    const head = MeshBuilder.CreateSphere('med_head', { diameter: 0.42, segments: 10 }, this.scene);
+    head.position.set(0, 1.9, 0.01);
+    add(head).material = m.steel;
+
+    const helmet = MeshBuilder.CreateSphere('med_helmet', { diameter: 0.5, segments: 10 }, this.scene);
+    helmet.position.set(0, 1.97, -0.01);
+    helmet.scaling.set(1, 0.82, 1);
+    add(helmet).material = m.white;
+
+    const helmStripe = MeshBuilder.CreateBox('med_helmstripe', { width: 0.1, height: 0.06, depth: 0.44 }, this.scene);
+    helmStripe.position.set(0, 2.14, -0.01);
+    add(helmStripe).material = m.cross;
+
+    const visor = MeshBuilder.CreateBox('med_visor', { width: 0.34, height: 0.12, depth: 0.08 }, this.scene);
+    visor.position.set(0, 1.92, 0.22);
+    add(visor).material = m.glass;
+
+    // Медицинский ранец с красным крестом.
+    const pack = MeshBuilder.CreateBox('med_pack', { width: 0.6, height: 0.56, depth: 0.3 }, this.scene);
+    pack.position.set(0, 1.4, -0.42);
+    add(pack).material = m.panel;
+    const packCrossV = MeshBuilder.CreateBox('med_packcrossv', { width: 0.11, height: 0.3, depth: 0.04 }, this.scene);
+    packCrossV.position.set(0, 1.42, -0.58);
+    add(packCrossV).material = m.cross;
+    const packCrossH = MeshBuilder.CreateBox('med_packcrossh', { width: 0.3, height: 0.11, depth: 0.04 }, this.scene);
+    packCrossH.position.set(0, 1.42, -0.58);
+    add(packCrossH).material = m.cross;
+
+    for (const side of [-1, 1]) {
+      const canister = MeshBuilder.CreateCylinder(`med_canister_${side}`, { diameter: 0.18, height: 0.44, tessellation: 8 }, this.scene);
+      canister.position.set(0.22 * side, 1.63, -0.5);
+      add(canister).material = m.steel;
+    }
+
+    const arms = [];
+    for (const side of [-1, 1]) {
+      const arm = new TransformNode(`med_arm_${side}`, this.scene);
+      arm.parent = root;
+      arm.position.set(0.55 * side, 1.6, 0);
+      const upper = MeshBuilder.CreateBox(`med_upperarm_${side}`, { width: 0.2, height: 0.46, depth: 0.24 }, this.scene);
+      upper.position.y = -0.22;
+      add(upper, arm).material = m.white;
+      const hand = MeshBuilder.CreateBox(`med_hand_${side}`, { width: 0.2, height: 0.2, depth: 0.24 }, this.scene);
+      hand.position.set(0, -0.5, 0.05);
+      add(hand, arm).material = m.dark;
+      arms.push(arm);
+    }
+
+    // Чемоданчик с медикаментами в левой руке — его видно во время лечения.
+    const medkit = new TransformNode('med_kit', this.scene);
+    medkit.parent = arms[0];
+    medkit.position.set(0, -0.58, 0.3);
+    const caseBody = MeshBuilder.CreateBox('med_case', { width: 0.34, height: 0.28, depth: 0.22 }, this.scene);
+    add(caseBody, medkit).material = m.white;
+    const caseCrossV = MeshBuilder.CreateBox('med_casecrossv', { width: 0.07, height: 0.18, depth: 0.04 }, this.scene);
+    caseCrossV.position.z = 0.12;
+    add(caseCrossV, medkit).material = m.cross;
+    const caseCrossH = MeshBuilder.CreateBox('med_casecrossh', { width: 0.18, height: 0.07, depth: 0.04 }, this.scene);
+    caseCrossH.position.z = 0.12;
+    add(caseCrossH, medkit).material = m.cross;
+
+    parts.hips = hips;
+    parts.arms = arms;
+    parts.medkit = medkit;
+    parts.height = 2.35;
+    return { root, parts, height: 2.35 };
   }
 
   // ---------------------------------------------------------------- UNIT: MARINE

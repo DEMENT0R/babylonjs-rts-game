@@ -80,6 +80,14 @@ export const ICONS = {
     <path d="M21 18h6" stroke-width="4"/>
     <path d="M9 22h5M34 22h5" opacity=".7"/>
   `),
+  medic: stroke(`
+    <path d="M24 6c-6 0-9.5 4-9.5 10v8h19v-8c0-6-3.5-10-9.5-10Z"/>
+    <path d="M14 15h20" opacity=".55"/>
+    <path d="M17 24v9m14-9v9"/>
+    <path d="M18 33h12l-2 9h-8Z"/>
+    <path d="M24 11v9M19.5 15.5h9" stroke-width="3.4"/>
+    <path d="M9 21h5M34 21h5" opacity=".65"/>
+  `),
   scout: stroke(`
     <circle cx="14" cy="34" r="4.5"/>
     <circle cx="34" cy="34" r="4.5"/>

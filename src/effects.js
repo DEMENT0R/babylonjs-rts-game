@@ -132,6 +132,7 @@ export class Effects {
       dust: this._puffMat('fxDustMat', this.texSoft, '#b49a75', false, 0.65),
       fire: this._puffMat('fxFireMat', this.texSpark, '#ff9a3d', true, 1),
       spark: this._puffMat('fxSparkMat', this.texSpark, '#ffe6a3', true, 1),
+      heal: this._puffMat('fxHealMat', this.texSpark, '#6bffb0', true, 0.9),
       flare: this._puffMat('fxFlareMat', this.texFlare, '#ffd08a', true, 1),
       smokeDark: this._puffMat('fxDarkSmokeMat', this.texSoft, '#1a1917', false, 0.9),
     };
@@ -597,6 +598,24 @@ export class Effects {
         vel: new Vector3((Math.random() - 0.5) * 3, 1 + Math.random() * 2, (Math.random() - 0.5) * 3),
         buoyancy: -5,
         drag: 1.2,
+      });
+    }
+  }
+
+  /** Мягкое зелёное свечение над раненым — медик обрабатывает пехоту. */
+  healSparks(position, scale = 1) {
+    for (let i = 0; i < 3; i++) {
+      const px = position.x + (Math.random() - 0.5) * scale * 1.6;
+      const pz = position.z + (Math.random() - 0.5) * scale * 1.6;
+      this.puff('heal', new Vector3(px, 0.7 + Math.random() * 1.6 * scale, pz), {
+        life: 0.5 + Math.random() * 0.35,
+        size0: 0.16,
+        size1: 0.55,
+        fade: 0.75,
+        alpha: 0.9,
+        vel: new Vector3(0, 1.1 + Math.random() * 0.8, 0),
+        buoyancy: 0.6,
+        drag: 0.7,
       });
     }
   }
