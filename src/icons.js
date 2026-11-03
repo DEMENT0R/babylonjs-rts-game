@@ -105,6 +105,11 @@ export const ICONS = {
     <path d="M14 18h6M28 15h4" opacity=".5"/>
   `),
   stop: stroke(`<rect x="14" y="14" width="20" height="20"/><path d="M14 19h20" opacity=".4"/>`),
+  hold: stroke(`
+    <path d="M24 5 8 12v11c0 10 7 16 16 20 9-4 16-10 16-20V12Z"/>
+    <path d="M24 16v14M17 23h14" opacity=".8"/>
+    <path d="M12 12 7 7m29 5 5-5" opacity=".5"/>
+  `),
   repair: stroke(`
     <path d="M30 7a9 9 0 0 0-11 11L7 30a4.2 4.2 0 0 0 6 6l12-12a9 9 0 0 0 11-11l-6 6-5-1-1-5Z"/>
     <path d="m13 35 1 1" opacity=".5"/>

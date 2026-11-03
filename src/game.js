@@ -733,6 +733,18 @@ export class Game {
     this.audio?.order('stop');
   }
 
+  /** Занять позицию: юниты стреляют на месте, но не преследуют врага. */
+  commandHold() {
+    const units = this.selectedUnits();
+    if (!units.length) return;
+    for (const u of units) u.issueHold();
+    const cx = units.reduce((sum, u) => sum + u.position.x, 0) / units.length;
+    const cz = units.reduce((sum, u) => sum + u.position.z, 0) / units.length;
+    this.fx.orderMarker(new Vector3(cx, 0, cz), 'hold');
+    this.notify('Отряд держит позицию и не будет преследовать врага.', 'info', 'hold-order', 1.5, 3);
+    this.audio?.order('hold');
+  }
+
   setRally(point) {
     const barracks = this.selectedBuildings().filter((b) => b.type === 'barracks');
     for (const b of barracks) b.setRally(point.x, point.z);

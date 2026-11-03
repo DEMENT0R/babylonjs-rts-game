@@ -619,7 +619,7 @@ export class Input {
 
     const hotkeyMap = {
       KeyZ: 'Z', KeyX: 'X', KeyC: 'C', KeyV: 'V', KeyB: 'B',
-      KeyN: 'N', KeyM: 'M', KeyG: 'G', KeyH: 'H', KeyF: 'F', KeyR: 'R',
+      KeyN: 'N', KeyM: 'M', KeyG: 'G', KeyH: 'H', KeyF: 'F', KeyR: 'R', KeyP: 'P',
     };
     if (hotkeyMap[e.code] && !e.repeat) {
       const handled = this.game.ui?.triggerHotkey(hotkeyMap[e.code]);

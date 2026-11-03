@@ -386,6 +386,7 @@ const RADIO_KINDS = {
   attackMove: 'radioAttack',
   attack: 'radioAttack',
   stop: 'radioStop',
+  hold: 'radioStop',
   build: 'radioBuild',
   train: 'radioTrain',
 };

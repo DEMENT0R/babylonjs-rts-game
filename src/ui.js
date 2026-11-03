@@ -185,6 +185,7 @@ export class UI {
           <div><kbd>Z X C V B N M</kbd><span>команды</span></div>
           <div><kbd>F</kbd><span>атака по площади</span></div>
           <div><kbd>H</kbd><span>стоп</span></div>
+          <div><kbd>P</kbd><span>держать позицию</span></div>
           <div><kbd>R</kbd><span>ремонт здания</span></div>
           <div><kbd>Shift</kbd><span>добавить к выбору</span></div>
           <div><kbd>Пробел</kbd><span>на базу</span></div>
@@ -277,6 +278,7 @@ export class UI {
           <div><kbd>Q / E</kbd><span>поворот</span></div>
           <div><kbd>Z X C V B N M</kbd><span>команды</span></div>
           <div><kbd>F</kbd><span>атака по площади</span></div>
+          <div><kbd>P</kbd><span>держать позицию</span></div>
           <div><kbd>R</kbd><span>ремонт</span></div>
           <div><kbd>Пробел</kbd><span>на базу</span></div>
           <div><kbd>Esc</kbd><span>продолжить</span></div>
@@ -513,6 +515,15 @@ export class UI {
           action: () => {
             if (game.input) game.input.setAttackMove(true);
           },
+        },
+        {
+          id: 'hold',
+          label: 'Держать позицию',
+          short: 'ДЕРЖАТЬ',
+          icon: 'hold',
+          hotkey: 'P',
+          desc: 'Остановиться на месте и стрелять только по врагам в радиусе поражения. Отряд не будет преследовать отступающих.',
+          action: () => game.commandHold(),
         },
         {
           id: 'stop',

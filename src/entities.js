@@ -417,6 +417,15 @@ export class Unit extends Entity {
     this.resetPath();
   }
 
+  /** Занять позицию: стрелять по целям в радиусе, но не преследовать их. */
+  issueHold() {
+    this.order = { type: 'hold' };
+    this.target = null;
+    this.moving = false;
+    this.stuckTime = 0;
+    this.resetPath();
+  }
+
   stop() {
     this.order = null;
     this.target = null;
@@ -467,6 +476,7 @@ export class Unit extends Entity {
     let moveX = null;
     let moveZ = null;
     let support = null;
+    const holdPosition = order?.type === 'hold';
 
     if (order && order.type === 'attack') {
       if (order.target && order.target.alive) desired = order.target;
@@ -493,6 +503,25 @@ export class Unit extends Entity {
     } else if (order && order.type === 'move') {
       moveX = order.x;
       moveZ = order.z;
+    } else if (holdPosition) {
+      // Держать позицию: только огонь по цели, которая уже в радиусе.
+      // Догонять убегающего врага нельзя, иначе приказ теряет смысл.
+      if (this.canFight) {
+        const reach = Math.max(this.aggro, this.range);
+        if (!this.target || !this.target.alive) {
+          this.target = this.acquireTarget(reach);
+        }
+        if (this.target && this.target.alive) {
+          const d = dist(this.position.x, this.position.z, this.target.position.x, this.target.position.z);
+          if (d > reach + 8) {
+            this.target = null;
+          } else {
+            const targetRadius = Math.min(this.target.radius, 2.6);
+            if (d - targetRadius - this.radius <= this.range) desired = this.target;
+          }
+        }
+      }
+      if (!desired) support = this.findSupportTarget();
     } else {
       // Свободный юнит: сначала полевая поддержка, потом поиск цели.
       support = this.findSupportTarget();
@@ -548,11 +577,15 @@ export class Unit extends Entity {
         this.order = null;
         this.moving = false;
       }
-    } else if (support) {
+    } else if (support && !holdPosition) {
       this.supportTarget = support;
       const stop = this.supportStopDistance(support);
       const arrived = this.navigateTo(support.position.x, support.position.z, dt, stop);
       if (arrived || this.supportInRange(support)) this.applySupport(dt, support);
+    } else if (support && this.supportInRange(support)) {
+      // На позиции поддержка работает, но не подходит к цели.
+      this.supportTarget = support;
+      this.applySupport(dt, support);
     } else {
       this.supportTarget = null;
       this.moving = false;

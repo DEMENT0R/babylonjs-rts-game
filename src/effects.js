@@ -652,6 +652,8 @@ export class Effects {
 
   orderMarker(position, kind = 'move') {
     const isAttack = kind === 'attack';
+    const isHold = kind === 'hold';
+    const tint = isAttack ? '#ff5b3c' : isHold ? '#ffc766' : '#63e6a8';
     const m = MeshBuilder.CreatePlane('orderMarker', { size: 1, sideOrientation: Mesh.DOUBLESIDE }, this.scene);
     const mat = new StandardMaterial('orderMarkerMat', this.scene);
     mat.diffuseTexture = this.texRing;
@@ -659,8 +661,8 @@ export class Effects {
     mat.useAlphaFromDiffuseTexture = true;
     mat.disableLighting = true;
     mat.specularColor = Color3.Black();
-    mat.emissiveColor = color(isAttack ? '#ff5b3c' : '#63e6a8');
-    mat.diffuseColor = color(isAttack ? '#ff5b3c' : '#63e6a8');
+    mat.emissiveColor = color(tint);
+    mat.diffuseColor = color(tint);
     mat.alpha = 0.9;
     mat.fogEnabled = false;
     m.material = mat;
