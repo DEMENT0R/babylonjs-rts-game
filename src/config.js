@@ -23,11 +23,14 @@ export const VISION = {
   hq: 30,
 };
 
+// Сюжет: в сектор вошли два одинаковых семенных корабля программы «Гелиос-7».
+// Это буквально копии друг друга — те же машины, те же чертежи, тот же приказ,
+// поэтому у обеих сторон общие модели, техника и баланс.
 export const FACTIONS = {
   player: {
     key: 'player',
     name: 'ГЕЛИОС-7',
-    short: 'ГЕЛИОС',
+    short: 'АЛЬФА',
     color: '#4fd2ff',
     ui: '#4fd2ff',
     hp: '#54e0ff',
@@ -40,8 +43,8 @@ export const FACTIONS = {
   },
   enemy: {
     key: 'enemy',
-    name: 'РОЙ КСЕНОВ',
-    short: 'КСЕНЫ',
+    name: 'ГЕЛИОС-7-Б',
+    short: 'БЕТА',
     color: '#ff6b4a',
     ui: '#ff6b4a',
     hp: '#ff5b3c',

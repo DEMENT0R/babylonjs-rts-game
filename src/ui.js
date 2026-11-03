@@ -43,7 +43,7 @@ export class UI {
     this.el.mmSector.textContent = this.game.map.label;
     this.el.mmSector.title = `Карта ${this.game.map.label} · ${this.game.map.style.name}`;
     if (this.el.brandSector) {
-      this.el.brandSector.textContent = `КОЛОНИАЛЬНАЯ СЕТЬ / СЕКТОР ${this.game.map.label}`;
+      this.el.brandSector.textContent = `СЕТЬ «БЛИЗНЕЦЫ» / СЕКТОР ${this.game.map.label}`;
     }
     this.showStart();
     this.renderHeader();
@@ -153,7 +153,7 @@ export class UI {
       <div class="overlay-top">
         <div class="eyebrow"><i></i> СЕКТОР ${map.label} · ПУСТОШЬ МАРСА · ${map.style.name}</div>
         <h1>ГЕЛИОС<span>-7</span></h1>
-        <p class="tagline">Последняя колония на краю сектора. Удержите её любой ценой.</p>
+        <p class="tagline">Две колонии-близнеца. Один сектор. Контракт достанется одному.</p>
       </div>
       <div class="map-strip">
         <div class="map-strip-item"><span>СИД КАРТЫ</span><b>#${map.label}</b></div>
@@ -163,13 +163,13 @@ export class UI {
       </div>
       <div class="brief-grid">
         <div class="brief-copy">
-          <p>Сенсоры зафиксировали выход Роя ксенов на противоположном краю сектора. ${map.symmetry.hint} Рельеф и месторождения у обеих сторон одинаковые.</p>
-          <p class="accent-copy">Развивайте экономику, собирайте армию и уничтожьте улей, пока он не добрался до колонии.</p>
+          <p>Программа «Гелиос-7» отправила в этот сектор два одинаковых семенных корабля — так задумывалась страховка: если одна колония погибнет, работу продолжит вторая. Связь между ними потеряна, а последний принятый пакет приказа одинаков для обеих сторон: сектор останется за выжившей. ${map.symmetry.hint} Рельеф, месторождения и техника у обеих сторон совпадают до последнего винта — по ту сторону фронта стоит ваша копия.</p>
+          <p class="accent-copy">Развивайте экономику, разведайте сектор и уничтожьте дублёра, пока он не сделал то же самое с вами.</p>
         </div>
         <div class="objectives">
-          <div class="objective"><b>01</b><span><strong>Нефть — это жизнь</strong><small>Занимайте месторождения вышками: они приносят кредиты.</small></span></div>
+          <div class="objective"><b>01</b><span><strong>Нефть — это жизнь</strong><small>Разведайте месторождения и займите их вышками: они приносят кредиты.</small></span></div>
           <div class="objective"><b>02</b><span><strong>Соберите армию</strong><small>Постройте казармы. Пехота, скауты, танки и РСЗО — ваша сила. Инженеры возводят здания.</small></span></div>
-          <div class="objective"><b>03</b><span><strong>Уничтожьте улей</strong><small>Сравняйте с землёй командный центр противника.</small></span></div>
+          <div class="objective"><b>03</b><span><strong>Уничтожьте дублёра</strong><small>Сравняйте с землёй второй командный центр. Копия не должна пережить оригинал.</small></span></div>
         </div>
       </div>
       <div class="controls-block">
@@ -215,10 +215,10 @@ export class UI {
     const html = `
       <div class="end-head ${victory ? 'win' : 'lose'}">
         <div class="eyebrow"><i></i> ${victory ? 'ОПЕРАЦИЯ ЗАВЕРШЕНА' : 'СИГНАЛ ПОТЕРЯН'}</div>
-        <h1>${victory ? 'СЕКТОР УДЕРЖАН' : 'КОЛОНИЯ ПОТЕРЯНА'}</h1>
+        <h1>${victory ? 'СЕКТОР ВЫСТОЯЛ' : 'КОЛОНИЯ СПИСАНА'}</h1>
         <p class="tagline">${victory
-          ? 'Командный центр Роя уничтожен. Колония «Гелиос-7» получает шанс на жизнь.'
-          : 'Улей прорвал оборону. Командный центр пал. Сектор потерян.'}</p>
+          ? 'Второй «Гелиос-7» уничтожен. Контракт на сектор достался вам — вместе с вопросом, кто из двух был копией.'
+          : 'Ваш командный центр пал. Дублёр остался единственным «Гелиосом-7» в секторе.'}</p>
       </div>
       <div class="end-stats">
         <div><b>${formatTime(s.time ?? this.game.elapsed)}</b><span>ВРЕМЯ ОПЕРАЦИИ</span></div>
@@ -228,8 +228,8 @@ export class UI {
       </div>
       <div class="end-map">КАРТА <b>#${map.label}</b> · ${map.symmetry.name.toUpperCase()} ${map.symmetry.tag} · ${map.style.name}</div>
       <div class="end-note">${victory
-        ? 'Рой отступил в пустошь. Но сенсоры уже фиксируют новые сигнатуры...'
-        : 'В следующий раз начните с вышек и не оставляйте казармы без прикрытия.'}</div>
+        ? 'Связь с Землёй так и не восстановилась. Одна из двух колоний вычеркнута из реестра — и уже неважно, какая.'
+        : 'В следующий раз начните с вышек, не оставляйте казармы без прикрытия и постарайтесь первыми найти дублёра.'}</div>
       <div class="overlay-actions">
         <button class="btn-primary" data-action="newmap">НОВАЯ КАРТА <span>↻</span></button>
         <button class="btn-ghost" data-action="restart">ПОВТОРИТЬ ЭТУ КАРТУ</button>
@@ -237,7 +237,7 @@ export class UI {
       </div>
       <div class="overlay-footer">
         <span>ГЕЛИОС-7 // ИТОГИ</span>
-        <span>${victory ? 'СТАТУС: СЕКТОР ЗАЩИЩЁН' : 'СТАТУС: ЭВАКУАЦИЯ НЕВОЗМОЖНА'}</span>
+        <span>${victory ? 'СТАТУС: КОНТРАКТ ЗАКРЫТ' : 'СТАТУС: ЭВАКУАЦИЯ НЕВОЗМОЖНА'}</span>
       </div>
     `;
     this.setOverlay(html, `overlay--end ${victory ? 'is-win' : 'is-lose'}`);
