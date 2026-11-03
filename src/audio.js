@@ -2,6 +2,8 @@
 // в Web Audio. Ни одного звукового файла — буферы рендерятся при загрузке
 // страницы, а в бою только воспроизводятся.
 
+import { Ambient } from './ambient.js';
+
 const SAMPLE_RATE = 44100;
 const MAX_VOICES = 24;
 const SHOT_TOKENS_MAX = 8;
@@ -438,6 +440,9 @@ export class AudioEngine {
     this.shotTokens = SHOT_TOKENS_MAX;
     this.lastPlayed = new Map();
     this.casingAcc = 0;
+    this.ambient = null;
+    this.ambientKey = map?.style?.key ?? 'rust';
+    this.paused = false;
     this._gestureBound = false;
     this._render();
     this._bindGesture();
@@ -475,6 +480,7 @@ export class AudioEngine {
       this.ctx = new Ctor({ latencyHint: 'interactive' });
       this._buildGraph();
       this._applyVolumes();
+      this._startAmbient();
       if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
       if (this._gestureBound) {
         window.removeEventListener('pointerdown', this._gesture);
@@ -522,6 +528,22 @@ export class AudioEngine {
     this.pannerSupported = typeof ctx.createStereoPanner === 'function';
   }
 
+  _startAmbient() {
+    if (!this.ctx || this.ambient) return;
+    try {
+      this.ambient = new Ambient({
+        ctx: this.ctx,
+        destination: this.ambientGain,
+        reverbSend: this.reverbSend,
+        biome: this.ambientKey,
+      });
+      if (this.paused) this.ambient.setPaused(true);
+      this.ambient.setReverbLevel(this.volume.ambient);
+    } catch {
+      this.ambient = null;
+    }
+  }
+
   _impulse(ctx) {
     const seconds = 1.3;
     const length = Math.ceil(seconds * ctx.sampleRate);
@@ -553,6 +575,7 @@ export class AudioEngine {
     ramp(this.masterGain, this.volume.master);
     ramp(this.sfxGain, this.volume.sfx);
     ramp(this.ambientGain, this.volume.ambient);
+    this.ambient?.setReverbLevel(this.volume.ambient);
   }
 
   setVolumes(values = {}) {
@@ -739,7 +762,22 @@ export class AudioEngine {
     this._play('impact', position, { volume: 0.16, send: 0.05, rate: 1.5 + Math.random() * 0.3 });
   }
 
+  /** Палитра карты задаёт фоновый звуковой ландшафт. */
+  setBiome(key) {
+    if (!key) return;
+    this.ambientKey = key;
+    this.ambient?.setBiome(key);
+  }
+
+  setPaused(paused) {
+    const next = Boolean(paused);
+    if (next === this.paused) return;
+    this.paused = next;
+    this.ambient?.setPaused(next);
+  }
+
   update(dt) {
     this.shotTokens = Math.min(SHOT_TOKENS_MAX, this.shotTokens + SHOT_TOKENS_REFILL * dt);
+    this.ambient?.update(dt);
   }
 }

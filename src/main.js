@@ -145,6 +145,7 @@ function boot() {
     if (game.started && !game.paused && !game.over) game.update(dt);
     input.update(dt);
     world.update(dt, camera);
+    audio.setPaused(!game.started || game.paused || Boolean(game.over));
     audio.update(dt);
     ui.tick(dt);
     scene.render();

@@ -105,11 +105,13 @@ export class GraphicsSettings {
 export const AUDIO_DEFAULTS = Object.freeze({
   master: '70',
   sfx: '80',
+  ambient: '55',
 });
 
 export const AUDIO_LABELS = {
   master: 'ОБЩАЯ ГРОМКОСТЬ',
   sfx: 'ЭФФЕКТЫ',
+  ambient: 'ОКРУЖЕНИЕ',
 };
 
 /** Звук живёт в процентах: 0 — тишина, 100 — полная громкость. */
