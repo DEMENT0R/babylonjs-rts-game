@@ -169,6 +169,8 @@ export const UNITS = {
     builder: true,
     repairer: true,
     infantry: true,
+    // Диаметр гильзы в мировых единицах: пропорционален калибру оружия.
+    casing: 0.06,
   },
   marine: {
     key: 'marine',
@@ -192,6 +194,7 @@ export const UNITS = {
     muzzleHeight: 1.55,
     from: 'barracks',
     infantry: true,
+    casing: 0.08,
   },
   scout: {
     key: 'scout',
@@ -215,6 +218,7 @@ export const UNITS = {
     muzzleHeight: 1.1,
     from: 'barracks',
     vehicle: true,
+    casing: 0.1,
   },
   tank: {
     key: 'tank',
@@ -239,6 +243,7 @@ export const UNITS = {
     muzzleHeight: 2.1,
     from: 'barracks',
     vehicle: true,
+    casing: 0.24,
   },
   artillery: {
     key: 'artillery',
@@ -382,6 +387,7 @@ export const BUILDINGS = {
       aggro: 20,
       projectile: 'bullet',
       muzzleHeight: 2.7,
+      casing: 0.18,
     },
   },
   wall: {

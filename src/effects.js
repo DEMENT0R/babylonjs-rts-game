@@ -275,6 +275,7 @@ export class Effects {
         age: 0,
         life: 4,
         size: 0.09,
+        length: 0.18,
         settled: false,
         bounces: 0,
         x: 0, y: 0, z: 0,
@@ -716,13 +717,15 @@ export class Effects {
 
   /**
    * Выбрасывает гильзу из оружия. `yaw` — направление ствола, чтобы гильза
-   * летела вправо от стрелка, а не в случайную сторону.
+   * летела вправо от стрелка, а не в случайную сторону. `caliber` — диаметр
+   * гильзы в мировых единицах: он задаётся оружием, поэтому у винтовки,
+   * спаренных бластеров, танковой пушки и турели гильзы разного размера.
    */
-  casing(position, yaw = 0, kind = 'rifle') {
+  casing(position, yaw = 0, kind = 'rifle', caliber = 0.085) {
     const c = this._freeCasing();
     if (!c) return;
     const shell = kind === 'shell';
-    const size = shell ? 1.6 : kind === 'turret' ? 1.25 : 1;
+    const size = Number.isFinite(caliber) && caliber > 0 ? caliber : 0.085;
     const rightX = Math.cos(yaw);
     const rightZ = -Math.sin(yaw);
     const fwdX = Math.sin(yaw);
@@ -732,7 +735,8 @@ export class Effects {
     c.active = true;
     c.age = 0;
     c.life = shell ? 5.5 : 3.4 + Math.random() * 1.4;
-    c.size = 0.085 * size;
+    c.size = size;
+    c.length = size * (shell ? 2.6 : kind === 'turret' ? 2.4 : 2.1);
     c.settled = false;
     c.bounces = 0;
     c.x = position.x + rightX * 0.22 * side;
@@ -797,8 +801,9 @@ export class Effects {
         }
       }
       const fade = Math.min(1, (c.life - c.age) / 0.9);
-      const s = c.size * (0.55 + 0.45 * fade);
-      this.casingScale.set(s, s * 1.85, s);
+      const shrink = 0.55 + 0.45 * fade;
+      const s = c.size * shrink;
+      this.casingScale.set(s, c.length * shrink, s);
       this.casingPos.set(c.x, c.y, c.z);
       Quaternion.RotationYawPitchRollToRef(c.ry, c.rx, c.rz, this.casingQuat);
       Matrix.ComposeToRef(this.casingScale, this.casingQuat, this.casingPos, this.casingMatrix);
