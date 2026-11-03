@@ -328,6 +328,7 @@ export class AIController {
     let bestD = 999;
     for (const e of this.game.entities) {
       if (!e.alive || e.faction !== 'player' || e.isBuilding) continue;
+      if (!this.game.isEntityVisibleTo('enemy', e)) continue;
       const d = dist(e.position.x, e.position.z, hq.position.x, hq.position.z);
       if (d < 32 && d < bestD) {
         bestD = d;
@@ -361,6 +362,7 @@ export class AIController {
         let bestD = 24;
         for (const e of game.units) {
           if (!e.alive || e.faction !== 'player') continue;
+          if (!game.isEntityVisibleTo('enemy', e)) continue;
           const d = dist(e.position.x, e.position.z, builder.position.x, builder.position.z);
           if (d < bestD) {
             bestD = d;

@@ -16,6 +16,7 @@ import { clamp, dist, formatTime } from './utils.js';
 import { Unit, Building } from './entities.js';
 import { NavGrid, segmentDistance } from './nav.js';
 import { AIController } from './ai.js';
+import { FogOfWar } from './fog.js';
 
 let nextBuildingId = 1;
 
@@ -63,6 +64,7 @@ export class Game {
     this.nav = new NavGrid({ half: MAP.half, cell: 2, margin: 1.0 });
 
     this.setupBases();
+    this.fog = new FogOfWar(this);
     this.refreshNav();
     this.recomputePower();
     this.refreshArmyCap();
@@ -156,6 +158,7 @@ export class Game {
       }
     }
     this.fx.update(dt);
+    this.fog.update(dt);
     this.ai.update(dt);
 
     // проверка атаки на базу
@@ -638,6 +641,19 @@ export class Game {
 
   playerUnits() {
     return this.units.filter((u) => u.faction === 'player' && u.alive);
+  }
+
+  /** Видно ли точку этой стороне: так туман войны влияет на наведение. */
+  isVisibleTo(faction, x, z) {
+    return this.fog ? this.fog.isVisible(faction, x, z) : true;
+  }
+
+  isExploredBy(faction, x, z) {
+    return this.fog ? this.fog.isExplored(faction, x, z) : true;
+  }
+
+  isEntityVisibleTo(faction, entity) {
+    return this.fog ? this.fog.isEntityVisible(faction, entity) : true;
   }
 
   countUnits(faction) {

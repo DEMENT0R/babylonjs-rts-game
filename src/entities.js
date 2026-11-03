@@ -213,7 +213,9 @@ export class Entity {
 
   updateBar() {
     if (!this.bar) return;
-    const show = this.selected || this.forceBar || this.hp < this.maxHp - 0.01;
+    // Полоска здоровья чужого юнита не должна висеть в тумане войны.
+    const show = this.fogVisible !== false
+      && (this.selected || this.forceBar || this.hp < this.maxHp - 0.01);
     this.barVisible = show;
     this.bar.group.setEnabled(show);
     if (!show) return;
@@ -346,6 +348,8 @@ export class Unit extends Entity {
     for (const e of this.game.entities) {
       if (!e.alive || e.faction === this.faction) continue;
       if (!(e instanceof Unit) && !(e instanceof Building)) continue;
+      // Стрелять по тому, чего не видно, нельзя — ни игроку, ни противнику.
+      if (!this.game.isEntityVisibleTo(this.faction, e)) continue;
       const d = dist(this.position.x, this.position.z, e.position.x, e.position.z);
       if (d - e.radius > range) continue;
       if (Math.abs(e.position.x) > MAP.half + 8 || Math.abs(e.position.z) > MAP.half + 8) continue;
@@ -1090,6 +1094,7 @@ export class Building extends Entity {
     for (const e of this.game.units) {
       if (!e.alive || e.faction === this.faction) continue;
       if (!(e instanceof Unit)) continue;
+      if (!this.game.isEntityVisibleTo(this.faction, e)) continue;
       const d = dist(this.position.x, this.position.z, e.position.x, e.position.z);
       if (d - e.radius > range) continue;
       const score = d + (e.type === 'tank' ? -1.5 : 0);

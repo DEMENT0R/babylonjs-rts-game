@@ -16,6 +16,13 @@ export const CAMERA = {
   panSpeed: 1.35,
 };
 
+// Радиусы обзора для тумана войны: сколько карты открывает объект.
+export const VISION = {
+  unit: 13,
+  building: 18,
+  hq: 30,
+};
+
 export const FACTIONS = {
   player: {
     key: 'player',

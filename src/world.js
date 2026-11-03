@@ -54,6 +54,9 @@ export class World {
     this.decor = [];
     this.shadow = null;
     this.shadowMode = 'medium';
+    // Объекты декора, которые прячутся в неисследованной части карты: иначе
+    // камни и руины висят яркими пятнами в чёрном тумане.
+    this.fogTargets = [];
     this.casterRoots = new Map();
     this.rng = mulberry32((map.seed ^ 0x7e11a5) >>> 0);
     this._buildLights();
@@ -393,6 +396,7 @@ export class World {
         inst.isPickable = true;
         inst.receiveShadows = false;
         inst.metadata = { oilPatch: patch };
+        this._addFogTarget(inst, info.x, info.z);
       }
       this.oilPatches.push(patch);
     });
@@ -462,6 +466,11 @@ export class World {
         merged.receiveShadows = true;
         merged.castShadow = true;
         merged.name = `wall_${index}_${material.name}`;
+        this._addFogTarget(
+          merged,
+          (info.x1 + info.x2) * 0.5,
+          (info.z1 + info.z2) * 0.5,
+        );
       };
       merge(concreteParts, concrete);
       merge(darkParts, dark);
@@ -500,6 +509,7 @@ export class World {
       const radius = Math.max(1.1, baseRadius * info.scale * 0.72);
       this.rocks.push({ x: info.x, z: info.z, radius });
       this.obstacles.push({ x: info.x, z: info.z, radius, kind: 'rock' });
+      this._addFogTarget(inst, info.x, info.z);
     });
 
     // Кристаллы: один источник, инстансы с разной высотой и наклоном.
@@ -526,6 +536,7 @@ export class World {
       inst.scaling.set(info.scaleX, info.scaleY, info.scaleZ);
       inst.rotation.set(info.rx, info.ry, info.rz);
       inst.isPickable = false;
+      this._addFogTarget(inst, info.x, info.z);
     });
 
     // Ящики: 2 источника материалов, инстансы по данным карты.
@@ -537,6 +548,7 @@ export class World {
         inst.rotation.y = info.yaw ?? 0;
         inst.scaling.setAll(info.scale);
         inst.isPickable = false;
+        this._addFogTarget(inst, info.x, info.z);
       }
       this.obstacles.push({ x: info.x, z: info.z, radius: 0.75 * info.scale, kind: 'crate' });
     });
@@ -590,6 +602,7 @@ export class World {
       );
       inst.position.set(info.x, 0.08, info.z);
       inst.rotation.y = info.yaw ?? 0;
+      this._addFogTarget(inst, info.x, info.z);
     });
     pebble.position.y = -500;
     pebble.isPickable = false;
@@ -651,6 +664,22 @@ export class World {
     this.dust.maxEmitPower = 0.5;
     this.dust.updateSpeed = 0.01;
     this.dust.start();
+  }
+
+  /** Объект декора, который должен прятаться в неисследованной части карты. */
+  _addFogTarget(mesh, x, z) {
+    if (mesh) this.fogTargets.push({ mesh, x, z, seen: true });
+  }
+
+  /** Прячет декор и месторождения в той части карты, где игрок ещё не был. */
+  applyFogVisibility(fog) {
+    if (!fog) return;
+    for (const target of this.fogTargets) {
+      const seen = fog.isExplored('player', target.x, target.z);
+      if (target.seen === seen) continue;
+      target.seen = seen;
+      target.mesh.setEnabled(seen);
+    }
   }
 
   _createShadow(quality) {

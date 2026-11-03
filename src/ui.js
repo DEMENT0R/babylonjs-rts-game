@@ -1343,6 +1343,9 @@ export class UI {
       256 * (1 + fx + fz),
     );
     ctx.drawImage(this.minimapBg, 0, 0);
+    // Туман войны рисуется в той же повёрнутой системе координат, что и фон.
+    const fog = this.game.fog;
+    if (fog?.minimapCanvas) ctx.drawImage(fog.minimapCanvas, 0, 0);
     ctx.restore();
 
     const poly = this.viewportPolygon();
@@ -1360,6 +1363,7 @@ export class UI {
 
     for (const b of this.game.buildings) {
       if (!b.alive) continue;
+      if (!this.game.isEntityVisibleTo('player', b)) continue;
       const p = this.worldToMinimap(b.position.x, b.position.z);
       const color = b.faction === 'player' ? '#4fd2ff' : '#ff6b4a';
       const size = b.type === 'hq' ? 13 : b.type === 'barracks' ? 9 : 7;
@@ -1376,6 +1380,7 @@ export class UI {
 
     for (const u of this.game.units) {
       if (!u.alive) continue;
+      if (!this.game.isEntityVisibleTo('player', u)) continue;
       const p = this.worldToMinimap(u.position.x, u.position.z);
       ctx.fillStyle = u.faction === 'player' ? '#c3f8ff' : '#ffb09e';
       ctx.beginPath();
