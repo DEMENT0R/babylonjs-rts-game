@@ -404,6 +404,12 @@ export class Unit extends Entity {
 
   issueAttack(target) {
     if (!target || !target.alive) return;
+    // Безоружный медик не идёт в атаку: он остаётся на месте и лечит тех,
+    // кто уже рядом, вместо того чтобы бежать за врагом без оружия.
+    if (!this.canFight) {
+      this.issueHold();
+      return;
+    }
     this.order = { type: 'attack', target };
     this.target = target;
     this.stuckTime = 0;
