@@ -463,9 +463,9 @@ export const REPAIR = {
   // Полный ремонт занимает столько секунд при непрерывной оплате.
   duration: 18,
   // Доля стоимости здания за восстановление всех его HP.
-  costFraction: 0.55,
+  costFraction: 0.85,
   // Для командного центра нет цены постройки — задаём цену за HP отдельно.
-  hqCostPerHp: 0.2,
+  hqCostPerHp: 0.35,
 };
 
 export const MESSAGES = {
