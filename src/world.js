@@ -154,83 +154,162 @@ export class World {
     this.skyMesh = this.sky;
   }
 
-  _buildGround() {
+  /**
+   * Бесшовная текстура земли.
+   *
+   * Земля замощена одной и той же картинкой десяток раз, поэтому любая деталь,
+   * обрезанная краем, превращается в сетку швов по всей карте. Чтобы этого не
+   * было, каждая деталь рисуется не один раз, а со сдвигом на период во все
+   * стороны: то, что уходит за правый край, появляется у левого, и текстура
+   * зацикливается без разрывов.
+   */
+  _groundTexture() {
     const style = this.style;
-    const tex = new DynamicTexture('groundTexture', { width: 1024, height: 1024 }, this.scene, true);
+    const size = 1024;
+    const tex = new DynamicTexture('groundTexture', { width: size, height: size }, this.scene, true);
     const ctx = tex.getContext();
     const rng = mulberry32((this.map.seed ^ 0xc0ffee) >>> 0);
+
     ctx.fillStyle = style.ground;
-    ctx.fillRect(0, 0, 1024, 1024);
+    ctx.fillRect(0, 0, size, size);
+
+    /** Рисует деталь со всеми сдвигами, при которых она попадает на полотно. */
+    const wrapped = (x, y, radius, draw) => {
+      const shiftsX = [0];
+      const shiftsY = [0];
+      if (x - radius < 0) shiftsX.push(size);
+      if (x + radius > size) shiftsX.push(-size);
+      if (y - radius < 0) shiftsY.push(size);
+      if (y + radius > size) shiftsY.push(-size);
+      for (const dx of shiftsX) {
+        for (const dy of shiftsY) {
+          ctx.setTransform(1, 0, 0, 1, dx, dy);
+          draw();
+        }
+      }
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    };
 
     // большие пятна
     for (let i = 0; i < 90; i++) {
-      const x = rng() * 1024;
-      const y = rng() * 1024;
+      const x = rng() * size;
+      const y = rng() * size;
       const r = rngRange(rng, 40, 190);
-      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
       const dark = rng() > 0.45;
-      g.addColorStop(0, dark ? style.patchDark : style.patchLight);
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+      wrapped(x, y, r, () => {
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, dark ? style.patchDark : style.patchLight);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(x - r, y - r, r * 2, r * 2);
+      });
     }
 
-    // трещины
+    // трещины: ломаная может уйти далеко, поэтому повторяем её во всех девяти
+    // положениях — так трещина продолжается по другую сторону шва.
     ctx.lineCap = 'round';
     for (let i = 0; i < 55; i++) {
-      let x = rng() * 1024;
-      let y = rng() * 1024;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
+      const points = [];
+      let x = rng() * size;
+      let y = rng() * size;
+      points.push([x, y]);
       const segs = 2 + Math.floor(rng() * 5);
       for (let s = 0; s < segs; s++) {
         x += rngRange(rng, -60, 60);
         y += rngRange(rng, -60, 60);
-        ctx.lineTo(x, y);
+        points.push([x, y]);
       }
-      ctx.strokeStyle = `${style.crack}${0.18 + rng() * 0.3})`;
-      ctx.lineWidth = rngRange(rng, 0.6, 2.2);
-      ctx.stroke();
+      const stroke = `${style.crack}${0.18 + rng() * 0.3})`;
+      const width = rngRange(rng, 0.6, 2.2);
+      for (const dx of [-size, 0, size]) {
+        for (const dy of [-size, 0, size]) {
+          ctx.setTransform(1, 0, 0, 1, dx, dy);
+          ctx.beginPath();
+          points.forEach(([px, py], index) => (index ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+          ctx.strokeStyle = stroke;
+          ctx.lineWidth = width;
+          ctx.stroke();
+        }
+      }
     }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
 
     // камешки и крапины
     for (let i = 0; i < 5200; i++) {
-      const x = rng() * 1024;
-      const y = rng() * 1024;
+      const x = rng() * size;
+      const y = rng() * size;
       const light = rng() > 0.55;
-      ctx.fillStyle = light
+      const color = light
         ? `${style.speckLight}${0.1 + rng() * 0.3})`
         : `${style.speckDark}${0.1 + rng() * 0.28})`;
-      ctx.beginPath();
-      ctx.arc(x, y, rngRange(rng, 0.5, 2.4), 0, Math.PI * 2);
-      ctx.fill();
+      const r = rngRange(rng, 0.5, 2.4);
+      wrapped(x, y, r, () => {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      });
     }
 
     // редкие тёмные "выходы породы"
     for (let i = 0; i < 22; i++) {
-      const x = rng() * 1024;
-      const y = rng() * 1024;
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(rng() * Math.PI);
-      ctx.fillStyle = `${style.speckDark}${0.25 + rng() * 0.25})`;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, rngRange(rng, 8, 30), rngRange(rng, 4, 14), 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
+      const x = rng() * size;
+      const y = rng() * size;
+      const rx = rngRange(rng, 8, 30);
+      const ry = rngRange(rng, 4, 14);
+      const angle = rng() * Math.PI;
+      const color = `${style.speckDark}${0.25 + rng() * 0.25})`;
+      wrapped(x, y, rx, () => {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
     }
+
+    // Крупные волны яркости поверх пятен: период совпадает с тайлом, поэтому
+    // они тоже бесшовные, но смягчают края пятен и убирают «плоскость» цвета.
+    const image = ctx.getImageData(0, 0, size, size);
+    const data = image.data;
+    const TAU = Math.PI * 2;
+    for (let y = 0; y < size; y++) {
+      const sy = Math.sin((TAU * y) / size);
+      const sy2 = Math.sin((TAU * 2 * y) / size + 1.1);
+      for (let x = 0; x < size; x++) {
+        const wave = 1
+          + 0.035 * Math.sin((TAU * x) / size + 0.6) * sy
+          + 0.022 * Math.sin((TAU * 3 * x) / size) * sy2;
+        const i = (y * size + x) * 4;
+        data[i] = clamp(data[i] * wave, 0, 255);
+        data[i + 1] = clamp(data[i + 1] * wave, 0, 255);
+        data[i + 2] = clamp(data[i + 2] * wave, 0, 255);
+      }
+    }
+    ctx.putImageData(image, 0, 0);
 
     tex.update(false);
     tex.wrapU = Texture.WRAP_ADDRESSMODE;
     tex.wrapV = Texture.WRAP_ADDRESSMODE;
-    tex.uScale = 13;
-    tex.vScale = 13;
+    // Тайл крупнее, чем раньше: швов больше нет, а повтор всё равно нужно
+    // разнести подальше, чтобы карта не выглядела копипастой.
+    tex.uScale = 9;
+    tex.vScale = 9;
     tex.anisotropicFilteringLevel = 8;
 
     const mat = new StandardMaterial('groundMat', this.scene);
     mat.diffuseTexture = tex;
     mat.specularColor = new Color3(0.03, 0.035, 0.04);
     mat.specularPower = 8;
+    return mat;
+  }
+
+  _buildGround() {
+    const style = this.style;
+    const mat = this._groundTexture();
 
     this.ground = MeshBuilder.CreateGround('ground', { width: MAP.ground, height: MAP.ground, subdivisions: 1 }, this.scene);
     this.ground.material = mat;
