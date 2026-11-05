@@ -32,6 +32,9 @@ export class AIController {
     // и снова повторял один и тот же провальный удар.
     this.waveLog = [];
     this.activeWave = null;
+    // Цели, на которых волна уже провалилась: их не трогаем, пока не истечёт
+    // кулдаун, иначе ИИ раз за разом бьётся в одно и то же место.
+    this.targetCooldowns = new Map();
     this.debug = typeof location !== 'undefined' && /[?&]debug=ai\b/.test(location.search);
 
     const barracks = game.buildings.find((b) => b.faction === 'enemy' && b.type === 'barracks');
@@ -606,11 +609,32 @@ export class AIController {
     record.supplyLost = record.supplySent - record.supplyLeft;
     record.cause = this.waveCause(record);
     if (this.activeWave === record) this.activeWave = null;
+    if (record.targetId != null && this.isFailedWave(record)) {
+      this.targetCooldowns.set(record.targetId, this.game.elapsed + AI.targetCooldown);
+      record.failed = true;
+    }
     this.debugLog(
       `волна №${record.index} ${record.state}: живых ${record.alive}/${record.units.length}, `
       + `потери ${record.supplyLost} снабж., урон ${Math.round(record.damage)}, `
       + `убито ${record.kills}, причина ${record.cause}`,
     );
+  }
+
+  /** Волна провалилась: отряд уничтожен или ушёл, ничего не сделав. */
+  isFailedWave(record) {
+    if (record.state === 'wiped') return true;
+    return record.kills === 0 && record.damage < AI.weakWaveDamage;
+  }
+
+  isTargetCooling(id) {
+    if (id == null) return false;
+    const until = this.targetCooldowns.get(id);
+    if (until == null) return false;
+    if (until <= this.game.elapsed) {
+      this.targetCooldowns.delete(id);
+      return false;
+    }
+    return true;
   }
 
   /** Кто чаще всего добивал бойцов волны: турели, гарнизон, база. */
@@ -661,11 +685,23 @@ export class AIController {
     };
   }
 
+  /** Подход со случайной стороны: маршрут не повторяется от волны к волне. */
+  approachPoint(position, radius = AI.assaultApproachRadius) {
+    const angle = Math.random() * TAU;
+    const r = radius * (0.75 + Math.random() * 0.5);
+    return {
+      x: clamp(position.x + Math.cos(angle) * r, -MAP.clamp, MAP.clamp),
+      z: clamp(position.z + Math.sin(angle) * r, -MAP.clamp, MAP.clamp),
+    };
+  }
+
   /** Выбирает цель рейда: вышки и электростанции вкуснее казарм. */
   pickRaidTarget(buildings) {
     const candidates = buildings.filter((b) => (
       b.alive
       && b.type !== 'hq'
+      // Цель, на которой уже провалились, временно не трогаем.
+      && !this.isTargetCooling(b.id)
       // Рейд идёт по разведанным постройкам: того, чего Рой не видел,
       // он просто не знает.
       && this.game.isExploredBy('enemy', b.position.x, b.position.z)
@@ -708,15 +744,20 @@ export class AIController {
       else if (roll >= 0.75 && roll < 0.9) tactic = 'split';
       else if (roll >= 0.9) tactic = 'probe';
     }
-    const raidTarget = tactic === 'raid' || tactic === 'split'
+    let raidTarget = tactic === 'raid' || tactic === 'split'
       ? this.pickRaidTarget(playerBuildings)
       : null;
+    // Штаб после провала «горячий»: вместо повторного штурма идём по экономике.
+    if (this.isTargetCooling(playerHQ.id) && tactic !== 'probe') {
+      raidTarget = raidTarget ?? this.pickRaidTarget(playerBuildings);
+      if (raidTarget) tactic = 'raid';
+    }
     if (!raidTarget && tactic !== 'assault' && tactic !== 'probe') tactic = 'assault';
 
     const primaryTarget = tactic === 'raid' && raidTarget ? raidTarget : playerHQ;
     const primary = tactic === 'raid' && raidTarget
       ? this.pointNear(raidTarget.position, 5)
-      : this.pointNear(playerHQ.position, 9);
+      : this.approachPoint(playerHQ.position);
     const secondary = tactic === 'split' && raidTarget
       ? this.pointNear(raidTarget.position, 5)
       : null;
