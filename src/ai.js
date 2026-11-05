@@ -55,6 +55,9 @@ export class AIController {
     this.debug = typeof location !== 'undefined' && /[?&]debug=ai\b/.test(location.search);
     this.debugEl = null;
     this.debugTimer = 0;
+    // Отложенные волны и сообщения о них: игрок должен понимать, что
+    // противник не сломался, а копит силы.
+    this.postponedRuns = 0;
     if (this.debug) this.ensureDebugOverlay();
 
     const barracks = game.buildings.find((b) => b.faction === 'enemy' && b.type === 'barracks');
@@ -657,6 +660,13 @@ export class AIController {
     }
     this.stats.retreats++;
     this.finishWave(record, 'retreated');
+    this.game.notify(
+      'Отряд противника отступает: пробить оборону не удалось.',
+      'success',
+      'ai-retreat',
+      90,
+      4,
+    );
   }
 
   finishWave(record, state) {
@@ -967,6 +977,16 @@ export class AIController {
       : this.neededSquad(combat, defense * this.rules.requiredAdvantage);
     if (needed > combat.length) {
       this.waveTimer = AI.regroupDelay * (0.8 + Math.random() * 0.6);
+      this.postponedRuns++;
+      if (this.postponedRuns >= 2) {
+        this.game.notify(
+          'Противник стягивает силы: похоже, готовится крупный удар.',
+          'warn',
+          'ai-gather',
+          120,
+          5,
+        );
+      }
       this.debugLog(
         `волна отложена: оборона ${Math.round(defense)}, армия `
         + `${Math.round(this.squadPower(combat))}`,
@@ -998,6 +1018,7 @@ export class AIController {
       );
     });
     this.beginWave({ tactic, squad, point: primary, targetEntity: primaryTarget });
+    this.postponedRuns = 0;
 
     this.waveIndex++;
     this.waveTimer = AI.waveInterval * this.rules.waveInterval * (0.8 + Math.random() * 0.45);
