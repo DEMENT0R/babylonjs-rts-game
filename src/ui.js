@@ -20,7 +20,14 @@ import {
   DIFFICULTY_ORDER,
 } from './config.js';
 import { icon } from './icons.js';
-import { randomSeed, seedUrl } from './mapgen.js';
+import {
+  createMap,
+  formatSeed,
+  formatSeedLabel,
+  normalizeSeed,
+  randomSeed,
+  seedUrl,
+} from './mapgen.js';
 import { CHANGELOG, GAME_VERSION } from './changelog.js';
 import { GRAPHICS_LABELS, GRAPHICS_OPTIONS, AUDIO_LABELS } from './settings.js';
 import { clamp, formatTime, plural, mulberry32, esc } from './utils.js';
@@ -42,6 +49,17 @@ export class UI {
     this.overlayOpen = true;
     this.overlayBack = null;
     this.settingsTab = 'graphics';
+    // Лобби: сложность выбирается сразу, а сид карты — случайно (по умолчанию)
+    // или вручную. Режим из адреса нужен, чтобы F5 после ручного сида возвращал
+    // в лобби с тем же выбором, а не сбрасывал его.
+    this.seedMode = new URLSearchParams(window.location.search).get('seedmode') === 'manual'
+      ? 'manual'
+      : 'random';
+    this.randomSeedValue = this.game.map.seed;
+    this.manualSeedText = this.game.map.code;
+    this.lobbySeedValue = this.game.map.seed;
+    this.lobbyPreview = this.game.map;
+    this.seedPreviewTimer = 0;
     this.minimapBg = null;
     this.buildMinimapBackground();
     this.el.mmSector.textContent = this.game.map.label;
@@ -109,9 +127,15 @@ export class UI {
         this.refreshDifficultyControls();
         return;
       }
+      const seedMode = e.target.closest('[data-seedmode]');
+      if (seedMode) {
+        this.setSeedMode(seedMode.dataset.seedmode);
+        return;
+      }
       const action = e.target.closest('[data-action]')?.dataset.action;
       if (!action) return;
       if (action === 'start') this.startGame();
+      else if (action === 'reroll') this.rerollSeed();
       else if (action === 'resume') this.resume();
       else if (action === 'restart') window.location.reload();
       else if (action === 'newmap') this.newMap();
@@ -121,12 +145,23 @@ export class UI {
       else if (action === 'back') this.backFromOverlay();
     });
     this.el.overlay.addEventListener('input', (e) => {
+      if (e.target.closest('[data-seed-input]')) {
+        this.onSeedInput(e.target.value);
+        return;
+      }
       const range = e.target.closest('[data-audio]');
       if (!range) return;
       this.game.audioSettings?.set(range.dataset.audio, range.value);
       this.refreshAudioControls();
     });
     this.el.overlay.addEventListener('keydown', (e) => {
+      if (e.target.closest('[data-seed-input]')) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.startGame();
+        }
+        return;
+      }
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
       const tab = e.target.closest('[data-settings-tab]');
       if (!tab) return;
@@ -178,27 +213,18 @@ export class UI {
     const map = this.game.map;
     const html = `
       <div class="overlay-top">
-        <div class="eyebrow"><i></i> СЕКТОР ${map.label} · ПУСТОШЬ МАРСА · ${map.style.name}</div>
+        <div class="eyebrow"><i></i> ЛОББИ // СЕКТОР <span id="lobbySector">${map.label}</span></div>
         <h1>ГЕЛИОС<span>-7</span></h1>
         <p class="tagline">Две колонии-близнеца. Один сектор. Контракт достанется одному.</p>
       </div>
-      <div class="map-strip">
-        <div class="map-strip-item"><span>СИД КАРТЫ</span><b>#${map.label}</b></div>
-        <div class="map-strip-item"><span>СИММЕТРИЯ</span><b>${map.symmetry.name} · ${map.symmetry.tag}</b></div>
-        <div class="map-strip-item"><span>ЛАНДШАФТ</span><b>${map.style.name}</b></div>
-        <button class="btn-ghost btn-map" data-action="newmap">СГЕНЕРИРОВАТЬ ДРУГУЮ</button>
+      <div class="map-strip lobby-map-strip" id="lobbyMapStrip">
+        <div class="map-strip-item"><span>СИД КАРТЫ</span><b id="lobbySeed">#${map.label}</b></div>
+        <div class="map-strip-item"><span>СИММЕТРИЯ</span><b id="lobbySymmetry">${map.symmetry.name} · ${map.symmetry.tag}</b></div>
+        <div class="map-strip-item"><span>ЛАНДШАФТ</span><b id="lobbyStyle">${map.style.name}</b></div>
       </div>
-      ${this.difficultyBlock()}
-      <div class="brief-grid">
-        <div class="brief-copy">
-          <p>Программа «Гелиос-7» отправила в этот сектор два одинаковых семенных корабля — так задумывалась страховка: если одна колония погибнет, работу продолжит вторая. Связь между ними потеряна, а последний принятый пакет приказа одинаков для обеих сторон: сектор останется за выжившей. ${map.symmetry.hint} Рельеф, месторождения и техника у обеих сторон совпадают до последнего винта — по ту сторону фронта стоит ваша копия.</p>
-          <p class="accent-copy">Развивайте экономику, разведайте сектор и уничтожьте дублёра, пока он не сделал то же самое с вами.</p>
-        </div>
-        <div class="objectives">
-          <div class="objective"><b>01</b><span><strong>Нефть — это жизнь</strong><small>Разведайте месторождения и займите их вышками: они приносят кредиты.</small></span></div>
-          <div class="objective"><b>02</b><span><strong>Соберите армию</strong><small>Постройте казармы. Пехота, скауты, танки и РСЗО — ваша сила. Инженеры возводят здания.</small></span></div>
-          <div class="objective"><b>03</b><span><strong>Уничтожьте дублёра</strong><small>Сравняйте с землёй второй командный центр. Копия не должна пережить оригинал.</small></span></div>
-        </div>
+      <div class="lobby-panel">
+        ${this.difficultyBlock()}
+        ${this.seedBlock()}
       </div>
       <div class="overlay-actions">
         <button class="btn-primary" data-action="start">НАЧАТЬ ОПЕРАЦИЮ <span>→</span></button>
@@ -208,29 +234,82 @@ export class UI {
           <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
         </div>
       </div>
-      <p class="overlay-note start-note">Каждая карта строится из сида: ссылку вида <b>?seed=${map.label}</b> можно сохранить и сыграть на той же карте снова.</p>
+      <div class="brief-grid">
+        <div class="brief-copy">
+          <p id="lobbyBrief">Программа «Гелиос-7» отправила в этот сектор два одинаковых семенных корабля — так задумывалась страховка: если одна колония погибнет, работу продолжит вторая. Связь между ними потеряна, а последний принятый пакет приказа одинаков для обеих сторон: сектор останется за выжившей. ${map.symmetry.hint} Рельеф, месторождения и техника у обеих сторон совпадают до последнего винта — по ту сторону фронта стоит ваша копия.</p>
+          <p class="accent-copy">Развивайте экономику, разведайте сектор и уничтожьте дублёра, пока он не сделал то же самое с вами.</p>
+        </div>
+        <div class="objectives">
+          <div class="objective"><b>01</b><span><strong>Нефть — это жизнь</strong><small>Разведайте месторождения и займите их вышками: они приносят кредиты.</small></span></div>
+          <div class="objective"><b>02</b><span><strong>Соберите армию</strong><small>Постройте казармы. Пехота, скауты, танки и РСЗО — ваша сила. Инженеры возводят здания.</small></span></div>
+          <div class="objective"><b>03</b><span><strong>Уничтожьте дублёра</strong><small>Сравняйте с землёй второй командный центр. Копия не должна пережить оригинал.</small></span></div>
+        </div>
+      </div>
+      <p class="overlay-note start-note" id="lobbyNote">Каждая карта строится из сида: ссылку вида <b>?seed=${map.code}</b> можно сохранить и сыграть на той же карте снова.</p>
       <div class="overlay-footer">
-        <span>ГЕЛИОС-7 // КАРТА #${map.label} // ВЕРСИЯ ${GAME_VERSION}</span>
-        <span>${map.symmetry.name.toUpperCase()} · ${map.style.name} · BABYLON.JS</span>
+        <span id="lobbyFooterMap">ГЕЛИОС-7 // КАРТА #${map.label} // ВЕРСИЯ ${GAME_VERSION}</span>
+        <span id="lobbyFooterMeta">${map.symmetry.name.toUpperCase()} · ${map.style.name} · BABYLON.JS</span>
       </div>
     `;
     this.setOverlay(html, 'overlay--start');
+    this.refreshLobbyPreview();
   }
 
   /** Выбор сложности ИИ на стартовом экране: одна настройка на партию. */
   difficultyBlock() {
     const current = this.game.difficulty ?? 'normal';
+    const preset = AI_DIFFICULTY[current] ?? AI_DIFFICULTY.normal;
     const buttons = DIFFICULTY_ORDER.map((key) => {
-      const preset = AI_DIFFICULTY[key];
+      const option = AI_DIFFICULTY[key];
       const active = key === current;
       return `<button type="button" class="graphics-opt${active ? ' is-active' : ''}"
         data-difficulty="${key}" aria-pressed="${active}"
-        title="${esc(preset.desc)}">${preset.name}</button>`;
+        title="${esc(option.desc)}">${option.name}</button>`;
     }).join('');
     return `
-      <div class="difficulty-row">
-        <span class="difficulty-label">СЛОЖНОСТЬ ИИ</span>
+      <div class="lobby-row">
+        <div class="lobby-row-head">
+          <span class="lobby-label">СЛОЖНОСТЬ ПРОТИВНИКА</span>
+          <span class="lobby-status" id="difficultyStatus">${esc(preset.desc)}</span>
+        </div>
         <div class="difficulty-options">${buttons}</div>
+      </div>`;
+  }
+
+  /** Сид карты: случайный (по умолчанию) или ручной. */
+  seedBlock() {
+    const mode = this.seedMode === 'manual' ? 'manual' : 'random';
+    return `
+      <div class="lobby-row lobby-row--seed">
+        <div class="lobby-row-head">
+          <span class="lobby-label">СИД КАРТЫ</span>
+          <div class="seed-modes" role="group" aria-label="Способ выбора сида">
+            <button type="button" class="graphics-opt${mode === 'random' ? ' is-active' : ''}"
+              data-seedmode="random" aria-pressed="${mode === 'random'}">СЛУЧАЙНЫЙ</button>
+            <button type="button" class="graphics-opt${mode === 'manual' ? ' is-active' : ''}"
+              data-seedmode="manual" aria-pressed="${mode === 'manual'}">ВРУЧНУЮ</button>
+          </div>
+        </div>
+        <div class="seed-body">
+          <div class="seed-controls">
+            <div class="seed-panel" data-seed-panel="random"${mode === 'random' ? '' : ' hidden'}>
+              <div class="seed-value"><span>ВЫБРАННЫЙ СИД</span><b id="seedValue">#${formatSeedLabel(this.lobbySeedValue)}</b></div>
+              <button type="button" class="btn-ghost btn-seed" data-action="reroll">СГЕНЕРИРОВАТЬ ДРУГУЮ</button>
+            </div>
+            <div class="seed-panel" data-seed-panel="manual"${mode === 'manual' ? '' : ' hidden'}>
+              <label class="seed-input-label" for="seedInput">ВВЕДИТЕ СИД</label>
+              <input id="seedInput" class="seed-input" data-seed-input type="text"
+                value="${esc(this.manualSeedText)}" placeholder="7A3F91C2"
+                inputmode="text" autocomplete="off" autocapitalize="characters"
+                spellcheck="false" maxlength="24" aria-describedby="seedHint" />
+            </div>
+            <p class="seed-hint" id="seedHint"></p>
+          </div>
+          <div class="seed-preview">
+            <canvas id="lobbyPreview" width="180" height="180" role="img" aria-label="Предпросмотр выбранной карты"></canvas>
+            <span class="seed-preview-tag" id="seedPreviewTag">СЛУЧАЙНЫЙ СИД</span>
+          </div>
+        </div>
       </div>`;
   }
 
@@ -241,6 +320,228 @@ export class UI {
       btn.classList.toggle('is-active', active);
       btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
+    const status = this.el.overlay.querySelector('#difficultyStatus');
+    if (status) status.textContent = AI_DIFFICULTY[current]?.desc ?? '';
+  }
+
+  // ----------------------------------------------------------- выбор сида
+  setSeedMode(mode) {
+    if (mode !== 'random' && mode !== 'manual') return;
+    if (this.seedMode === mode) return;
+    this.seedMode = mode;
+    this.el.overlay.querySelectorAll('[data-seedmode]').forEach((btn) => {
+      const active = btn.dataset.seedmode === mode;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    this.el.overlay.querySelectorAll('[data-seed-panel]').forEach((panel) => {
+      panel.hidden = panel.dataset.seedPanel !== mode;
+    });
+    if (mode === 'manual') {
+      const input = this.el.overlay.querySelector('#seedInput');
+      if (input) {
+        if (!input.value.trim()) input.value = formatSeed(this.randomSeedValue);
+        this.manualSeedText = input.value;
+      }
+    }
+    this.refreshLobbyPreview();
+  }
+
+  onSeedInput(value) {
+    this.manualSeedText = String(value ?? '');
+    this.updateSeedHint();
+    clearTimeout(this.seedPreviewTimer);
+    this.seedPreviewTimer = setTimeout(() => this.refreshLobbyPreview(), 120);
+  }
+
+  parseManualSeed() {
+    const raw = String(this.manualSeedText ?? '').trim();
+    const cleaned = raw.replace(/^#/, '').replace(/^0x/i, '').replace(/[-\s]/g, '');
+    if (!cleaned) return null;
+    return normalizeSeed(raw);
+  }
+
+  selectedLobbySeed() {
+    return this.seedMode === 'manual' ? this.parseManualSeed() : this.randomSeedValue;
+  }
+
+  rerollSeed() {
+    this.randomSeedValue = randomSeed();
+    if (this.seedMode !== 'random') this.setSeedMode('random');
+    else this.refreshLobbyPreview();
+  }
+
+  refreshLobbyPreview() {
+    if (!this.el.overlay?.querySelector('#lobbyPreview')) return;
+    const seed = this.selectedLobbySeed();
+    const usable = seed != null;
+    const map = usable
+      ? (seed === this.game.map.seed ? this.game.map : createMap(seed))
+      : this.game.map;
+    const preview = usable && seed !== this.game.map.seed;
+    this.lobbySeedValue = usable ? seed : this.game.map.seed;
+    this.lobbyPreview = map;
+    this.updateLobbyMapInfo(map, preview);
+    let tag = 'СЛУЧАЙНЫЙ СИД';
+    if (!usable) tag = 'ВВЕДИТЕ СИД';
+    else if (preview) tag = 'ПРЕДПРОСМОТР';
+    else if (this.seedMode === 'manual') tag = 'РУЧНОЙ СИД';
+    this.drawLobbyPreview(map, tag);
+    this.updateSeedHint();
+  }
+
+  updateLobbyMapInfo(map, preview) {
+    const set = (selector, text) => {
+      const node = this.el.overlay.querySelector(selector);
+      if (node) node.textContent = text;
+    };
+    set('#lobbySector', map.label);
+    set('#lobbySeed', `#${map.label}`);
+    set('#lobbySymmetry', `${map.symmetry.name} · ${map.symmetry.tag}`);
+    set('#lobbyStyle', map.style.name);
+    set('#seedValue', `#${map.label}`);
+    set('#lobbyFooterMap', `ГЕЛИОС-7 // КАРТА #${map.label} // ВЕРСИЯ ${GAME_VERSION}`);
+    set('#lobbyFooterMeta', `${map.symmetry.name.toUpperCase()} · ${map.style.name} · BABYLON.JS`);
+    const strip = this.el.overlay.querySelector('#lobbyMapStrip');
+    strip?.classList.toggle('is-preview', preview);
+    const brief = this.el.overlay.querySelector('#lobbyBrief');
+    if (brief) {
+      brief.textContent = `Программа «Гелиос-7» отправила в этот сектор два одинаковых семенных корабля — так задумывалась страховка: если одна колония погибнет, работу продолжит вторая. Связь между ними потеряна, а последний принятый пакет приказа одинаков для обеих сторон: сектор останется за выжившей. ${map.symmetry.hint} Рельеф, месторождения и техника у обеих сторон совпадают до последнего винта — по ту сторону фронта стоит ваша копия.`;
+    }
+    const note = this.el.overlay.querySelector('#lobbyNote');
+    if (note) {
+      note.innerHTML = preview
+        ? `Карта <b>#${map.label}</b> будет создана из выбранного сида при начале операции.`
+        : `Каждая карта строится из сида: ссылку вида <b>?seed=${map.code}</b> можно сохранить и сыграть на той же карте снова.`;
+    }
+  }
+
+  updateSeedHint() {
+    const hint = this.el.overlay?.querySelector('#seedHint');
+    if (!hint) return;
+    hint.classList.remove('is-warn');
+    if (this.seedMode === 'random') {
+      hint.textContent = 'Игра подберёт сид сама. «Сгенерировать другую» покажет другую карту до начала операции.';
+      return;
+    }
+    const seed = this.parseManualSeed();
+    if (seed == null) {
+      hint.textContent = 'Введите сид: до 8 hex-символов (например, 7A3F91C2) или любое слово. Enter — начать.';
+      hint.classList.add('is-warn');
+      return;
+    }
+    hint.textContent = `Сид #${formatSeedLabel(seed)}. Одинаковый сид всегда создаёт одну и ту же карту. Enter — начать.`;
+  }
+
+  /** Мини-карта в лобби: рельеф, базы, месторождения и руины выбранного сида. */
+  drawLobbyPreview(map, tag) {
+    const canvas = this.el.overlay?.querySelector('#lobbyPreview');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const size = canvas.width;
+    const pad = 7;
+    const w = size - pad * 2;
+    const toMap = (x, z) => ({
+      x: pad + ((x + MAP.half) / (MAP.half * 2)) * w,
+      y: pad + ((z + MAP.half) / (MAP.half * 2)) * w,
+    });
+
+    ctx.clearRect(0, 0, size, size);
+    const field = ctx.createRadialGradient(size / 2, size / 2, 10, size / 2, size / 2, w * 0.75);
+    field.addColorStop(0, map.style.minimap);
+    field.addColorStop(1, map.style.minimapFar);
+    ctx.fillStyle = field;
+    ctx.fillRect(0, 0, size, size);
+
+    // Пятна рельефа: детерминированы сидом, как и сама карта.
+    const rng = mulberry32((map.seed ^ 0x51c70) >>> 0);
+    for (let i = 0; i < 36; i++) {
+      const x = pad + rng() * w;
+      const y = pad + rng() * w;
+      const r = 5 + rng() * 24;
+      const dark = rng() > 0.5;
+      const blob = ctx.createRadialGradient(x, y, 0, x, y, r);
+      blob.addColorStop(0, dark ? 'rgba(26,42,41,0.55)' : 'rgba(42,53,44,0.35)');
+      blob.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = blob;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+
+    // Сетка помогает читать расположение баз.
+    ctx.strokeStyle = 'rgba(79,210,255,0.09)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const p = pad + (w / 4) * i;
+      ctx.beginPath();
+      ctx.moveTo(p, pad);
+      ctx.lineTo(p, size - pad);
+      ctx.moveTo(pad, p);
+      ctx.lineTo(size - pad, p);
+      ctx.stroke();
+    }
+
+    // Камни.
+    for (const rock of map.decor.rocks) {
+      const p = toMap(rock.x, rock.z);
+      ctx.fillStyle = 'rgba(88,100,93,0.75)';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 1 + (rock.scale ?? 1) * 0.9, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Руины стен.
+    ctx.strokeStyle = 'rgba(172,160,136,0.85)';
+    ctx.lineWidth = 1.5;
+    for (const wall of map.walls ?? []) {
+      const a = toMap(wall.x1, wall.z1);
+      const b = toMap(wall.x2, wall.z2);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+
+    // Месторождения: цвет кольца показывает владельца.
+    for (const patch of map.oilPatches) {
+      const p = toMap(patch.x, patch.z);
+      ctx.fillStyle = 'rgba(0,0,0,0.9)';
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, 4.5, 3.5, 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = patch.owner === 'player'
+        ? 'rgba(79,210,255,0.9)'
+        : patch.owner === 'enemy'
+          ? 'rgba(255,107,74,0.9)'
+          : 'rgba(255,176,46,0.85)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+
+    // Стартовые базы: штаб и электростанция каждой стороны.
+    const baseMark = (point, faction) => {
+      const p = toMap(point.x, point.z);
+      const color = FACTIONS[faction].ui;
+      const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 13);
+      glow.addColorStop(0, faction === 'player' ? 'rgba(79,210,255,0.35)' : 'rgba(255,107,74,0.3)');
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(p.x - 13, p.y - 13, 26, 26);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(240,253,255,0.75)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    };
+    for (const faction of ['player', 'enemy']) {
+      const spawn = map.spawn[faction];
+      baseMark(spawn.hq, faction);
+      baseMark(spawn.power, faction);
+    }
+
+    const tagNode = this.el.overlay.querySelector('#seedPreviewTag');
+    if (tagNode) tagNode.textContent = tag;
   }
 
   showEnd(result) {
@@ -335,6 +636,23 @@ export class UI {
   }
 
   startGame() {
+    if (!this.game.started && !this.game.over) {
+      const seed = this.selectedLobbySeed();
+      if (seed == null) {
+        this.updateSeedHint();
+        this.el.overlay.querySelector('#seedInput')?.focus();
+        return;
+      }
+      if (seed !== this.game.map.seed) {
+        this.launchSeed(seed, true);
+        return;
+      }
+      this.syncLobbyUrl();
+    }
+    this.beginGame();
+  }
+
+  beginGame() {
     document.activeElement?.blur?.();
     this.overlayOpen = false;
     this.el.overlay.classList.remove('is-open');
@@ -345,10 +663,38 @@ export class UI {
     this.drawMinimap();
   }
 
+  /** Запоминает режим сида в адресе, чтобы F5 вернул в то же лобби. */
+  syncLobbyUrl() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('start');
+    if (this.seedMode === 'manual') url.searchParams.set('seedmode', 'manual');
+    else url.searchParams.delete('seedmode');
+    if (url.toString() !== window.location.href) {
+      window.history.replaceState(null, '', url.toString());
+    }
+  }
+
+  /**
+   * Загружает выбранный сид. Если карта ещё не создана этим запуском,
+   * страница перезагружается: при autostart игра начнётся сразу после загрузки.
+   */
+  launchSeed(seed, autostart = false) {
+    document.activeElement?.blur?.();
+    const url = new URL(seedUrl(seed));
+    url.searchParams.delete('start');
+    if (this.seedMode === 'manual') url.searchParams.set('seedmode', 'manual');
+    else url.searchParams.delete('seedmode');
+    if (autostart) url.searchParams.set('start', '1');
+    window.location.assign(url.toString());
+  }
+
   /** Перезагружает игру с новым случайным сидом карты. */
   newMap() {
     document.activeElement?.blur?.();
-    window.location.assign(seedUrl(randomSeed()));
+    const url = new URL(seedUrl(randomSeed()));
+    url.searchParams.delete('seedmode');
+    url.searchParams.delete('start');
+    window.location.assign(url.toString());
   }
 
   /** Куда вернуться из вложенного экрана меню: на итоги, в паузу или на старт. */

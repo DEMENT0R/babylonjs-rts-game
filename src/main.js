@@ -40,13 +40,25 @@ function fatal(err) {
 
 function boot() {
   const params = new URLSearchParams(window.location.search);
+  // Лобби может попросить сразу начать партию на выбранном сиде: так ручной
+  // сид применяется без второго клика «Начать операцию».
+  const autostart = params.get('start') === '1';
   const requestedSeed = seedFromLocation(window.location.search);
   const seed = requestedSeed ?? randomSeed();
   const map = createMap(seed);
 
   // Сид попадает в адрес: ссылкой можно поделиться, а F5 сохранит ту же карту.
+  // Служебный ?start=1 убираем, чтобы обновление страницы снова открыло лобби.
+  let urlChanged = false;
   if (!params.has('seed')) {
     params.set('seed', formatSeed(seed));
+    urlChanged = true;
+  }
+  if (params.has('start')) {
+    params.delete('start');
+    urlChanged = true;
+  }
+  if (urlChanged) {
     const query = params.toString();
     window.history.replaceState(null, '', `${window.location.pathname}?${query}${window.location.hash}`);
   }
@@ -135,6 +147,7 @@ function boot() {
   });
   const ui = new UI(game);
   const input = new Input(game);
+  if (autostart) ui.startGame();
 
   const resize = () => engine.resize();
   window.addEventListener('resize', resize);

@@ -1794,33 +1794,198 @@ body.mode-attack #scene {
   white-space: nowrap;
 }
 
-.difficulty-row {
+.lobby-map-strip {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.lobby-map-strip.is-preview {
+  border-color: rgba(255, 176, 46, 0.34);
+  box-shadow: inset 0 0 18px rgba(255, 176, 46, 0.045);
+}
+
+.lobby-map-strip.is-preview #lobbySeed {
+  color: var(--amber);
+}
+
+.lobby-panel {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 7px;
   margin-top: 10px;
-  padding: 8px 12px;
+}
+
+.lobby-row {
+  padding: 9px 12px;
   border: 1px solid var(--line-soft);
   background: rgba(8, 20, 27, 0.62);
 }
 
-.difficulty-label {
+.lobby-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lobby-label {
   font-size: 6.5px;
   letter-spacing: 0.18em;
   color: var(--dim);
+}
+
+.lobby-status {
+  flex: 1 1 auto;
+  max-width: 76%;
+  text-align: right;
+  font-size: 7px;
+  line-height: 1.45;
+  color: #8ea8b6;
 }
 
 .difficulty-options {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  margin-top: 8px;
 }
 
 .difficulty-options .graphics-opt {
   padding: 6px 12px;
   font-size: 8px;
+}
+
+/* Сид карты: переключатель режима, поле ввода и мини-предпросмотр. */
+.seed-modes {
+  display: flex;
+  gap: 4px;
+}
+
+.seed-modes .graphics-opt {
+  padding: 5px 10px;
+  font-size: 7px;
+}
+
+.seed-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 158px;
+  gap: 10px;
+  margin-top: 8px;
+  align-items: stretch;
+}
+
+.seed-controls {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.seed-panel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 34px;
+}
+
+.seed-panel[hidden] {
+  display: none;
+}
+
+.seed-value {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.seed-value span,
+.seed-input-label {
+  font-size: 6.5px;
+  letter-spacing: 0.16em;
+  color: var(--dim);
+  text-transform: uppercase;
+}
+
+.seed-value b {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--cyan-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.seed-input {
+  flex: 1 1 130px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: rgba(2, 8, 12, 0.82);
+  color: #eaffff;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.seed-input::placeholder {
+  color: rgba(120, 147, 161, 0.45);
+}
+
+.seed-input:focus {
+  border-color: rgba(79, 210, 255, 0.85);
+  box-shadow: 0 0 12px rgba(79, 210, 255, 0.16), inset 0 0 10px rgba(79, 210, 255, 0.06);
+}
+
+.btn-seed {
+  padding: 8px 12px;
+  font-size: 7.5px;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
+.seed-hint {
+  margin: 0;
+  min-height: 21px;
+  font-size: 7px;
+  line-height: 1.5;
+  color: var(--dim);
+}
+
+.seed-hint.is-warn {
+  color: var(--amber);
+}
+
+.seed-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+#lobbyPreview {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid rgba(79, 210, 255, 0.24);
+  background: #060d12;
+}
+
+.seed-preview-tag {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 6.5px;
+  letter-spacing: 0.14em;
+  color: var(--dim);
 }
 
 .end-map {
@@ -1847,6 +2012,28 @@ body.mode-attack #scene {
   .map-strip .btn-map {
     grid-column: 1 / -1;
     padding: 10px 12px;
+  }
+
+  .lobby-map-strip .map-strip-item:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .lobby-row-head {
+    align-items: flex-start;
+  }
+
+  .lobby-status {
+    max-width: none;
+    text-align: left;
+  }
+
+  .seed-body {
+    grid-template-columns: 1fr;
+  }
+
+  .seed-preview {
+    width: 140px;
+    justify-self: center;
   }
 }
 
