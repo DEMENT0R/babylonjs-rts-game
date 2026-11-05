@@ -25,6 +25,9 @@ export class AIController {
     this.assignTimer = 7;
     this.scoutTimer = 12 + Math.random() * 8;
     this.lastScoutNoticeAt = -999;
+    // Сколько секунд подряд казармы простаивают из-за нехватки кредитов.
+    // Пока это значение велико, Рой обороняется, а не нападает.
+    this.starvedTime = 0;
     this.buildIntent = null;
     this.buildCount = 0;
     this.lastBuildNoticeAt = -999;
@@ -98,6 +101,8 @@ export class AIController {
     this.assignTimer -= dt;
     this.scoutTimer -= dt;
 
+    this.updateEconomy(dt);
+
     if (this.defenseTimer <= 0) {
       this.defenseTimer = 1.5;
       this.defendBase();
@@ -125,7 +130,10 @@ export class AIController {
     }
 
     if (this.scoutTimer <= 0) {
-      this.scoutTimer = 10 + Math.random() * 8;
+      // Бедный Рой бережёт силы: разведка реже, чтобы не терять бойцов в тумане.
+      this.scoutTimer = this.isStarved()
+        ? AI.scoutWeakInterval + Math.random() * 16
+        : 10 + Math.random() * 8;
       this.sendScouts();
     }
 
@@ -315,10 +323,14 @@ export class AIController {
       && !u.def.healer
       && (!u.order || u.order.type === 'move' || u.order.type === 'attackMove' || u.order.type === 'hold')
     ));
-    if (!free.length) return;
+    // Гарнизон улья не оголяем: разведка берёт только бойцов сверх него.
+    const spare = free.length - AI.scoutGarrison;
+    if (spare < 1) return;
     // Быстрые юниты справляются с разведкой лучше: они успевают вернуться.
     free.sort((a, b) => (b.speed ?? 0) - (a.speed ?? 0));
-    const count = Math.min(free.length, 1 + Math.floor(Math.random() * 2));
+    // Бедный Рой посылает одного разведчика и реже: силы нужнее в обороне.
+    const wanted = this.isStarved() ? 1 : 1 + Math.floor(Math.random() * 2);
+    const count = Math.min(spare, wanted);
     for (let i = 0; i < count; i++) {
       const u = free[i];
       u.issueAttackMove(
@@ -397,6 +409,33 @@ export class AIController {
   }
 
   // ------------------------------------------------------------- армия
+  /** Есть ли готовые казармы: без них армию нечем пополнять. */
+  hasBarracks() {
+    return this.game.buildings.some(
+      (b) => b.alive && b.faction === 'enemy' && b.type === 'barracks' && b.complete,
+    );
+  }
+
+  /**
+   * Голодает ли экономика. Пока казармы простаивают из-за нехватки кредитов
+   * на самого дешёвого бойца, копим силы у базы. Короткая пауза между
+   * наймом юнитов голодом не считается: важно именно затянувшееся безденежье.
+   */
+  updateEconomy(dt) {
+    const game = this.game;
+    const used = game.getArmyUsed('enemy') + game.getQueuedSupply('enemy');
+    const cap = Math.min(AI.armyCap, game.getArmyCap('enemy'));
+    const stalled = this.hasBarracks()
+      && used < cap
+      && this.credits < AI.economyCredits;
+    if (stalled) this.starvedTime += dt;
+    else this.starvedTime = Math.max(0, this.starvedTime - dt * 2);
+  }
+
+  isStarved() {
+    return this.starvedTime >= AI.starvedDelay;
+  }
+
   tryTrain() {
     const game = this.game;
     const used = game.getArmyUsed('enemy') + game.getQueuedSupply('enemy');
@@ -987,6 +1026,28 @@ export class AIController {
     );
     if (!playerHQ) {
       this.waveTimer = 20;
+      return;
+    }
+
+    // Без казарм армию не пополнить: сначала производство, потом наступление.
+    if (!this.hasBarracks()) {
+      this.waveTimer = AI.regroupDelay * (0.8 + Math.random() * 0.6);
+      this.debugLog('волна отложена: нет готовых казарм');
+      return;
+    }
+
+    // Экономика не тянет пополнение — Рой копит силы у базы и не рискует
+    // последними бойцами. Сообщение объясняет игроку затянувшееся затишье.
+    if (this.isStarved()) {
+      this.waveTimer = AI.regroupDelay * (0.8 + Math.random() * 0.6);
+      this.game.notify(
+        'Противник экономит силы: его войска держатся у базы.',
+        'warn',
+        'ai-economy',
+        150,
+        5,
+      );
+      this.debugLog(`волна отложена: экономика голодает (${Math.round(this.credits)} кр.)`);
       return;
     }
 
