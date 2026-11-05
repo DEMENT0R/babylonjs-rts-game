@@ -1903,19 +1903,33 @@ export class UI {
 
     for (const b of this.game.buildings) {
       if (!b.alive) continue;
-      if (!this.game.isEntityVisibleTo('player', b)) continue;
+      const visible = this.game.isEntityVisibleTo('player', b);
+      if (!visible && !this.game.isBuildingKnownTo('player', b)) continue;
       const p = this.worldToMinimap(b.position.x, b.position.z);
       const color = b.faction === 'player' ? '#4fd2ff' : '#ff6b4a';
       const size = b.type === 'hq' ? 13 : b.type === 'barracks' ? 9 : 7;
+      const x = p.x - size / 2;
+      const y = p.y - size / 2;
       ctx.fillStyle = color;
-      ctx.globalAlpha = b.complete ? 0.95 : 0.5;
-      ctx.fillRect(p.x - size / 2, p.y - size / 2, size, size);
-      ctx.globalAlpha = 1;
-      if (b.type === 'hq') {
-        ctx.strokeStyle = '#e8fbff';
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(p.x - size / 2, p.y - size / 2, size, size);
+      if (!visible) {
+        // Разведанное, но не видимое здание: контур и слабая заливка.
+        ctx.globalAlpha = 0.2;
+        ctx.fillRect(x, y, size, size);
+        ctx.globalAlpha = 0.7;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(x, y, size, size);
+      } else {
+        ctx.globalAlpha = b.complete ? 0.95 : 0.5;
+        ctx.fillRect(x, y, size, size);
+        ctx.globalAlpha = 1;
+        if (b.type === 'hq') {
+          ctx.strokeStyle = '#e8fbff';
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(x, y, size, size);
+        }
       }
+      ctx.globalAlpha = 1;
     }
 
     for (const u of this.game.units) {

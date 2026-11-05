@@ -598,7 +598,7 @@ export class AIController {
   }
 
   /**
-   * Что ИИ знает об обороне вокруг точки: турели — по разведке (они не
+   * Что ИИ знает об обороне вокруг точки: постройки — по разведке (они не
    * двигаются, их помнят), войска — только по текущему обзору. В тумане
    * гарнизон для Роя не существует, и придумывать его он не должен.
    */
@@ -606,10 +606,7 @@ export class AIController {
     let value = 0;
     for (const b of this.game.buildings) {
       if (!b.alive || b.faction !== 'player') continue;
-      const known = b.type === 'turret'
-        ? this.game.isExploredBy('enemy', b.position.x, b.position.z)
-        : this.game.isEntityVisibleTo('enemy', b);
-      if (!known) continue;
+      if (!this.game.isBuildingKnownTo('enemy', b)) continue;
       if (dist(point.x, point.z, b.position.x, b.position.z) > AI.defenseRadius + b.radius) continue;
       value += this.combatValue(b);
     }
@@ -893,7 +890,7 @@ export class AIController {
       b.alive
       && b.faction === 'player'
       && b.type === 'turret'
-      && this.game.isExploredBy('enemy', b.position.x, b.position.z)
+      && this.game.isBuildingKnownTo('enemy', b)
     ));
     if (!turrets.length) return this.approachPoint(position, radius);
 
@@ -944,7 +941,7 @@ export class AIController {
       && !this.isTargetCooling(b.id)
       // Рейд идёт по разведанным постройкам: того, чего Рой не видел,
       // он просто не знает.
-      && this.game.isExploredBy('enemy', b.position.x, b.position.z)
+      && this.game.isBuildingKnownTo('enemy', b)
     ));
     if (!candidates.length) return null;
     const derricks = candidates.filter((b) => b.type === 'derrick');

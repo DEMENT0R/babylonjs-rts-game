@@ -676,6 +676,11 @@ export class Game {
     return this.fog ? this.fog.isEntityVisible(faction, entity) : true;
   }
 
+  /** Известна ли стороне постройка: видна сейчас или разведана раньше. */
+  isBuildingKnownTo(faction, building) {
+    return this.fog ? this.fog.isBuildingKnown(faction, building) : true;
+  }
+
   countUnits(faction) {
     let n = 0;
     for (const u of this.units) if (u.alive && u.faction === faction) n++;
@@ -1132,6 +1137,7 @@ export class Game {
   }
 
   removeEntity(entity) {
+    if (entity?.isBuilding) this.fog?.forgetBuilding(entity);
     this.entities = this.entities.filter((e) => e !== entity);
     this.units = this.units.filter((e) => e !== entity);
     this.buildings = this.buildings.filter((e) => e !== entity);

@@ -96,6 +96,7 @@ export class Entity {
     this.bar = null;
     this.ring = null;
     this.barVisible = false;
+    this.fogState = null;
     this.lastHitAt = -99;
     this.lastAttacker = null;
   }
@@ -154,6 +155,17 @@ export class Entity {
     this.selected = value;
     if (this.ring) this.ring.setEnabled(value && this.alive);
     if (this.isBuilding) this.updateRallyVisual?.();
+  }
+
+  /**
+   * Видимость для игрока: visible — видно сейчас, hidden — не видно совсем.
+   * У зданий есть ещё ghost — известная по прошлой разведке постройка.
+   */
+  setFogState(state) {
+    this.fogState = state;
+    this.fogVisible = state === 'visible';
+    this.root?.setEnabled(this.fogVisible);
+    this.updateBar?.();
   }
 
   takeDamage(amount, source) {
@@ -1118,6 +1130,7 @@ export class Building extends Entity {
     this.root = this.model.root;
     this.parts = this.model.parts;
     this.height = this.model.height;
+    this.fogGhost = null;
     this.root.rotation.y = this.rotation;
     this.setupVisual();
 
@@ -1151,6 +1164,106 @@ export class Building extends Entity {
     this.rally = this.defaultRally();
     if (type === 'barracks') this.ensureRallyVisual();
     this.updateBar();
+  }
+
+  setFogState(state) {
+    super.setFogState(state);
+    if (this.buildRing) this.buildRing.setEnabled(state === 'visible' && !this.complete);
+    if (state === 'visible') {
+      this.fogGhost?.setEnabled(false);
+    } else if (state === 'ghost') {
+      this.updateFogGhost();
+      this.fogGhost?.setEnabled(true);
+    } else {
+      this.fogGhost?.setEnabled(false);
+    }
+  }
+
+  /**
+   * Приглушённый двойник постройки для серой зоны. Живую модель нельзя
+   * просто оставить включённой: тогда в тумане были бы видны анимации,
+   * ремонт и полоска прочности. Двойник — статичный и одноцветный.
+   */
+  ensureFogGhost() {
+    if (this.fogGhost) return this.fogGhost;
+    const model = this.game.factory.building(this.type, this.faction);
+    const root = model.root;
+    const material = this.game.factory.mat('fogGhost', {
+      color: '#a9968e',
+      emissive: '#4b3d38',
+      unlit: true,
+      alpha: 0.42,
+      fog: false,
+      backFaceCulling: false,
+    });
+    const glow = this.game.scene.getGlowLayerByName?.('glow');
+    const meshes = root.getChildMeshes(false);
+    meshes.forEach((mesh) => {
+      mesh.material = material;
+      mesh.metadata = { ghost: this };
+      mesh.isPickable = true;
+      mesh.castShadow = false;
+      mesh.receiveShadows = false;
+      mesh.applyFog = false;
+      glow?.addExcludedMesh?.(mesh);
+    });
+
+    // Силуэт статичный, поэтому все детали можно склеить в один меш:
+    // у больших зданий это десятки draw call'ов, которые в тумане не нужны.
+    let visual = root;
+    if (meshes.length > 1 && meshes.every((mesh) => mesh.getClassName?.() === 'Mesh')) {
+      const merged = Mesh.MergeMeshes(meshes, false, true, undefined, false, false);
+      if (merged) {
+        merged.name = `fogGhost_${this.id}`;
+        merged.material = material;
+        merged.metadata = { ghost: this };
+        merged.isPickable = true;
+        merged.castShadow = false;
+        merged.receiveShadows = false;
+        merged.applyFog = false;
+        merged.parent = null;
+        merged.position.set(0, 0, 0);
+        merged.rotation.set(0, 0, 0);
+        merged.scaling.set(1, 1, 1);
+        glow?.addExcludedMesh?.(merged);
+        meshes.forEach((mesh) => {
+          glow?.removeExcludedMesh?.(mesh);
+          mesh.dispose();
+        });
+        root.dispose();
+        visual = merged;
+      }
+    }
+
+    // Контур у основания помогает читать даже низкие постройки — турели,
+    // вышки и баррикады, которые иначе почти сливаются с землёй.
+    const ring = MeshBuilder.CreateTorus('fogGhostRing', {
+      diameter: Math.max(3.2, this.radius * 2.35),
+      thickness: 0.07,
+      tessellation: 28,
+    }, this.game.scene);
+    ring.material = material;
+    ring.parent = visual;
+    ring.position.y = 0.16;
+    ring.isPickable = true;
+    ring.metadata = { ghost: this };
+    ring.castShadow = false;
+    ring.receiveShadows = false;
+    glow?.addExcludedMesh?.(ring);
+    visual.setEnabled(false);
+    this.fogGhost = visual;
+    return visual;
+  }
+
+  updateFogGhost() {
+    const ghost = this.fogGhost ?? this.ensureFogGhost();
+    if (!ghost) return;
+    ghost.position.set(this.position.x, 0, this.position.z);
+    ghost.rotation.y = this.rotation;
+    // Недостроенное здание запоминается недостроенным: это честнее, чем
+    // показывать в тумане готовую постройку, которой игрок не видел.
+    const progress = this.complete ? 1 : clamp(this.construction, 0, 1);
+    ghost.scaling.set(1, 0.22 + 0.78 * progress, 1);
   }
 
   defaultRally() {
@@ -1538,6 +1651,16 @@ export class Building extends Entity {
   }
 
   disposeVisual() {
+    if (this.fogGhost) {
+      const glow = this.game.scene.getGlowLayerByName?.('glow');
+      this.fogGhost.getChildMeshes(false).forEach((mesh) => {
+        glow?.removeExcludedMesh?.(mesh);
+        mesh.dispose();
+      });
+      glow?.removeExcludedMesh?.(this.fogGhost);
+      this.fogGhost.dispose();
+      this.fogGhost = null;
+    }
     if (this.buildRing) {
       this.buildRing.dispose();
       this.buildRing = null;

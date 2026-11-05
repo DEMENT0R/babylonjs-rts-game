@@ -33,6 +33,13 @@ export class FogOfWar {
       player: { visible: new Uint8Array(SIZE * SIZE), explored: new Uint8Array(SIZE * SIZE) },
       enemy: { visible: new Uint8Array(SIZE * SIZE), explored: new Uint8Array(SIZE * SIZE) },
     };
+    // Постройки, которые сторона видела хотя бы раз. В отличие от клеток,
+    // память привязана к конкретному зданию: новое здание в уже разведанной
+    // области не появится, пока его снова не увидят.
+    this.knownBuildings = {
+      player: new Set(),
+      enemy: new Set(),
+    };
     this._buildTerrain();
     this.refresh();
     this.applyVisibility();
@@ -89,6 +96,25 @@ export class FogOfWar {
       if (!grid) continue;
       this.reveal(grid, entity.position.x, entity.position.z, this.visionOf(entity));
     }
+    this.rememberBuildings();
+  }
+
+  /**
+   * Запоминает чужие постройки, попавшие в текущий обзор. Юниты не
+   * запоминаются: они двигаются, и память о них превратила бы туман в
+   * угадайку. Здания, наоборот, неподвижны — их полезно помнить.
+   */
+  rememberBuildings() {
+    for (const entity of this.game.entities) {
+      if (!entity.alive || !entity.isBuilding) continue;
+      const observer = entity.faction === 'player' ? 'enemy' : 'player';
+      const grid = this.grids[observer];
+      if (!grid) continue;
+      const { cx, cz } = this.cellOf(entity.position.x, entity.position.z);
+      if (grid.visible[cz * SIZE + cx] === 1) {
+        this.knownBuildings[observer].add(entity.id);
+      }
+    }
   }
 
   update(dt) {
@@ -122,19 +148,39 @@ export class FogOfWar {
     return this.isVisible(faction, entity.position.x, entity.position.z);
   }
 
+  /** Известна ли стороне эта постройка — сейчас или по прошлой разведке. */
+  isBuildingKnown(faction, building) {
+    if (!building) return false;
+    if (building.faction === faction) return true;
+    return this.knownBuildings[faction]?.has(building.id) ?? false;
+  }
+
+  /** Забыть постройку: уничтожена или снесена. */
+  forgetBuilding(building) {
+    if (!building) return;
+    this.knownBuildings.player.delete(building.id);
+    this.knownBuildings.enemy.delete(building.id);
+  }
+
   /**
-   * Чужие юниты и здания в тумане не рисуются: иначе туман был бы просто
-   * декорацией. Свои объекты видны всегда.
+   * Чужие юниты в тумане не рисуются, а постройки имеют три состояния:
+   * видима сейчас, известна по прошлой разведке (приглушённый силуэт) или
+   * неизвестна вовсе. Свои объекты видны всегда.
    */
   applyVisibility() {
     for (const entity of this.game.entities) {
       if (!entity.alive || !entity.root) continue;
-      const seen = entity.faction === 'player'
-        || this.isEntityVisible('player', entity);
-      if (entity.fogVisible === seen) continue;
-      entity.fogVisible = seen;
-      entity.root.setEnabled(seen);
-      entity.updateBar?.();
+      let state = 'visible';
+      if (entity.faction !== 'player') {
+        const visible = this.isVisible('player', entity.position.x, entity.position.z);
+        if (!visible) {
+          state = entity.isBuilding && this.isBuildingKnown('player', entity)
+            ? 'ghost'
+            : 'hidden';
+        }
+      }
+      if (entity.fogState === state) continue;
+      entity.setFogState?.(state);
     }
   }
 

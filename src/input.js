@@ -165,10 +165,11 @@ export class Input {
   pick(clientX, clientY) {
     const ray = this.screenRay(clientX, clientY);
     const info = this.scene.pickWithRay(ray, (mesh) => mesh.isPickable && mesh.isEnabled());
-    if (!info?.hit || !info.pickedMesh) return { entity: null, oil: null, point: null };
+    if (!info?.hit || !info.pickedMesh) return { entity: null, ghost: null, oil: null, point: null };
     const meta = info.pickedMesh.metadata;
     return {
       entity: meta?.entity ?? null,
+      ghost: meta?.ghost ?? null,
       oil: meta?.oilPatch ?? null,
       point: info.pickedPoint,
       mesh: info.pickedMesh,
@@ -546,6 +547,17 @@ export class Input {
 
   handleClick(clientX, clientY, additive) {
     const picked = this.pick(clientX, clientY);
+    if (picked.ghost) {
+      // Силуэт — разведданные, а не живая цель: выбирать его нельзя.
+      this.game.notify(
+        'Последнее известное положение постройки. Данные могли устареть.',
+        'hint',
+        'fog-ghost',
+        4,
+        3,
+      );
+      return;
+    }
     if (picked.entity) {
       const entity = picked.entity;
       if (entity.faction !== 'player') {
@@ -600,6 +612,15 @@ export class Input {
 
     const picked = this.pick(clientX, clientY);
     const units = this.game.selectedUnits();
+    if (picked.ghost) {
+      // По силуэту нельзя отдать приказ «атаковать»: цель могла исчезнуть.
+      // Ведём отряд в attack-move к последней известной точке.
+      if (units.length) {
+        const { x, z } = picked.ghost.position;
+        this.game.commandAttackMove(new Vector3(x, 0, z));
+      }
+      return;
+    }
     if (picked.entity && picked.entity.faction !== 'player') {
       if (units.length) this.game.commandAttack(picked.entity);
       return;
@@ -682,6 +703,14 @@ export class Input {
     const units = this.game.selectedUnits();
     const picked = this.pick(e.clientX, e.clientY);
     const point = this.groundPoint(e.clientX, e.clientY);
+
+    if (picked.ghost) {
+      if (units.length) {
+        const { x, z } = picked.ghost.position;
+        this.game.commandAttackMove(new Vector3(x, 0, z));
+      }
+      return;
+    }
 
     // Инженеры по ПКМ на недостроенном здании идут помогать стройке.
     if (picked.entity && picked.entity.faction === 'player' && picked.entity.isBuilding && !picked.entity.complete) {
