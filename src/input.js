@@ -17,6 +17,8 @@ const DOUBLE_TAP_DIST = 48;
 // большее смещение — иначе он превращается в рамку и выбор не срабатывает.
 const TOUCH_TAP_SLOP = 12;
 const MOUSE_TAP_SLOP = 5;
+// Двумя пальцами рамка растягивается от средней точки касания.
+const TOUCH_BOX_SLOP = 10;
 
 export class Input {
   constructor(game) {
@@ -24,6 +26,7 @@ export class Input {
     this.scene = game.scene;
     this.camera = game.camera;
     this.canvas = this.scene.getEngine().getRenderingCanvas();
+    this.selectBoxEl = document.querySelector('#selectBox');
     this.pointer = { x: 0, y: 0, has: false };
     this.keys = new Set();
     this.desired = {
@@ -70,13 +73,19 @@ export class Input {
     c.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     c.addEventListener('pointermove', (e) => this.onPointerMove(e));
     c.addEventListener('pointerup', (e) => this.onPointerUp(e));
-    c.addEventListener('pointercancel', (e) => this.onPointerUp(e));
+    c.addEventListener('pointercancel', (e) => this.onPointerCancel(e));
     c.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
     window.addEventListener('keydown', (e) => this.onKeyDown(e));
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => {
       this.keys.clear();
       this.middleDrag = null;
+      this.drag = null;
+      this.activePointers.clear();
+      this.touchGesture = null;
+      this.suppressTouchTap = false;
+      this.hideSelectBox();
+      this.resetTouchControls?.();
     });
   }
 
@@ -197,6 +206,32 @@ export class Input {
     return { forward, right };
   }
 
+  showSelectBox(x0, y0, x1, y1) {
+    if (!this.selectBoxEl) return;
+    this.selectBoxEl.style.display = 'block';
+    this.selectBoxEl.style.left = `${Math.min(x0, x1)}px`;
+    this.selectBoxEl.style.top = `${Math.min(y0, y1)}px`;
+    this.selectBoxEl.style.width = `${Math.abs(x1 - x0)}px`;
+    this.selectBoxEl.style.height = `${Math.abs(y1 - y0)}px`;
+  }
+
+  hideSelectBox() {
+    if (this.selectBoxEl) this.selectBoxEl.style.display = 'none';
+  }
+
+  releasePointer(e) {
+    try { this.canvas.releasePointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
+  }
+
+  /** Сдвиг камеры вслед за пальцем или зажатой средней кнопкой мыши. */
+  panCamera(dx, dy) {
+    const { forward, right } = this.cameraBasis();
+    const k = this.camera.radius * 0.0018;
+    this.desired.target.x += (-right.x * dx + forward.x * dy) * k;
+    this.desired.target.z += (-right.z * dx + forward.z * dy) * k;
+    this.clampTarget();
+  }
+
   focusOn(x, z) {
     this.desired.target.x = clamp(x, -MAP.clamp - 2, MAP.clamp + 2);
     this.desired.target.z = clamp(z, -MAP.clamp - 2, MAP.clamp + 2);
@@ -218,12 +253,8 @@ export class Input {
     this.pointer = { x: e.clientX, y: e.clientY, has: true };
 
     if (e.pointerType === 'touch') {
-      this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (this.activePointers.size >= 2) {
-        e.preventDefault();
-        this.beginTouchGesture();
-        return;
-      }
+      this.onTouchDown(e);
+      return;
     }
 
     if (e.button === 1) {
@@ -270,24 +301,20 @@ export class Input {
     this.pointer = { x: e.clientX, y: e.clientY, has: true };
 
     if (e.pointerType === 'touch') {
-      if (this.activePointers.has(e.pointerId)) {
-        this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const tracked = this.activePointers.get(e.pointerId);
+      if (tracked) {
+        tracked.x = e.clientX;
+        tracked.y = e.clientY;
+        if (!this.suppressTouchTap) this.updateTouchGesture();
       }
-      if (this.touchGesture && this.activePointers.size >= 2) {
-        this.updateTouchGesture();
-        return;
-      }
+      return;
     }
 
     if (this.middleDrag) {
       const dx = e.clientX - this.middleDrag.x;
       const dy = e.clientY - this.middleDrag.y;
       this.middleDrag = { x: e.clientX, y: e.clientY };
-      const { forward, right } = this.cameraBasis();
-      const k = this.camera.radius * 0.0018;
-      this.desired.target.x += (-right.x * dx + forward.x * dy) * k;
-      this.desired.target.z += (-right.z * dx + forward.z * dy) * k;
-      this.clampTarget();
+      this.panCamera(dx, dy);
       return;
     }
 
@@ -301,66 +328,220 @@ export class Input {
     this.drag.y1 = e.clientY;
     const dx = this.drag.x1 - this.drag.x0;
     const dy = this.drag.y1 - this.drag.y0;
-    const slop = e.pointerType === 'touch' ? TOUCH_TAP_SLOP : MOUSE_TAP_SLOP;
-    if (Math.hypot(dx, dy) > slop) {
+    if (Math.hypot(dx, dy) > MOUSE_TAP_SLOP) {
       this.drag.moved = true;
-      const box = document.querySelector('#selectBox');
-      if (box) {
-        box.style.display = 'block';
-        box.style.left = `${Math.min(this.drag.x0, this.drag.x1)}px`;
-        box.style.top = `${Math.min(this.drag.y0, this.drag.y1)}px`;
-        box.style.width = `${Math.abs(dx)}px`;
-        box.style.height = `${Math.abs(dy)}px`;
-      }
+      this.showSelectBox(this.drag.x0, this.drag.y0, this.drag.x1, this.drag.y1);
     }
   }
 
   onPointerUp(e) {
-    const touch = e.pointerType === 'touch';
-    if (touch) {
-      if (this.touchGesture) {
-        this.activePointers.delete(e.pointerId);
-        if (this.activePointers.size < 2) {
-          this.touchGesture = null;
-          this.suppressTouchTap = true;
-          this.drag = null;
-          const box = document.querySelector('#selectBox');
-          if (box) box.style.display = 'none';
-        }
-        try { this.canvas.releasePointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
-        return;
-      }
-      this.activePointers.delete(e.pointerId);
-      if (this.suppressTouchTap) {
-        if (this.activePointers.size === 0) this.suppressTouchTap = false;
-        try { this.canvas.releasePointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
-        return;
-      }
+    if (e.pointerType === 'touch') {
+      this.onTouchUp(e);
+      return;
     }
 
     if (this.middleDrag) {
       this.middleDrag = null;
-      try { this.canvas.releasePointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
+      this.releasePointer(e);
       return;
     }
     if (!this.drag) {
-      try { this.canvas.releasePointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
+      this.releasePointer(e);
       return;
     }
 
     const drag = this.drag;
     this.drag = null;
-    const box = document.querySelector('#selectBox');
-    if (box) box.style.display = 'none';
-    try { this.canvas.releasePointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
+    this.hideSelectBox();
+    this.releasePointer(e);
 
     if (drag.moved) {
       this.selectInBox(drag, drag.shift);
       return;
     }
+    this.handleClick(e.clientX, e.clientY, drag.shift);
+  }
 
-    if (touch) this.handleTouchTap(e.clientX, e.clientY, drag.shift);
-    else this.handleClick(e.clientX, e.clientY, drag.shift);
+  onPointerCancel(e) {
+    this.releasePointer(e);
+    if (e.pointerType === 'touch') {
+      this.activePointers.delete(e.pointerId);
+      if (this.activePointers.size === 0) this.suppressTouchTap = false;
+      this.touchGesture = null;
+    } else {
+      this.drag = null;
+      this.middleDrag = null;
+    }
+    this.hideSelectBox();
+  }
+
+  // ------------------------------------------------------------- touch
+  /**
+   * Касания: один палец — тап или панорама, два пальца — рамка выделения.
+   * Щипок двумя пальцами по-прежнему меняет зум и не мешает рамке: рамка
+   * растягивается от средней точки касания, а расстояние между пальцами
+   * управляет приближением.
+   */
+  onTouchDown(e) {
+    e.preventDefault();
+
+    // Размещение здания и attack-move срабатывают сразу по касанию.
+    if (this.placement) {
+      this.tryPlaceAt(e.clientX, e.clientY, e.shiftKey);
+      return;
+    }
+    if (this.attackMode) {
+      const point = this.groundPoint(e.clientX, e.clientY);
+      if (point) {
+        this.game.commandAttackMove(new Vector3(point.x, 0, point.z));
+        this.setAttackMove(false);
+      }
+      return;
+    }
+
+    this.activePointers.set(e.pointerId, {
+      x: e.clientX,
+      y: e.clientY,
+    });
+    try { this.canvas.setPointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
+
+    if (this.suppressTouchTap) {
+      this.touchGesture = null;
+      return;
+    }
+
+    if (this.activePointers.size === 1) {
+      this.touchGesture = {
+        mode: 'single',
+        startX: e.clientX,
+        startY: e.clientY,
+        lastX: e.clientX,
+        lastY: e.clientY,
+        additive: e.shiftKey,
+      };
+      return;
+    }
+
+    if (this.activePointers.size === 2) this.beginTouchBox();
+  }
+
+  updateTouchGesture() {
+    const gesture = this.touchGesture;
+    if (!gesture) return;
+    const points = [...this.activePointers.values()];
+
+    if (points.length < 2) {
+      this.updateTouchPan(points[0]);
+      return;
+    }
+
+    if (gesture.mode === 'box') this.updateTouchBox(points[0], points[1]);
+  }
+
+  /** Один палец: небольшое смещение — тап, дальше — панорама камеры. */
+  updateTouchPan(point) {
+    const gesture = this.touchGesture;
+    if (!gesture || !point) return;
+    if (gesture.mode === 'single') {
+      if (Math.hypot(point.x - gesture.startX, point.y - gesture.startY) <= TOUCH_TAP_SLOP) {
+        return;
+      }
+      gesture.mode = 'pan';
+      this.lastTap = { time: 0, type: null, x: 0, y: 0 };
+    }
+    if (gesture.mode !== 'pan') return;
+    const dx = point.x - gesture.lastX;
+    const dy = point.y - gesture.lastY;
+    gesture.lastX = point.x;
+    gesture.lastY = point.y;
+    this.panCamera(dx, dy);
+  }
+
+  beginTouchBox() {
+    if (this.suppressTouchTap) return;
+    const points = [...this.activePointers.values()];
+    if (points.length < 2) return;
+    const a = points[0];
+    const b = points[1];
+    this.touchGesture = {
+      mode: 'box',
+      anchor: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+      distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+      radius: this.desired.radius,
+      box: null,
+    };
+    this.hideSelectBox();
+  }
+
+  /** Два пальца: растягивают рамку от точки касания; щипок меняет зум. */
+  updateTouchBox(a, b) {
+    const gesture = this.touchGesture;
+    if (!gesture || gesture.mode !== 'box') return;
+
+    const midX = (a.x + b.x) / 2;
+    const midY = (a.y + b.y) / 2;
+
+    // Пока пальцы не сдвинулись, щипок просто меняет зум. Как только началась
+    // рамка, зум замирает, чтобы выделение не уезжало вместе с камерой.
+    if (!gesture.box) {
+      if (Math.hypot(midX - gesture.anchor.x, midY - gesture.anchor.y) < TOUCH_BOX_SLOP) {
+        const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+        this.desired.radius = clamp(
+          (gesture.radius * gesture.distance) / distance,
+          CAMERA.minRadius,
+          CAMERA.maxRadius,
+        );
+        return;
+      }
+      this.lastTap = { time: 0, type: null, x: 0, y: 0 };
+    }
+
+    gesture.box = {
+      x0: gesture.anchor.x,
+      y0: gesture.anchor.y,
+      x1: midX,
+      y1: midY,
+    };
+    this.showSelectBox(gesture.box.x0, gesture.box.y0, gesture.box.x1, gesture.box.y1);
+  }
+
+  onTouchUp(e) {
+    this.activePointers.delete(e.pointerId);
+    this.releasePointer(e);
+
+    if (this.suppressTouchTap) {
+      if (this.activePointers.size === 0) this.suppressTouchTap = false;
+      return;
+    }
+
+    const gesture = this.touchGesture;
+    if (!gesture) return;
+
+    if (gesture.mode === 'box') {
+      this.finishTouchBox();
+      return;
+    }
+
+    if (this.activePointers.size > 0) {
+      this.touchGesture = null;
+      return;
+    }
+
+    this.touchGesture = null;
+    if (gesture.mode === 'pan') return;
+    if (Math.hypot(e.clientX - gesture.startX, e.clientY - gesture.startY) > TOUCH_TAP_SLOP) return;
+    this.handleTouchTap(e.clientX, e.clientY, gesture.additive);
+  }
+
+  finishTouchBox() {
+    const gesture = this.touchGesture;
+    this.touchGesture = null;
+    this.suppressTouchTap = true;
+    this.hideSelectBox();
+    const box = gesture?.box;
+    if (!box) return;
+    if (Math.hypot(box.x1 - box.x0, box.y1 - box.y0) < TOUCH_BOX_SLOP) return;
+    this.selectInBox(box, false);
   }
 
   handleClick(clientX, clientY, additive) {
@@ -401,47 +582,7 @@ export class Input {
     else this.game.selectOnly([entity]);
   }
 
-  // ------------------------------------------------------------- touch gestures
-  beginTouchGesture() {
-    if (this.touchGesture) return;
-    const points = [...this.activePointers.values()];
-    if (points.length < 2) return;
-    const a = points[0];
-    const b = points[1];
-    this.touchGesture = {
-      mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
-      distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
-      radius: this.desired.radius,
-    };
-    this.drag = null;
-    const box = document.querySelector('#selectBox');
-    if (box) box.style.display = 'none';
-  }
-
-  /** Два пальца: панорама камеры и щипок для зума. */
-  updateTouchGesture() {
-    const points = [...this.activePointers.values()];
-    if (!this.touchGesture || points.length < 2) return;
-    const a = points[0];
-    const b = points[1];
-    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
-    const dx = mid.x - this.touchGesture.mid.x;
-    const dy = mid.y - this.touchGesture.mid.y;
-    const { forward, right } = this.cameraBasis();
-    const k = this.camera.radius * 0.0018;
-    this.desired.target.x += (-right.x * dx + forward.x * dy) * k;
-    this.desired.target.z += (-right.z * dx + forward.z * dy) * k;
-    this.desired.radius = clamp(
-      this.touchGesture.radius * (this.touchGesture.distance / distance),
-      CAMERA.minRadius,
-      CAMERA.maxRadius,
-    );
-    this.touchGesture.mid = mid;
-    this.touchGesture.distance = distance;
-    this.clampTarget();
-  }
-
+  // ------------------------------------------------------------- commands
   /** Короткий тап по сцене: выбор, приказ или размещение здания. */
   handleTouchTap(clientX, clientY, additive) {
     if (this.placement) {
@@ -663,6 +804,9 @@ export class Input {
       this.resetTouchControls?.();
       this.activePointers.clear();
       this.touchGesture = null;
+      this.suppressTouchTap = false;
+      this.drag = null;
+      this.hideSelectBox();
       return;
     }
 
