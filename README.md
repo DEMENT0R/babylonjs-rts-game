@@ -266,6 +266,8 @@ src/
 vendor/
   babylon.js        Babylon.js 8.56.2 (UMD, Apache-2.0)
   LICENSE-babylon.md
+docs/
+  ai-plan.md        план развития противника и сложности ИИ
 screenshots/        скриншоты для README
 ```
 
