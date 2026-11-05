@@ -35,7 +35,22 @@ export class AIController {
     // Цели, на которых волна уже провалилась: их не трогаем, пока не истечёт
     // кулдаун, иначе ИИ раз за разом бьётся в одно и то же место.
     this.targetCooldowns = new Map();
+    // Телеметрия: без неё непонятно, стало ли лучше от «умных» правок.
+    this.stats = {
+      waves: 0,
+      settled: 0,
+      failures: 0,
+      wiped: 0,
+      timeouts: 0,
+      supplyLost: 0,
+      damage: 0,
+      kills: 0,
+      duration: 0,
+    };
     this.debug = typeof location !== 'undefined' && /[?&]debug=ai\b/.test(location.search);
+    this.debugEl = null;
+    this.debugTimer = 0;
+    if (this.debug) this.ensureDebugOverlay();
 
     const barracks = game.buildings.find((b) => b.faction === 'enemy' && b.type === 'barracks');
     if (barracks) {
@@ -61,7 +76,11 @@ export class AIController {
   }
 
   update(dt) {
-    if (this.game.over) return;
+    if (this.game.over) {
+      this.debugEl?.remove();
+      this.debugEl = null;
+      return;
+    }
     this.credits += this.game.enemyIncome() * dt;
     this.trainTimer -= dt;
     this.defenseTimer -= dt;
@@ -109,6 +128,7 @@ export class AIController {
 
     this.updateWaveMemory();
     this.updateWave(dt);
+    this.updateDebugOverlay(dt);
   }
 
   // ------------------------------------------------------------- строительство
@@ -576,6 +596,7 @@ export class AIController {
     this.waveLog.push(record);
     if (this.waveLog.length > AI.waveLogSize) this.waveLog.shift();
     this.activeWave = record;
+    this.stats.waves++;
     this.debugLog(
       `волна №${record.index} (${tactic}): ${squad.length} юнитов, `
       + `${record.supplySent} снабж. → ${record.targetType}`,
@@ -613,6 +634,15 @@ export class AIController {
       this.targetCooldowns.set(record.targetId, this.game.elapsed + AI.targetCooldown);
       record.failed = true;
     }
+    const s = this.stats;
+    s.settled++;
+    s.supplyLost += record.supplyLost;
+    s.damage += record.damage;
+    s.kills += record.kills;
+    s.duration += record.duration;
+    if (record.failed) s.failures++;
+    if (record.state === 'wiped') s.wiped++;
+    if (record.state === 'timeout') s.timeouts++;
     this.debugLog(
       `волна №${record.index} ${record.state}: живых ${record.alive}/${record.units.length}, `
       + `потери ${record.supplyLost} снабж., урон ${Math.round(record.damage)}, `
@@ -674,6 +704,61 @@ export class AIController {
 
   debugLog(text) {
     if (this.debug) console.debug(`[ai] ${text}`);
+  }
+
+  /** Панель с цифрами ИИ — только по адресу со `?debug=ai`. */
+  ensureDebugOverlay() {
+    if (typeof document === 'undefined') return;
+    document.getElementById('ai-debug')?.remove();
+    const el = document.createElement('div');
+    el.id = 'ai-debug';
+    Object.assign(el.style, {
+      position: 'fixed',
+      left: '8px',
+      top: '8px',
+      zIndex: '9999',
+      padding: '8px 10px',
+      borderRadius: '6px',
+      background: 'rgba(4, 10, 16, 0.78)',
+      color: '#9fe8ff',
+      font: '11px/1.45 ui-monospace, monospace',
+      whiteSpace: 'pre',
+      pointerEvents: 'none',
+    });
+    document.body.append(el);
+    this.debugEl = el;
+  }
+
+  updateDebugOverlay(dt) {
+    if (!this.debugEl) return;
+    this.debugTimer -= dt;
+    if (this.debugTimer > 0) return;
+    this.debugTimer = 0.5;
+
+    const s = this.stats;
+    const settled = Math.max(1, s.settled);
+    const playerHQ = this.game.entities.find(
+      (e) => e.alive && e.faction === 'player' && e.isBuilding && e.type === 'hq',
+    );
+    const combat = this.game.units.filter(
+      (u) => u.alive && u.faction === 'enemy' && !u.def.builder,
+    );
+    const active = this.activeWave;
+    const alive = active ? active.units.filter(({ unit }) => unit.alive).length : 0;
+    const lines = [
+      'ИИ: волны и итоги',
+      `волн ${s.waves}, провалов ${s.failures} (${Math.round((100 * s.failures) / settled)}%)`,
+      `разгромов ${s.wiped}, зависших ${s.timeouts}`,
+      `потери ${Math.round(s.supplyLost / settled)} снабж./волна`,
+      `урон ${Math.round(s.damage)}, убито ${s.kills}`,
+      `ср. время ${(s.duration / settled).toFixed(0)} с`,
+      active ? `в поле ${alive}/${active.units.length} (${active.tactic})` : 'в поле: —',
+      playerHQ
+        ? `армия ${Math.round(this.squadPower(combat))} / оборона штаба ${Math.round(this.defenseAt(playerHQ.position))}`
+        : '',
+      `до волны ${Math.max(0, this.waveTimer).toFixed(0)} с`,
+    ];
+    this.debugEl.textContent = lines.filter(Boolean).join('\n');
   }
 
   // ------------------------------------------------------------- волны
