@@ -247,6 +247,7 @@ export class AIController {
     const b = this.game.tryBuild(type, spot.x, spot.z, {
       faction: 'enemy',
       wallet: this,
+      padding: AI.buildSpacing,
     });
     if (!b) return false;
     this.buildIntent = null;
@@ -357,7 +358,7 @@ export class AIController {
         const x = hq.position.x + Math.cos(angle) * radius;
         const z = hq.position.z + Math.sin(angle) * radius;
         if (Math.abs(x) > MAP.clamp - 4 || Math.abs(z) > MAP.clamp - 4) continue;
-        const place = this.game.findPlacement(type, x, z);
+        const place = this.game.findPlacement(type, x, z, { padding: AI.buildSpacing });
         if (place.valid) return place;
       }
     }

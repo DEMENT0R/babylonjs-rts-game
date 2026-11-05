@@ -773,9 +773,13 @@ export class Game {
   }
 
   // ------------------------------------------------------------- building placement
-  findPlacement(type, x, z) {
+  findPlacement(type, x, z, opts = {}) {
     const def = BUILDINGS[type];
     const r = def.radius;
+    // Дополнительный зазор между зданиями. ИИ просит его больше, чтобы
+    // постройки не лепились вплотную. Вышку не двигаем: её место задаёт
+    // месторождение, и лишний зазор просто заблокировал бы добычу.
+    const padding = type === 'derrick' ? 0 : (opts.padding ?? 0);
     let px = x;
     let pz = z;
     let patch = null;
@@ -803,7 +807,7 @@ export class Game {
     }
     for (const b of this.buildings) {
       if (!b.alive) continue;
-      if (dist(px, pz, b.position.x, b.position.z) < r + b.radius + 0.6) {
+      if (dist(px, pz, b.position.x, b.position.z) < r + b.radius + 0.6 + padding) {
         return { valid: false, reason: 'building', x: px, z: pz, patch };
       }
     }
@@ -833,7 +837,7 @@ export class Game {
       if (faction === 'player') this.notify(MESSAGES.noCredits, 'warn', 'no-credits', 0, 3);
       return null;
     }
-    const place = this.findPlacement(type, x, z);
+    const place = this.findPlacement(type, x, z, opts);
     if (!place.valid) {
       if (faction === 'player') {
         if (place.reason === 'oil') this.notify(MESSAGES.needOil, 'warn', 'bad-place', 0, 2);
