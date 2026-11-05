@@ -129,10 +129,12 @@ export class Input {
   // ------------------------------------------------------------- math helpers
   screenRay(clientX, clientY) {
     const rect = this.canvas.getBoundingClientRect();
-    const engine = this.scene.getEngine();
-    const px = ((clientX - rect.left) / Math.max(1, rect.width)) * engine.getRenderWidth();
-    const py = ((clientY - rect.top) / Math.max(1, rect.height)) * engine.getRenderHeight();
-    return this.scene.createPickingRay(px, py, Matrix.Identity(), this.camera);
+    // Babylon ждёт координаты в CSS-пикселях холста: масштаб рендера он
+    // учитывает сам. Если заранее пересчитать их в пиксели буфера, при
+    // разрешении рендера ниже 100% луч уезжает к верхнему левому углу.
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    return this.scene.createPickingRay(x, y, Matrix.Identity(), this.camera);
   }
 
   groundPoint(clientX, clientY) {
