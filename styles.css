@@ -1516,10 +1516,6 @@ body.mode-attack #scene {
   border-top: 1px solid var(--line-soft);
 }
 
-.controls-block.compact {
-  margin-top: 14px;
-}
-
 .controls-title {
   font-size: 8px;
   letter-spacing: 0.2em;
@@ -1566,12 +1562,6 @@ body.mode-attack #scene {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.graphics-block {
-  margin-top: 16px;
-  padding-top: 11px;
-  border-top: 1px solid var(--line-soft);
 }
 
 .graphics-grid {
@@ -1678,6 +1668,24 @@ body.mode-attack #scene {
   gap: 14px;
   flex-wrap: wrap;
   margin-top: 20px;
+}
+
+.menu-links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.overlay-actions--minor {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.start-note {
+  margin: 9px 0 0;
+  max-width: none;
 }
 
 .btn-primary {
@@ -1891,6 +1899,106 @@ body.mode-attack #scene {
   font-size: 9px;
   line-height: 1.6;
   color: var(--dim);
+}
+
+/* Настройки */
+.overlay--settings .overlay-card {
+  width: min(720px, 94vw);
+}
+
+.settings-title,
+.help-title {
+  font-size: clamp(30px, 4.6vw, 44px) !important;
+  letter-spacing: 0.14em !important;
+}
+
+.settings-tabs {
+  display: flex;
+  gap: 1px;
+  margin-top: 20px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.settings-tab {
+  position: relative;
+  padding: 10px 22px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  background: transparent;
+  color: var(--dim);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.18em;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.settings-tab:hover {
+  color: var(--cyan-soft);
+  background: rgba(79, 210, 255, 0.04);
+}
+
+.settings-tab.is-active {
+  color: #eaffff;
+  border-color: var(--line-soft);
+  background: rgba(79, 210, 255, 0.09);
+}
+
+.settings-tab.is-active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: var(--cyan);
+  box-shadow: 0 0 10px var(--cyan);
+}
+
+.settings-tab:focus-visible {
+  outline: 1px solid var(--cyan);
+  outline-offset: -2px;
+}
+
+.settings-pane {
+  min-height: 152px;
+  padding-top: 12px;
+}
+
+.settings-pane[hidden] {
+  display: none;
+}
+
+.settings-hint {
+  margin: 14px 0 0;
+  padding-left: 10px;
+  border-left: 1px solid var(--line-soft);
+  font-size: 8px;
+  line-height: 1.55;
+  color: var(--dim);
+}
+
+/* Памятка по управлению */
+.overlay--help .overlay-card {
+  width: min(760px, 94vw);
+}
+
+.help-controls {
+  margin-top: 20px;
+}
+
+.help-controls .controls-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px 12px;
+}
+
+.help-controls .controls-grid > div {
+  font-size: 8.5px;
+}
+
+.help-controls .controls-grid kbd {
+  min-width: 42px;
+  font-size: 7.5px;
 }
 
 /* Журнал изменений */
@@ -2134,9 +2242,8 @@ body.mode-attack #scene {
     margin-top: 12px;
     padding-top: 9px;
   }
-  .graphics-block {
-    margin-top: 12px;
-    padding-top: 9px;
+  .settings-pane {
+    min-height: 0;
   }
 }
 
@@ -2573,7 +2680,8 @@ body.mode-attack .tc-cancel {
     max-width: none;
   }
 
-  .controls-grid {
+  .controls-grid,
+  .help-controls .controls-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -2599,6 +2707,39 @@ body.mode-attack .tc-cancel {
     width: 100%;
     text-align: center;
     padding: 12px;
+  }
+
+  .menu-links {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .menu-links .btn-ghost:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .overlay-actions--minor {
+    flex-direction: row;
+  }
+
+  .overlay-actions--minor .btn-ghost {
+    flex: 1 1 0;
+  }
+
+  .settings-tabs {
+    margin-top: 12px;
+  }
+
+  .settings-tab {
+    flex: 1 1 0;
+    padding: 10px 8px;
+    text-align: center;
+  }
+
+  .settings-pane {
+    min-height: 0;
+    padding-top: 10px;
   }
 
   .overlay-note {

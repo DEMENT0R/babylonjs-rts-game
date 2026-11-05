@@ -39,6 +39,7 @@ export class UI {
     this.tooltipVisible = false;
     this.overlayOpen = true;
     this.overlayBack = null;
+    this.settingsTab = 'graphics';
     this.minimapBg = null;
     this.buildMinimapBackground();
     this.el.mmSector.textContent = this.game.map.label;
@@ -89,17 +90,25 @@ export class UI {
   bindStatic() {
     this.el.pauseBtn.addEventListener('click', () => this.togglePause());
     this.el.overlay.addEventListener('click', (e) => {
+      const tab = e.target.closest('[data-settings-tab]');
+      if (tab) {
+        this.setSettingsTab(tab.dataset.settingsTab);
+        return;
+      }
       const gfx = e.target.closest('[data-graphics]');
       if (gfx) {
         this.game.graphics?.set(gfx.dataset.graphics, gfx.dataset.value);
         this.refreshGraphicsControls();
         return;
       }
-      const action = e.target.closest('[data-action]')?.dataset.action;      if (!action) return;
+      const action = e.target.closest('[data-action]')?.dataset.action;
+      if (!action) return;
       if (action === 'start') this.startGame();
       else if (action === 'resume') this.resume();
       else if (action === 'restart') window.location.reload();
       else if (action === 'newmap') this.newMap();
+      else if (action === 'settings') this.openSettings();
+      else if (action === 'help') this.openHelp();
       else if (action === 'changelog') this.openChangelog();
       else if (action === 'back') this.backFromOverlay();
     });
@@ -108,6 +117,15 @@ export class UI {
       if (!range) return;
       this.game.audioSettings?.set(range.dataset.audio, range.value);
       this.refreshAudioControls();
+    });
+    this.el.overlay.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const tab = e.target.closest('[data-settings-tab]');
+      if (!tab) return;
+      e.preventDefault();
+      const next = this.settingsTab === 'graphics' ? 'audio' : 'graphics';
+      this.setSettingsTab(next);
+      this.el.overlay.querySelector(`[data-settings-tab="${next}"]`)?.focus();
     });
     this.el.commands.addEventListener('click', (e) => {
       const btn = e.target.closest('.cmd');
@@ -173,34 +191,15 @@ export class UI {
           <div class="objective"><b>03</b><span><strong>Уничтожьте дублёра</strong><small>Сравняйте с землёй второй командный центр. Копия не должна пережить оригинал.</small></span></div>
         </div>
       </div>
-      <div class="controls-block">
-        <div class="controls-title">УПРАВЛЕНИЕ <span>// полевая памятка</span></div>
-        <div class="controls-grid">
-          <div><kbd>ЛКМ</kbd><span>выбор, рамка</span></div>
-          <div><kbd>ПКМ</kbd><span>приказ, атака</span></div>
-          <div><kbd>WASD</kbd><span>камера</span></div>
-          <div><kbd>Q / E</kbd><span>поворот камеры</span></div>
-          <div><kbd>Колесо</kbd><span>зум</span></div>
-          <div><kbd>СКМ</kbd><span>тащить камеру</span></div>
-          <div><kbd>Z X C V B N M</kbd><span>команды</span></div>
-          <div><kbd>F</kbd><span>атака по площади</span></div>
-          <div><kbd>H</kbd><span>стоп</span></div>
-          <div><kbd>P</kbd><span>держать позицию</span></div>
-          <div><kbd>R</kbd><span>ремонт здания</span></div>
-          <div><kbd>Shift</kbd><span>добавить к выбору</span></div>
-          <div><kbd>Пробел</kbd><span>на базу</span></div>
-          <div><kbd>Esc</kbd><span>пауза / меню</span></div>
-          <div><kbd>ЛКМ</kbd><span>по миникарте — камера</span></div>
-        </div>
-        <p class="touch-hint">На сенсорном экране: тап — выбрать или отдать приказ, двойной тап по юниту — выделить всех таких на экране, один палец — панорама, два пальца — рамка выбора, щипок — зум. Кнопки справа — камера и отмена режима.</p>
-      </div>
-      ${this.graphicsBlock()}
-      ${this.audioBlock()}
       <div class="overlay-actions">
         <button class="btn-primary" data-action="start">НАЧАТЬ ОПЕРАЦИЮ <span>→</span></button>
-        <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
-        <div class="overlay-note">Каждая карта строится из сида: ссылку вида <b>?seed=${map.label}</b> можно сохранить и сыграть на той же карте снова.</div>
+        <div class="menu-links">
+          <button class="btn-ghost" data-action="help">КАК ИГРАТЬ</button>
+          <button class="btn-ghost" data-action="settings">НАСТРОЙКИ</button>
+          <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
+        </div>
       </div>
+      <p class="overlay-note start-note">Каждая карта строится из сида: ссылку вида <b>?seed=${map.label}</b> можно сохранить и сыграть на той же карте снова.</p>
       <div class="overlay-footer">
         <span>ГЕЛИОС-7 // КАРТА #${map.label} // ВЕРСИЯ ${GAME_VERSION}</span>
         <span>${map.symmetry.name.toUpperCase()} · ${map.style.name} · BABYLON.JS</span>
@@ -271,24 +270,15 @@ export class UI {
         <div><b>${this.game.getArmyUsed('player')} / ${this.game.getArmyCap('player')}</b><span>ЛИМИТ АРМИИ</span></div>
         <div><b>${formatTime(this.game.elapsed)}</b><span>ВРЕМЯ</span></div>
       </div>
-      <div class="controls-block compact">
-        <div class="controls-title">УПРАВЛЕНИЕ</div>
-        <div class="controls-grid">
-          <div><kbd>WASD</kbd><span>камера</span></div>
-          <div><kbd>Q / E</kbd><span>поворот</span></div>
-          <div><kbd>Z X C V B N M</kbd><span>команды</span></div>
-          <div><kbd>F</kbd><span>атака по площади</span></div>
-          <div><kbd>P</kbd><span>держать позицию</span></div>
-          <div><kbd>R</kbd><span>ремонт</span></div>
-          <div><kbd>Пробел</kbd><span>на базу</span></div>
-          <div><kbd>Esc</kbd><span>продолжить</span></div>
-        </div>
-      </div>
-      ${this.graphicsBlock()}
-      ${this.audioBlock()}
       <div class="overlay-actions">
         <button class="btn-primary" data-action="resume">ПРОДОЛЖИТЬ <span>→</span></button>
-        <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
+        <div class="menu-links">
+          <button class="btn-ghost" data-action="settings">НАСТРОЙКИ</button>
+          <button class="btn-ghost" data-action="help">КАК ИГРАТЬ</button>
+          <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
+        </div>
+      </div>
+      <div class="overlay-actions overlay-actions--minor">
         <button class="btn-ghost" data-action="restart">ЗАНОВО</button>
         <button class="btn-ghost" data-action="newmap">НОВАЯ КАРТА</button>
       </div>
@@ -326,16 +316,117 @@ export class UI {
     window.location.assign(seedUrl(randomSeed()));
   }
 
+  /** Куда вернуться из вложенного экрана меню: на итоги, в паузу или на старт. */
+  backTarget() {
+    if (this.game.over) return () => this.showEnd(this.game.over);
+    if (this.game.started) return () => this.openPause();
+    return () => this.showStart();
+  }
+
+  // --------------------------------------------------------------- settings
+  openSettings() {
+    if (this.game.started && !this.game.over) this.game.setPaused(true);
+    this.overlayBack = this.backTarget();
+    this.showSettings();
+  }
+
+  showSettings() {
+    const active = this.settingsTab === 'audio' ? 'audio' : 'graphics';
+    const isGraphics = active === 'graphics';
+    const html = `
+      <div class="overlay-top">
+        <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // НАСТРОЙКИ</div>
+        <h1 class="settings-title">НАСТРОЙКИ</h1>
+        <p class="tagline">Графика и звук. Изменения применяются сразу и сохраняются в браузере.</p>
+      </div>
+      <div class="settings-tabs" role="tablist" aria-label="Разделы настроек">
+        <button type="button" class="settings-tab${isGraphics ? ' is-active' : ''}" id="settingsTabGraphics" role="tab" aria-selected="${isGraphics}" aria-controls="settingsPaneGraphics" tabindex="${isGraphics ? 0 : -1}" data-settings-tab="graphics">ГРАФИКА</button>
+        <button type="button" class="settings-tab${isGraphics ? '' : ' is-active'}" id="settingsTabAudio" role="tab" aria-selected="${!isGraphics}" aria-controls="settingsPaneAudio" tabindex="${isGraphics ? -1 : 0}" data-settings-tab="audio">ЗВУК</button>
+      </div>
+      <div class="settings-pane" id="settingsPaneGraphics" role="tabpanel" aria-labelledby="settingsTabGraphics" data-settings-pane="graphics"${isGraphics ? '' : ' hidden'}>
+        ${this.graphicsBlock()}
+        <p class="settings-hint">Разрешение ниже помогает на слабых устройствах. Тени и свечение влияют на нагрузку сильнее всего.</p>
+      </div>
+      <div class="settings-pane" id="settingsPaneAudio" role="tabpanel" aria-labelledby="settingsTabAudio" data-settings-pane="audio"${isGraphics ? ' hidden' : ''}>
+        ${this.audioBlock()}
+        <p class="settings-hint">Весь звук синтезируется в браузере. На нуле движок не тратит ресурсы на воспроизведение.</p>
+      </div>
+      <div class="overlay-actions">
+        <button class="btn-primary" data-action="back">НАЗАД <span>→</span></button>
+      </div>
+      <div class="overlay-footer">
+        <span>ГЕЛИОС-7 // НАСТРОЙКИ</span>
+        <span>СОХРАНЯЕТСЯ В БРАУЗЕРЕ</span>
+      </div>
+    `;
+    this.setOverlay(html, 'overlay--settings');
+  }
+
+  setSettingsTab(tab) {
+    this.settingsTab = tab === 'audio' ? 'audio' : 'graphics';
+    const card = this.el.overlayCard;
+    card.querySelectorAll('[data-settings-tab]').forEach((btn) => {
+      const active = btn.dataset.settingsTab === this.settingsTab;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+      btn.tabIndex = active ? 0 : -1;
+    });
+    card.querySelectorAll('[data-settings-pane]').forEach((pane) => {
+      pane.hidden = pane.dataset.settingsPane !== this.settingsTab;
+    });
+  }
+
+  // ------------------------------------------------------------------ help
+  openHelp() {
+    if (this.game.started && !this.game.over) this.game.setPaused(true);
+    this.overlayBack = this.backTarget();
+    this.showHelp();
+  }
+
+  showHelp() {
+    const html = `
+      <div class="overlay-top">
+        <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // ПОЛЕВАЯ ПАМЯТКА</div>
+        <h1 class="help-title">КАК ИГРАТЬ</h1>
+        <p class="tagline">Камера, приказы и быстрые команды. Пауза не блокирует управление — меню можно открыть в любой момент.</p>
+      </div>
+      <div class="controls-block help-controls">
+        <div class="controls-title">КЛАВИАТУРА И МЫШЬ</div>
+        <div class="controls-grid">
+          <div><kbd>ЛКМ</kbd><span>выбор, рамка</span></div>
+          <div><kbd>ПКМ</kbd><span>приказ, атака</span></div>
+          <div><kbd>WASD</kbd><span>камера</span></div>
+          <div><kbd>Q / E</kbd><span>поворот камеры</span></div>
+          <div><kbd>Колесо</kbd><span>зум</span></div>
+          <div><kbd>СКМ</kbd><span>тащить камеру</span></div>
+          <div><kbd>Z X C V B N M</kbd><span>команды</span></div>
+          <div><kbd>F</kbd><span>атака по площади</span></div>
+          <div><kbd>H</kbd><span>стоп</span></div>
+          <div><kbd>P</kbd><span>держать позицию</span></div>
+          <div><kbd>R</kbd><span>ремонт здания</span></div>
+          <div><kbd>Shift</kbd><span>добавить к выбору</span></div>
+          <div><kbd>Пробел</kbd><span>на базу</span></div>
+          <div><kbd>Esc</kbd><span>пауза / меню</span></div>
+          <div><kbd>ЛКМ</kbd><span>по миникарте — камера</span></div>
+        </div>
+        <p class="touch-hint">На сенсорном экране: тап — выбрать или отдать приказ, двойной тап по юниту — выделить всех таких на экране, один палец — панорама, два пальца — рамка выбора, щипок — зум. Кнопки справа — камера и отмена режима.</p>
+      </div>
+      <div class="overlay-actions">
+        <button class="btn-primary" data-action="back">НАЗАД <span>→</span></button>
+      </div>
+      <div class="overlay-footer">
+        <span>ГЕЛИОС-7 // ПОЛЕВАЯ ПАМЯТКА</span>
+        <span>ESC — НАЗАД</span>
+      </div>
+    `;
+    this.setOverlay(html, 'overlay--help');
+  }
+
   // --------------------------------------------------------------- changelog
   /** Открывает журнал изменений, запоминая, куда вернуться по кнопке «Назад». */
   openChangelog() {
     if (this.game.started && !this.game.over) this.game.setPaused(true);
-    const back = this.game.over
-      ? () => this.showEnd(this.game.over)
-      : this.game.started
-        ? () => this.openPause()
-        : () => this.showStart();
-    this.overlayBack = back;
+    this.overlayBack = this.backTarget();
     this.showChangelog();
   }
 
@@ -413,11 +504,7 @@ export class UI {
           <div class="graphics-options">${buttons}</div>
         </div>`;
     }).join('');
-    return `
-      <div class="graphics-block">
-        <div class="controls-title">ГРАФИКА <span>// сохраняется в браузере</span></div>
-        <div class="graphics-grid">${rows}</div>
-      </div>`;
+    return `<div class="graphics-grid">${rows}</div>`;
   }
 
   refreshGraphicsControls() {
@@ -443,11 +530,7 @@ export class UI {
           <output class="audio-value" data-audio-value="${key}">${value}%</output>
         </div>`;
     }).join('');
-    return `
-      <div class="graphics-block audio-block">
-        <div class="controls-title">ЗВУК <span>// синтез без файлов</span></div>
-        <div class="audio-grid">${rows}</div>
-      </div>`;
+    return `<div class="audio-grid">${rows}</div>`;
   }
 
   refreshAudioControls() {
