@@ -491,6 +491,63 @@ export class AIController {
     }
   }
 
+  // ------------------------------------------------------------- оценка сил
+  /**
+   * Грубая боевая ценность: сколько урона живучий боец успевает нанести.
+   * Пехотинец принят примерно за 22, танк — за 70, турель — за 170. Этого
+   * достаточно, чтобы сравнивать отряд с обороной, не строя симуляцию боя.
+   */
+  combatValue(entity) {
+    if (!entity?.alive) return 0;
+    const def = entity.def ?? {};
+    const weapon = def.defense ?? def;
+    const dps = (weapon.damage ?? 0) / (weapon.cooldown || 1);
+    const hp = entity.hp ?? def.hp ?? 0;
+    const armor = entity.armor ?? def.armor ?? 0;
+    return (dps * (hp + armor * 20 + 40)) / 100;
+  }
+
+  squadPower(units) {
+    return units.reduce((sum, u) => sum + this.combatValue(u), 0);
+  }
+
+  /**
+   * Что ИИ знает об обороне вокруг точки: турели — по разведке (они не
+   * двигаются, их помнят), войска — только по текущему обзору. В тумане
+   * гарнизон для Роя не существует, и придумывать его он не должен.
+   */
+  defenseAt(point) {
+    let value = 0;
+    for (const b of this.game.buildings) {
+      if (!b.alive || b.faction !== 'player') continue;
+      const known = b.type === 'turret'
+        ? this.game.isExploredBy('enemy', b.position.x, b.position.z)
+        : this.game.isEntityVisibleTo('enemy', b);
+      if (!known) continue;
+      if (dist(point.x, point.z, b.position.x, b.position.z) > AI.defenseRadius + b.radius) continue;
+      value += this.combatValue(b);
+    }
+    for (const u of this.game.units) {
+      if (!u.alive || u.faction !== 'player') continue;
+      if (!this.game.isEntityVisibleTo('enemy', u)) continue;
+      if (dist(point.x, point.z, u.position.x, u.position.z) > AI.defenseRadius) continue;
+      value += this.combatValue(u);
+    }
+    return value;
+  }
+
+  /** Сколько бойцов нужно, чтобы набрать требуемую мощь. */
+  neededSquad(combat, requiredPower) {
+    if (requiredPower <= 0) return 0;
+    const sorted = combat.slice().sort((a, b) => this.combatValue(b) - this.combatValue(a));
+    let sum = 0;
+    for (let i = 0; i < sorted.length; i++) {
+      sum += this.combatValue(sorted[i]);
+      if (sum >= requiredPower) return i + 1;
+    }
+    return Infinity;
+  }
+
   // ------------------------------------------------------------- память волн
   /**
    * Запоминает отправленную волну. Запись закроется сама, когда отряд
@@ -671,7 +728,36 @@ export class AIController {
     let wanted = Math.round((3 + this.waveIndex * 1.7) * this.aggression)
       + Math.floor(Math.random() * 3) - 1;
     if (tactic === 'probe') wanted = Math.min(wanted, 2 + Math.floor(Math.random() * 2));
-    const squadSize = Math.max(1, Math.min(available, wanted));
+
+    // Разведка боем идёт налегке, остальные волны — только если отряд
+    // способен пробить то, что Рой знает об обороне цели.
+    const defense = this.defenseAt(primaryTarget.position);
+    const needed = tactic === 'probe'
+      ? 0
+      : this.neededSquad(combat, defense * AI.requiredAdvantage);
+    if (needed > combat.length) {
+      this.waveTimer = AI.regroupDelay * (0.8 + Math.random() * 0.6);
+      this.debugLog(
+        `волна отложена: оборона ${Math.round(defense)}, армия `
+        + `${Math.round(this.squadPower(combat))}`,
+      );
+      return;
+    }
+
+    // Провал больше не повторяется тем же числом: отряд растёт.
+    const recentWipes = this.waveLog.filter((w) => (
+      w.state === 'wiped' && this.game.elapsed - w.endedAt < AI.waveTimeout * 2
+    )).length;
+    const minSquad = tactic === 'probe'
+      ? 1
+      : AI.minWaveSquad + recentWipes * AI.wipeSquadBonus;
+
+    let squadSize = Math.max(wanted, minSquad, needed);
+    // Если иначе не пробить — снимаем резерв с базы, но не оголяем её без нужды.
+    squadSize = needed > available
+      ? Math.min(combat.length, squadSize)
+      : Math.min(available, squadSize);
+    squadSize = Math.max(1, Math.min(combat.length, squadSize));
     const squad = shuffle(combat.slice(), Math.random).slice(0, squadSize);
 
     squad.forEach((u, i) => {
