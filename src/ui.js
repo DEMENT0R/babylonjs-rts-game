@@ -48,6 +48,9 @@ export class UI {
     this.tooltipVisible = false;
     this.overlayOpen = true;
     this.overlayBack = null;
+    // Главное меню и лобби — разные экраны: параметры матча живут только
+    // в лобби, а из него можно вернуться в меню.
+    this.inLobby = false;
     this.settingsTab = 'graphics';
     // Лобби: сложность выбирается сразу, а сид карты — случайно (по умолчанию)
     // или вручную. Режим из адреса нужен, чтобы F5 после ручного сида возвращал
@@ -135,6 +138,7 @@ export class UI {
       const action = e.target.closest('[data-action]')?.dataset.action;
       if (!action) return;
       if (action === 'start') this.startGame();
+      else if (action === 'lobby') this.showLobby();
       else if (action === 'reroll') this.rerollSeed();
       else if (action === 'resume') this.resume();
       else if (action === 'restart') window.location.reload();
@@ -210,12 +214,53 @@ export class UI {
   // --------------------------------------------------------------- overlays
   showStart() {
     this.overlayBack = null;
+    this.inLobby = false;
+    const map = this.game.map;
+    const html = `
+      <div class="overlay-top">
+        <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // ГЛАВНОЕ МЕНЮ</div>
+        <h1>ГЕЛИОС<span>-7</span></h1>
+        <p class="tagline">Две колонии-близнеца. Один сектор. Контракт достанется одному.</p>
+      </div>
+      <div class="mode-grid">
+        <button type="button" class="mode-card mode-card--locked" disabled aria-disabled="true"
+          title="Кампания появится в следующих обновлениях">
+          <span class="mode-mark">${icon('flag')}</span>
+          <span class="mode-copy"><b>КАМПАНИЯ</b><small>Сюжетные операции за колонию «Гелиос-7».</small></span>
+          <span class="mode-badge">СКОРО</span>
+        </button>
+        <button type="button" class="mode-card mode-card--active" data-action="lobby">
+          <span class="mode-mark">${icon('hq')}</span>
+          <span class="mode-copy"><b>ЛОББИ</b><small>Свободная партия: сложность противника, сид карты и другие параметры матча.</small></span>
+          <span class="mode-arrow">→</span>
+        </button>
+      </div>
+      <div class="overlay-actions">
+        <div class="menu-links">
+          <button class="btn-ghost" data-action="help">КАК ИГРАТЬ</button>
+          <button class="btn-ghost" data-action="settings">НАСТРОЙКИ</button>
+          <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
+        </div>
+      </div>
+      <p class="overlay-note start-note">Параметры партии собраны в лобби. Кампания и другие режимы появятся позже.</p>
+      <div class="overlay-footer">
+        <span>ГЕЛИОС-7 // ГЛАВНОЕ МЕНЮ // ВЕРСИЯ ${GAME_VERSION}</span>
+        <span>СЕКТОР ${map.label} · ${map.symmetry.name.toUpperCase()} · ${map.style.name}</span>
+      </div>
+    `;
+    this.setOverlay(html, 'overlay--start');
+  }
+
+  /** Лобби: параметры матча и запуск операции. */
+  showLobby() {
+    this.inLobby = true;
+    this.overlayBack = () => this.showStart();
     const map = this.game.map;
     const html = `
       <div class="overlay-top">
         <div class="eyebrow"><i></i> ЛОББИ // СЕКТОР <span id="lobbySector">${map.label}</span></div>
         <h1>ГЕЛИОС<span>-7</span></h1>
-        <p class="tagline">Две колонии-близнеца. Один сектор. Контракт достанется одному.</p>
+        <p class="tagline">Параметры операции: сложность противника и карта. Выбор действует до начала боя.</p>
       </div>
       <div class="map-strip lobby-map-strip" id="lobbyMapStrip">
         <div class="map-strip-item"><span>СИД КАРТЫ</span><b id="lobbySeed">#${map.label}</b></div>
@@ -228,6 +273,7 @@ export class UI {
       </div>
       <div class="overlay-actions">
         <button class="btn-primary" data-action="start">НАЧАТЬ ОПЕРАЦИЮ <span>→</span></button>
+        <button class="btn-ghost" data-action="back">← В ГЛАВНОЕ МЕНЮ</button>
         <div class="menu-links">
           <button class="btn-ghost" data-action="help">КАК ИГРАТЬ</button>
           <button class="btn-ghost" data-action="settings">НАСТРОЙКИ</button>
@@ -251,7 +297,7 @@ export class UI {
         <span id="lobbyFooterMeta">${map.symmetry.name.toUpperCase()} · ${map.style.name} · BABYLON.JS</span>
       </div>
     `;
-    this.setOverlay(html, 'overlay--start');
+    this.setOverlay(html, 'overlay--lobby');
     this.refreshLobbyPreview();
   }
 
@@ -546,6 +592,7 @@ export class UI {
 
   showEnd(result) {
     this.overlayBack = null;
+    this.inLobby = false;
     const victory = result === 'victory';
     const s = this.game.stats;
     const map = this.game.map;
@@ -593,6 +640,7 @@ export class UI {
   openPause() {
     if (!this.game.started || this.game.over) return;
     this.overlayBack = null;
+    this.inLobby = false;
     this.game.setPaused(true);
     const map = this.game.map;
     const html = `
@@ -654,6 +702,8 @@ export class UI {
 
   beginGame() {
     document.activeElement?.blur?.();
+    this.overlayBack = null;
+    this.inLobby = false;
     this.overlayOpen = false;
     this.el.overlay.classList.remove('is-open');
     document.body.classList.remove('overlay-open');
@@ -697,10 +747,11 @@ export class UI {
     window.location.assign(url.toString());
   }
 
-  /** Куда вернуться из вложенного экрана меню: на итоги, в паузу или на старт. */
+  /** Куда вернуться из вложенного экрана меню: на итоги, в паузу, лобби или старт. */
   backTarget() {
     if (this.game.over) return () => this.showEnd(this.game.over);
     if (this.game.started) return () => this.openPause();
+    if (this.inLobby) return () => this.showLobby();
     return () => this.showStart();
   }
 
