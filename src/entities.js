@@ -532,8 +532,12 @@ export class Unit extends Entity {
       // или чинит то, что встретит по пути. Стреляет она только в ответ
       // тому, кто уже попал по ней (это выставляет takeDamage), либо по
       // врагу в собственном радиусе — догонять его она не должна.
-      if (this.target && this.target.alive && this.retaliateTimer > 0) {
-        desired = this.target;
+      const attacker = this.target;
+      const inReach = attacker?.alive
+        && dist(this.position.x, this.position.z, attacker.position.x, attacker.position.z)
+          - attacker.radius <= Math.max(this.aggro, this.range);
+      if (inReach && this.retaliateTimer > 0) {
+        desired = attacker;
       } else if (this.canFight) {
         this.target = this.acquireTarget(this.range);
         desired = this.target;
