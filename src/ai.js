@@ -612,8 +612,10 @@ export class AIController {
     if (this.waveLog.length > AI.waveLogSize) this.waveLog.shift();
     this.activeWave = record;
     this.stats.waves++;
+    const supportCount = squad.filter((u) => u.def.healer || u.def.builder).length;
     this.debugLog(
-      `волна №${record.index} (${tactic}): ${squad.length} юнитов, `
+      `волна №${record.index} (${tactic}): ${squad.length} юнитов`
+      + `${supportCount ? `, из них ${supportCount} поддержки` : ''}, `
       + `${record.supplySent} снабж. → ${record.targetType}`,
     );
     return record;
@@ -902,14 +904,57 @@ export class AIController {
     return pool[Math.floor(Math.random() * pool.length)];
   }
 
+  /**
+   * Поддержка волны: идёт сверх слотов бойцов и не учитывается в оценке
+   * мощи отряда. Медика берём под пехоту, которую он сможет лечить, —
+   * без раненых он только растягивает маршрут.
+   */
+  waveSupport(squad, tactic) {
+    // Разведка боем идёт налегке, без обоза.
+    if (tactic === 'probe') return [];
+    const infantry = squad.filter((u) => u.def.infantry).length;
+    const medics = this.freeSupport('medic', squad);
+    const wanted = Math.min(AI.waveMedicCap, Math.floor(infantry / AI.waveMedicPer));
+    return medics.slice(0, wanted);
+  }
+
+  /**
+   * Свободные юниты поддержки: не заняты стройкой и не выполняют приказ,
+   * который нельзя бросать. Ближние к отряду идут первыми — они успеют
+   * догнать его на марше.
+   */
+  freeSupport(kind, squad) {
+    const isKind = kind === 'medic' ? (u) => u.def.healer : (u) => u.def.repairer;
+    const center = squad.reduce(
+      (acc, u) => ({
+        x: acc.x + u.position.x / squad.length,
+        z: acc.z + u.position.z / squad.length,
+      }),
+      { x: 0, z: 0 },
+    );
+    return this.game.units
+      .filter((u) => {
+        if (!u.alive || u.faction !== 'enemy' || !isKind(u)) return false;
+        if (u.assistBuilding && u.assistBuilding.alive && !u.assistBuilding.complete) return false;
+        return !u.order
+          || u.order.type === 'move'
+          || u.order.type === 'attackMove'
+          || u.order.type === 'hold';
+      })
+      .sort((a, b) => dist(a.position.x, a.position.z, center.x, center.z)
+        - dist(b.position.x, b.position.z, center.x, center.z));
+  }
+
   updateWave(dt) {
     this.waveTimer -= dt;
     if (this.waveTimer > 0) return;
 
-    const combat = this.game.units.filter(
-      (u) => u.alive && u.faction === 'enemy' && !u.def.builder,
+    // Слоты волны считаются только по бойцам: медики и инженеры — поддержка,
+    // она идёт сверх отряда и не должна разбавлять его силу.
+    const fighters = this.game.units.filter(
+      (u) => u.alive && u.faction === 'enemy' && !u.def.builder && !u.def.healer,
     );
-    if (combat.length < 2) {
+    if (fighters.length < 2) {
       this.waveTimer = 8 + Math.random() * 8;
       return;
     }
@@ -963,8 +1008,8 @@ export class AIController {
 
     // В атаку идёт ограниченный отряд: остальные остаются охранять улей.
     // Резерв и размер отряда тоже меняются от волны к волне.
-    const reserve = Math.min(3, Math.max(1, Math.floor(combat.length * 0.25)));
-    const available = Math.max(1, combat.length - reserve);
+    const reserve = Math.min(3, Math.max(1, Math.floor(fighters.length * 0.25)));
+    const available = Math.max(1, fighters.length - reserve);
     let wanted = Math.round((3 + this.waveIndex * 1.7) * this.aggression)
       + Math.floor(Math.random() * 3) - 1;
     if (tactic === 'probe') wanted = Math.min(wanted, 2 + Math.floor(Math.random() * 2));
@@ -974,8 +1019,8 @@ export class AIController {
     const defense = this.defenseAt(primaryTarget.position);
     const needed = tactic === 'probe'
       ? 0
-      : this.neededSquad(combat, defense * this.rules.requiredAdvantage);
-    if (needed > combat.length) {
+      : this.neededSquad(fighters, defense * this.rules.requiredAdvantage);
+    if (needed > fighters.length) {
       this.waveTimer = AI.regroupDelay * (0.8 + Math.random() * 0.6);
       this.postponedRuns++;
       if (this.postponedRuns >= 2) {
@@ -989,7 +1034,7 @@ export class AIController {
       }
       this.debugLog(
         `волна отложена: оборона ${Math.round(defense)}, армия `
-        + `${Math.round(this.squadPower(combat))}`,
+        + `${Math.round(this.squadPower(fighters))}`,
       );
       return;
     }
@@ -1005,10 +1050,10 @@ export class AIController {
     let squadSize = Math.max(wanted, minSquad, needed);
     // Если иначе не пробить — снимаем резерв с базы, но не оголяем её без нужды.
     squadSize = needed > available
-      ? Math.min(combat.length, squadSize)
+      ? Math.min(fighters.length, squadSize)
       : Math.min(available, squadSize);
-    squadSize = Math.max(1, Math.min(combat.length, squadSize));
-    const squad = shuffle(combat.slice(), Math.random).slice(0, squadSize);
+    squadSize = Math.max(1, Math.min(fighters.length, squadSize));
+    const squad = shuffle(fighters.slice(), Math.random).slice(0, squadSize);
 
     squad.forEach((u, i) => {
       const point = secondary && i % 2 === 0 ? secondary : primary;
@@ -1017,7 +1062,16 @@ export class AIController {
         point.z + (Math.random() - 0.5) * 4,
       );
     });
-    this.beginWave({ tactic, squad, point: primary, targetEntity: primaryTarget });
+    const support = this.waveSupport(squad, tactic);
+    for (const u of support) {
+      u.issueEscort(primary.x + (Math.random() - 0.5) * 5, primary.z + (Math.random() - 0.5) * 5);
+    }
+    this.beginWave({
+      tactic,
+      squad: squad.concat(support),
+      point: primary,
+      targetEntity: primaryTarget,
+    });
     this.postponedRuns = 0;
 
     this.waveIndex++;

@@ -429,6 +429,18 @@ export class Unit extends Entity {
     this.resetPath();
   }
 
+  /**
+   * Сопровождение отряда: идти к точке, лечить и чинить по пути, но не искать
+   * бой самостоятельно. Огонь — только ответный или по врагу в своей
+   * дистанции: догонять его поддержка не должна.
+   */
+  issueEscort(x, z) {
+    this.order = { type: 'escort', x, z };
+    this.target = null;
+    this.stuckTime = 0;
+    this.resetPath();
+  }
+
   /** Занять позицию: стрелять по целям в радиусе, но не преследовать их. */
   issueHold() {
     this.order = { type: 'hold' };
@@ -515,6 +527,24 @@ export class Unit extends Entity {
           support = this.findSupportTarget();
         }
       }
+    } else if (order && order.type === 'escort') {
+      // Сопровождение не ищет бой само: поддержка идёт за отрядом и лечит
+      // или чинит то, что встретит по пути. Стреляет она только в ответ
+      // тому, кто уже попал по ней (это выставляет takeDamage), либо по
+      // врагу в собственном радиусе — догонять его она не должна.
+      if (this.target && this.target.alive && this.retaliateTimer > 0) {
+        desired = this.target;
+      } else if (this.canFight) {
+        this.target = this.acquireTarget(this.range);
+        desired = this.target;
+      } else {
+        this.target = null;
+      }
+      if (!desired) {
+        moveX = order.x;
+        moveZ = order.z;
+        support = this.findSupportTarget();
+      }
     } else if (order && order.type === 'move') {
       moveX = order.x;
       moveZ = order.z;
@@ -558,7 +588,7 @@ export class Unit extends Entity {
       if (d > leash) {
         this.target = null;
         desired = null;
-        if (order && order.type === 'attackMove') {
+        if (order && (order.type === 'attackMove' || order.type === 'escort')) {
           moveX = order.x;
           moveZ = order.z;
         } else {
