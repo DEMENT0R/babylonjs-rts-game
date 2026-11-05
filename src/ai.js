@@ -42,6 +42,7 @@ export class AIController {
       failures: 0,
       wiped: 0,
       timeouts: 0,
+      retreats: 0,
       supplyLost: 0,
       damage: 0,
       kills: 0,
@@ -608,13 +609,42 @@ export class AIController {
   updateWaveMemory() {
     const record = this.activeWave;
     if (!record) return;
-    if (!record.units.some(({ unit }) => unit.alive)) {
+    const alive = record.units.filter(({ unit }) => unit.alive);
+    if (!alive.length) {
       this.finishWave(record, 'wiped');
       return;
     }
-    if (this.game.elapsed - record.sentAt >= AI.waveTimeout) {
+    const age = this.game.elapsed - record.sentAt;
+    const aliveSupply = alive.reduce((sum, { supply }) => sum + supply, 0);
+    // Половина отряда полегла, а урон так и не нанесён — бой проигран,
+    // и остатки уходят к сбору, а не гибнут по одному.
+    if (
+      age > AI.retreatGrace
+      && aliveSupply <= record.supplySent * AI.retreatSupplyRatio
+      && record.kills === 0
+      && record.damage < AI.weakWaveDamage
+    ) {
+      this.retreatWave(record);
+      return;
+    }
+    if (age >= AI.waveTimeout) {
       this.finishWave(record, 'timeout');
     }
+  }
+
+  /** Отводит остатки волны к точке сбора: они догонят следующий отряд. */
+  retreatWave(record) {
+    const rally = this.baseRally();
+    for (const { unit } of record.units) {
+      if (!unit.alive) continue;
+      unit.issueMove(
+        rally.x + (Math.random() - 0.5) * 6,
+        rally.z + (Math.random() - 0.5) * 6,
+      );
+      unit.retaliateTimer = 0;
+    }
+    this.stats.retreats++;
+    this.finishWave(record, 'retreated');
   }
 
   finishWave(record, state) {
@@ -748,7 +778,7 @@ export class AIController {
     const lines = [
       'ИИ: волны и итоги',
       `волн ${s.waves}, провалов ${s.failures} (${Math.round((100 * s.failures) / settled)}%)`,
-      `разгромов ${s.wiped}, зависших ${s.timeouts}`,
+      `разгромов ${s.wiped}, зависших ${s.timeouts}, отходов ${s.retreats}`,
       `потери ${Math.round(s.supplyLost / settled)} снабж./волна`,
       `урон ${Math.round(s.damage)}, убито ${s.kills}`,
       `ср. время ${(s.duration / settled).toFixed(0)} с`,
