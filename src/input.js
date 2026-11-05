@@ -10,6 +10,14 @@ import { clamp, damp, dist } from './utils.js';
 
 const NEUTRAL_GHOST = '#4fd2ff';
 
+// Двойной клик и двойной тап: окно между касаниями и допуск по расстоянию.
+const DOUBLE_TAP_MS = 400;
+const DOUBLE_TAP_DIST = 48;
+// Палец дрожит сильнее мыши, поэтому тап на сенсорном экране «прощает»
+// большее смещение — иначе он превращается в рамку и выбор не срабатывает.
+const TOUCH_TAP_SLOP = 12;
+const MOUSE_TAP_SLOP = 5;
+
 export class Input {
   constructor(game) {
     this.game = game;
@@ -28,7 +36,7 @@ export class Input {
     this.middleDrag = null;
     this.attackMode = false;
     this.placement = null;
-    this.lastClick = { time: 0, type: null };
+    this.lastTap = { time: 0, type: null, x: 0, y: 0 };
     this.groundY = 0;
     this.isTouch = Boolean(
       globalThis.matchMedia?.('(pointer: coarse)')?.matches
@@ -293,7 +301,8 @@ export class Input {
     this.drag.y1 = e.clientY;
     const dx = this.drag.x1 - this.drag.x0;
     const dy = this.drag.y1 - this.drag.y0;
-    if (Math.hypot(dx, dy) > 5) {
+    const slop = e.pointerType === 'touch' ? TOUCH_TAP_SLOP : MOUSE_TAP_SLOP;
+    if (Math.hypot(dx, dy) > slop) {
       this.drag.moved = true;
       const box = document.querySelector('#selectBox');
       if (box) {
@@ -361,17 +370,7 @@ export class Input {
       if (entity.faction !== 'player') {
         return;
       }
-      const now = performance.now();
-      this.lastClick = { time: now, type: `${entity.faction}:${entity.type}` };
-      if (this._lastClickTime && now - this._lastClickTime < 330 && this._lastType === this.lastClick.type && entity.isUnit) {
-        this.selectSameTypeOnScreen(entity);
-      } else if (additive) {
-        this.game.toggleSelect(entity, true);
-      } else {
-        this.game.selectOnly([entity]);
-      }
-      this._lastClickTime = now;
-      this._lastType = this.lastClick.type;
+      this.handleEntityTap(entity, additive, clientX, clientY);
       return;
     }
     if (picked.oil) {
@@ -379,6 +378,27 @@ export class Input {
       return;
     }
     if (!additive) this.game.clearSelection();
+  }
+
+  /** Выбор объекта с распознаванием двойного клика и двойного тапа. */
+  handleEntityTap(entity, additive, clientX, clientY) {
+    const now = performance.now();
+    const previous = this.lastTap;
+    const isDouble = entity.isUnit
+      && previous.time > 0
+      && now - previous.time < DOUBLE_TAP_MS
+      && previous.type === entity.type
+      && Math.hypot(clientX - previous.x, clientY - previous.y) < DOUBLE_TAP_DIST;
+
+    if (isDouble) {
+      this.lastTap = { time: 0, type: null, x: 0, y: 0 };
+      this.selectSameTypeOnScreen(entity);
+      return;
+    }
+
+    this.lastTap = { time: now, type: entity.type, x: clientX, y: clientY };
+    if (additive) this.game.toggleSelect(entity, true);
+    else this.game.selectOnly([entity]);
   }
 
   // ------------------------------------------------------------- touch gestures
