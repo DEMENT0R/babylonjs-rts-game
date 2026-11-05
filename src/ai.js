@@ -406,6 +406,13 @@ export class AIController {
       { type: 'tank', weight: t > 95 ? 0.55 * this.aggression : 0 },
       { type: 'artillery', weight: t > 170 ? 0.4 * this.aggression : 0 },
     ];
+    // Прошлую волну сожгли турели — Рой делает ставку на тяжёлую технику.
+    if (this.isTurretCause(this.lastFailureCause())) {
+      for (const item of weights) {
+        if (item.type === 'tank' && t > 60) item.weight = Math.max(item.weight, 0.9);
+        if (item.type === 'artillery' && t > 120) item.weight = Math.max(item.weight, 0.7);
+      }
+    }
     const total = weights.reduce((sum, item) => sum + item.weight, 0);
     let roll = Math.random() * total;
     let type = 'marine';
@@ -660,9 +667,9 @@ export class AIController {
     record.supplyLost = record.supplySent - record.supplyLeft;
     record.cause = this.waveCause(record);
     if (this.activeWave === record) this.activeWave = null;
-    if (record.targetId != null && this.isFailedWave(record)) {
+    record.failed = this.isFailedWave(record);
+    if (record.failed && record.targetId != null) {
       this.targetCooldowns.set(record.targetId, this.game.elapsed + AI.targetCooldown);
-      record.failed = true;
     }
     const s = this.stats;
     s.settled++;
@@ -810,6 +817,58 @@ export class AIController {
     };
   }
 
+  /**
+   * Подход с той стороны, где меньше известно турелей. Настоящего поиска
+   * пути тут нет: Рой перебирает точки по кругу и выбирает ту, что дальше
+   * от секторов обстрела.
+   */
+  safeApproachPoint(position, radius = AI.assaultApproachRadius) {
+    const turrets = this.game.buildings.filter((b) => (
+      b.alive
+      && b.faction === 'player'
+      && b.type === 'turret'
+      && this.game.isExploredBy('enemy', b.position.x, b.position.z)
+    ));
+    if (!turrets.length) return this.approachPoint(position, radius);
+
+    let best = null;
+    let bestScore = Infinity;
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * TAU + Math.random() * 0.4;
+      const r = radius * (0.75 + Math.random() * 0.5);
+      const point = {
+        x: clamp(position.x + Math.cos(angle) * r, -MAP.clamp, MAP.clamp),
+        z: clamp(position.z + Math.sin(angle) * r, -MAP.clamp, MAP.clamp),
+      };
+      let score = Math.random() * 2;
+      for (const turret of turrets) {
+        const reach = (turret.def.defense?.range ?? 17) + 6;
+        const d = dist(point.x, point.z, turret.position.x, turret.position.z);
+        if (d < reach) score += (reach - d) * 3;
+      }
+      if (score < bestScore) {
+        bestScore = score;
+        best = point;
+      }
+    }
+    return best;
+  }
+
+  /** Турели — частая причина провала: против них нужна тяжёлая техника. */
+  isTurretCause(cause) {
+    return cause === 'turret';
+  }
+
+  /** Причина последнего провала, если она известна. */
+  lastFailureCause() {
+    for (let i = this.waveLog.length - 1; i >= 0; i--) {
+      const wave = this.waveLog[i];
+      if (wave.state === 'active' || !wave.failed) continue;
+      return wave.cause ?? null;
+    }
+    return null;
+  }
+
   /** Выбирает цель рейда: вышки и электростанции вкуснее казарм. */
   pickRaidTarget(buildings) {
     const candidates = buildings.filter((b) => (
@@ -867,12 +926,19 @@ export class AIController {
       raidTarget = raidTarget ?? this.pickRaidTarget(playerBuildings);
       if (raidTarget) tactic = 'raid';
     }
+    // Прошлую волну смяла армия игрока — уходим на экономику, а не в лоб.
+    const cause = this.lastFailureCause();
+    if (!raidTarget && tactic !== 'probe' && cause && !this.isTurretCause(cause)
+      && Math.random() < AI.raidAfterArmyLoss) {
+      raidTarget = this.pickRaidTarget(playerBuildings);
+      if (raidTarget) tactic = 'raid';
+    }
     if (!raidTarget && tactic !== 'assault' && tactic !== 'probe') tactic = 'assault';
 
     const primaryTarget = tactic === 'raid' && raidTarget ? raidTarget : playerHQ;
     const primary = tactic === 'raid' && raidTarget
       ? this.pointNear(raidTarget.position, 5)
-      : this.approachPoint(playerHQ.position);
+      : this.safeApproachPoint(playerHQ.position);
     const secondary = tactic === 'split' && raidTarget
       ? this.pointNear(raidTarget.position, 5)
       : null;
