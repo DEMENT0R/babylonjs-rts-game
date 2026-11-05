@@ -1059,6 +1059,9 @@ export class Game {
   onEntityDamaged(entity, source, dmg) {
     if (!entity || !source) return;
     if (entity.faction === 'player' && source.faction === 'enemy') {
+      // ИИ копит статистику урона своей волны: по ней он решает,
+      // повторять ли удар тем же составом.
+      this.ai?.onDamageDealt?.(source, entity, dmg);
       if (this.ui) this.ui.hitIndicator(entity);
     }
   }
@@ -1076,7 +1079,10 @@ export class Game {
     this.audio?.explosion(pos, scale);
 
     if (entity.faction === 'enemy') this.stats.kills++;
-    if (entity.faction === 'player') this.stats.losses++;
+    if (entity.faction === 'player') {
+      this.stats.losses++;
+      this.ai?.onPlayerLoss?.(entity, source);
+    }
 
     if (entity.isBuilding && entity.type === 'derrick' && entity.oilPatch) {
       entity.oilPatch.derrick = null;

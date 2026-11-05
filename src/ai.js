@@ -28,6 +28,11 @@ export class AIController {
     // готовность рисковать. Благодаря этому ИИ не играет одинаково каждый раз.
     this.aggression = 0.75 + Math.random() * 0.55;
     this.buildAngle = Math.random() * TAU;
+    // Память о волнах: что отправили и чем это кончилось. Без неё ИИ снова
+    // и снова повторял один и тот же провальный удар.
+    this.waveLog = [];
+    this.activeWave = null;
+    this.debug = typeof location !== 'undefined' && /[?&]debug=ai\b/.test(location.search);
 
     const barracks = game.buildings.find((b) => b.faction === 'enemy' && b.type === 'barracks');
     if (barracks) {
@@ -99,6 +104,7 @@ export class AIController {
       this.tryTrain();
     }
 
+    this.updateWaveMemory();
     this.updateWave(dt);
   }
 
@@ -485,6 +491,110 @@ export class AIController {
     }
   }
 
+  // ------------------------------------------------------------- память волн
+  /**
+   * Запоминает отправленную волну. Запись закроется сама, когда отряд
+   * погибнет или потеряет темп, — по ней ИИ судит, стоило ли оно того.
+   */
+  beginWave({ tactic, squad, point, targetEntity = null }) {
+    if (this.activeWave) this.finishWave(this.activeWave, 'superseded');
+    const record = {
+      index: this.waveIndex + 1,
+      tactic,
+      sentAt: this.game.elapsed,
+      point: { x: point.x, z: point.z },
+      targetId: targetEntity?.id ?? null,
+      targetType: targetEntity?.type ?? 'hq',
+      units: squad.map((u) => ({ unit: u, supply: u.def.supply ?? 1 })),
+      ids: new Set(squad.map((u) => u.id)),
+      supplySent: squad.reduce((sum, u) => sum + (u.def.supply ?? 1), 0),
+      kills: 0,
+      damage: 0,
+      killTypes: {},
+      state: 'active',
+    };
+    this.waveLog.push(record);
+    if (this.waveLog.length > AI.waveLogSize) this.waveLog.shift();
+    this.activeWave = record;
+    this.debugLog(
+      `волна №${record.index} (${tactic}): ${squad.length} юнитов, `
+      + `${record.supplySent} снабж. → ${record.targetType}`,
+    );
+    return record;
+  }
+
+  /** Закрывает активную волну, как только её судьба определилась. */
+  updateWaveMemory() {
+    const record = this.activeWave;
+    if (!record) return;
+    if (!record.units.some(({ unit }) => unit.alive)) {
+      this.finishWave(record, 'wiped');
+      return;
+    }
+    if (this.game.elapsed - record.sentAt >= AI.waveTimeout) {
+      this.finishWave(record, 'timeout');
+    }
+  }
+
+  finishWave(record, state) {
+    if (!record || record.state !== 'active') return;
+    record.state = state;
+    record.endedAt = this.game.elapsed;
+    record.duration = record.endedAt - record.sentAt;
+    record.alive = record.units.filter(({ unit }) => unit.alive).length;
+    record.supplyLeft = record.units.reduce(
+      (sum, { unit, supply }) => sum + (unit.alive ? supply : 0),
+      0,
+    );
+    record.supplyLost = record.supplySent - record.supplyLeft;
+    record.cause = this.waveCause(record);
+    if (this.activeWave === record) this.activeWave = null;
+    this.debugLog(
+      `волна №${record.index} ${record.state}: живых ${record.alive}/${record.units.length}, `
+      + `потери ${record.supplyLost} снабж., урон ${Math.round(record.damage)}, `
+      + `убито ${record.kills}, причина ${record.cause}`,
+    );
+  }
+
+  /** Кто чаще всего добивал бойцов волны: турели, гарнизон, база. */
+  waveCause(record) {
+    const counts = {};
+    for (const { unit } of record.units) {
+      if (unit.alive) continue;
+      const type = unit.lastAttacker?.type ?? 'unknown';
+      counts[type] = (counts[type] ?? 0) + 1;
+    }
+    let best = 'unknown';
+    let bestCount = 0;
+    for (const [type, count] of Object.entries(counts)) {
+      if (count > bestCount) {
+        best = type;
+        bestCount = count;
+      }
+    }
+    return best;
+  }
+
+  /** Урон по игроку от бойцов активной волны. */
+  onDamageDealt(source, target, dmg) {
+    const record = this.activeWave;
+    if (!record || !record.ids.has(source.id)) return;
+    record.damage += dmg;
+  }
+
+  /** Игрок потерял юнита или здание — записываем, если добил боец волны. */
+  onPlayerLoss(entity, source) {
+    const record = this.activeWave;
+    if (!record || !source || !record.ids.has(source.id)) return;
+    record.kills++;
+    const type = entity.isBuilding ? `building:${entity.type}` : entity.type;
+    record.killTypes[type] = (record.killTypes[type] ?? 0) + 1;
+  }
+
+  debugLog(text) {
+    if (this.debug) console.debug(`[ai] ${text}`);
+  }
+
   // ------------------------------------------------------------- волны
   /** Точка рядом с целью: один и тот же приказ не выглядит как копия. */
   pointNear(position, spread) {
@@ -546,6 +656,7 @@ export class AIController {
       : null;
     if (!raidTarget && tactic !== 'assault' && tactic !== 'probe') tactic = 'assault';
 
+    const primaryTarget = tactic === 'raid' && raidTarget ? raidTarget : playerHQ;
     const primary = tactic === 'raid' && raidTarget
       ? this.pointNear(raidTarget.position, 5)
       : this.pointNear(playerHQ.position, 9);
@@ -570,6 +681,7 @@ export class AIController {
         point.z + (Math.random() - 0.5) * 4,
       );
     });
+    this.beginWave({ tactic, squad, point: primary, targetEntity: primaryTarget });
 
     this.waveIndex++;
     this.waveTimer = AI.waveInterval * (0.8 + Math.random() * 0.45);
