@@ -140,12 +140,17 @@ export class AIController {
   }
 
   // ------------------------------------------------------------- строительство
+  /** Живые инженеры Роя. */
+  engineerCount() {
+    return this.game.units.filter(
+      (u) => u.alive && u.faction === 'enemy' && u.def.builder,
+    ).length;
+  }
+
   ensureEngineers(hq) {
     if (!hq || !hq.complete || hq.queue.length > 1) return;
     if (hq.queue.some((item) => item.type === 'engineer')) return;
-    const count = this.game.units.filter(
-      (u) => u.alive && u.faction === 'enemy' && u.type === 'engineer',
-    ).length;
+    const count = this.engineerCount();
     const target = this.game.elapsed > 90 ? 2 : 1;
     if (count >= target) return;
     const used = this.game.getArmyUsed('enemy') + this.game.getQueuedSupply('enemy');
@@ -479,6 +484,9 @@ export class AIController {
     const threats = [];
     for (const builder of game.units) {
       if (!builder.alive || builder.faction !== 'enemy' || !builder.def.builder) continue;
+      // Инженер в составе волны идёт под охраной самого отряда: не снимаем
+      // бойцов с маршрута, чтобы спасать одного строителя.
+      if (builder.order?.type === 'escort') continue;
       let attacker = null;
       // Инженера уже бьют — мстим тому, кто попал последним.
       if (builder.lastAttacker?.alive && builder.lastAttacker.faction === 'player'
@@ -906,16 +914,31 @@ export class AIController {
 
   /**
    * Поддержка волны: идёт сверх слотов бойцов и не учитывается в оценке
-   * мощи отряда. Медика берём под пехоту, которую он сможет лечить, —
-   * без раненых он только растягивает маршрут.
+   * мощи отряда. Медика берём под пехоту, которую он сможет лечить, а
+   * инженера — только под технику: без машин в поле нечего чинить.
    */
   waveSupport(squad, tactic) {
     // Разведка боем идёт налегке, без обоза.
     if (tactic === 'probe') return [];
+    const out = [];
+
     const infantry = squad.filter((u) => u.def.infantry).length;
     const medics = this.freeSupport('medic', squad);
-    const wanted = Math.min(AI.waveMedicCap, Math.floor(infantry / AI.waveMedicPer));
-    return medics.slice(0, wanted);
+    const wantedMedics = Math.min(AI.waveMedicCap, Math.floor(infantry / AI.waveMedicPer));
+    out.push(...medics.slice(0, wantedMedics));
+
+    // Один свободный инженер всегда остаётся в улье: без него встанут
+    // стройка и ремонт техники, а волна — не единственная забота Роя.
+    const vehicles = squad.filter((u) => u.def.vehicle).length;
+    const engineers = this.freeSupport('engineer', squad);
+    const wantedEngineers = Math.min(
+      AI.waveEngineerCap,
+      Math.max(0, engineers.length - 1),
+      Math.ceil(vehicles / AI.waveEngineerPer),
+    );
+    out.push(...engineers.slice(0, wantedEngineers));
+
+    return out;
   }
 
   /**
