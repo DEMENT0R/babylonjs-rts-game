@@ -1,7 +1,10 @@
 // Настройки графики и звука: значения по умолчанию, хранение и применение.
 
+import { DIFFICULTY_ORDER } from './config.js';
+
 const STORAGE_KEY = 'gelios.graphics.v1';
 const AUDIO_KEY = 'gelios.audio.v1';
+const DIFFICULTY_KEY = 'gelios.difficulty.v1';
 
 export const GRAPHICS_DEFAULTS = Object.freeze({
   shadows: 'medium',
@@ -175,5 +178,48 @@ export class AudioSettings {
 
   apply() {
     this.audio?.setVolumes(this.values);
+  }
+}
+
+// ------------------------------------------------------------- сложность ИИ
+
+/**
+ * Выбранная сложность противника. Живёт отдельно от графики и звука:
+ * это не внешний вид, а правила партии, и меняется только до её начала.
+ */
+export class DifficultySettings {
+  constructor() {
+    this.value = 'normal';
+    this.onChange = null;
+  }
+
+  load() {
+    try {
+      const saved = localStorage.getItem(DIFFICULTY_KEY);
+      if (DIFFICULTY_ORDER.includes(saved)) this.value = saved;
+    } catch {
+      // localStorage может быть недоступен — остаёмся на «обычном».
+    }
+    return this.value;
+  }
+
+  get() {
+    return this.value;
+  }
+
+  set(value) {
+    if (!DIFFICULTY_ORDER.includes(value) || this.value === value) return false;
+    this.value = value;
+    this.save();
+    this.onChange?.(value);
+    return true;
+  }
+
+  save() {
+    try {
+      localStorage.setItem(DIFFICULTY_KEY, this.value);
+    } catch {
+      // Приватный режим не должен мешать начать партию.
+    }
   }
 }

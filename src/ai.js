@@ -1,14 +1,18 @@
 // Простой противник: экономика, инженеры, застройка, ремонт и волны атак.
 
 import { Vector3 } from './babylon.js';
-import { AI, BUILDINGS, MAP, UNITS, UPGRADES } from './config.js';
+import { AI, AI_DIFFICULTY, BUILDINGS, MAP, UNITS, UPGRADES } from './config.js';
 import { clamp, dist, shuffle, TAU } from './utils.js';
 
 export class AIController {
-  constructor(game) {
+  constructor(game, difficulty = 'normal') {
     this.game = game;
+    // Сложность — это набор правил поверх одного и того же ИИ: флаги
+    // включают «умные» привычки, множители меняют темп и экономику.
+    this.difficulty = AI_DIFFICULTY[difficulty] ? difficulty : 'normal';
+    this.rules = AI_DIFFICULTY[this.difficulty];
     this.credits = AI.credits * (0.85 + Math.random() * 0.4);
-    this.waveTimer = AI.firstWave * (0.8 + Math.random() * 0.4);
+    this.waveTimer = AI.firstWave * this.rules.firstWave * (0.8 + Math.random() * 0.4);
     this.waveIndex = 0;
     this.rally = this.baseRally();
     this.defenseTimer = 0;
@@ -82,7 +86,7 @@ export class AIController {
       this.debugEl = null;
       return;
     }
-    this.credits += this.game.enemyIncome() * dt;
+    this.credits += this.game.enemyIncome() * this.rules.income * dt;
     this.trainTimer -= dt;
     this.defenseTimer -= dt;
     this.buildTimer -= dt;
@@ -407,7 +411,7 @@ export class AIController {
       { type: 'artillery', weight: t > 170 ? 0.4 * this.aggression : 0 },
     ];
     // Прошлую волну сожгли турели — Рой делает ставку на тяжёлую технику.
-    if (this.isTurretCause(this.lastFailureCause())) {
+    if (this.rules.counter && this.isTurretCause(this.lastFailureCause())) {
       for (const item of weights) {
         if (item.type === 'tank' && t > 60) item.weight = Math.max(item.weight, 0.9);
         if (item.type === 'artillery' && t > 120) item.weight = Math.max(item.weight, 0.7);
@@ -626,7 +630,8 @@ export class AIController {
     // Половина отряда полегла, а урон так и не нанесён — бой проигран,
     // и остатки уходят к сбору, а не гибнут по одному.
     if (
-      age > AI.retreatGrace
+      this.rules.retreat
+      && age > AI.retreatGrace
       && aliveSupply <= record.supplySent * AI.retreatSupplyRatio
       && record.kills === 0
       && record.damage < AI.weakWaveDamage
@@ -668,7 +673,7 @@ export class AIController {
     record.cause = this.waveCause(record);
     if (this.activeWave === record) this.activeWave = null;
     record.failed = this.isFailedWave(record);
-    if (record.failed && record.targetId != null) {
+    if (record.failed && record.targetId != null && this.rules.targetCooldown) {
       this.targetCooldowns.set(record.targetId, this.game.elapsed + AI.targetCooldown);
     }
     const s = this.stats;
@@ -694,6 +699,7 @@ export class AIController {
   }
 
   isTargetCooling(id) {
+    if (!this.rules.targetCooldown) return false;
     if (id == null) return false;
     const until = this.targetCooldowns.get(id);
     if (until == null) return false;
@@ -927,7 +933,7 @@ export class AIController {
       if (raidTarget) tactic = 'raid';
     }
     // Прошлую волну смяла армия игрока — уходим на экономику, а не в лоб.
-    const cause = this.lastFailureCause();
+    const cause = this.rules.counter ? this.lastFailureCause() : null;
     if (!raidTarget && tactic !== 'probe' && cause && !this.isTurretCause(cause)
       && Math.random() < AI.raidAfterArmyLoss) {
       raidTarget = this.pickRaidTarget(playerBuildings);
@@ -938,7 +944,9 @@ export class AIController {
     const primaryTarget = tactic === 'raid' && raidTarget ? raidTarget : playerHQ;
     const primary = tactic === 'raid' && raidTarget
       ? this.pointNear(raidTarget.position, 5)
-      : this.safeApproachPoint(playerHQ.position);
+      : this.rules.avoidTurrets
+        ? this.safeApproachPoint(playerHQ.position)
+        : this.approachPoint(playerHQ.position);
     const secondary = tactic === 'split' && raidTarget
       ? this.pointNear(raidTarget.position, 5)
       : null;
@@ -956,7 +964,7 @@ export class AIController {
     const defense = this.defenseAt(primaryTarget.position);
     const needed = tactic === 'probe'
       ? 0
-      : this.neededSquad(combat, defense * AI.requiredAdvantage);
+      : this.neededSquad(combat, defense * this.rules.requiredAdvantage);
     if (needed > combat.length) {
       this.waveTimer = AI.regroupDelay * (0.8 + Math.random() * 0.6);
       this.debugLog(
@@ -967,9 +975,9 @@ export class AIController {
     }
 
     // Провал больше не повторяется тем же числом: отряд растёт.
-    const recentWipes = this.waveLog.filter((w) => (
+    const recentWipes = this.rules.memory ? this.waveLog.filter((w) => (
       w.state === 'wiped' && this.game.elapsed - w.endedAt < AI.waveTimeout * 2
-    )).length;
+    )).length : 0;
     const minSquad = tactic === 'probe'
       ? 1
       : AI.minWaveSquad + recentWipes * AI.wipeSquadBonus;
@@ -992,7 +1000,7 @@ export class AIController {
     this.beginWave({ tactic, squad, point: primary, targetEntity: primaryTarget });
 
     this.waveIndex++;
-    this.waveTimer = AI.waveInterval * (0.8 + Math.random() * 0.45);
+    this.waveTimer = AI.waveInterval * this.rules.waveInterval * (0.8 + Math.random() * 0.45);
     this.lastWaveAt = this.game.elapsed;
 
     const messages = {

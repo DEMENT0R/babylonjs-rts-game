@@ -10,6 +10,7 @@ import {
   MAP,
   MESSAGES,
   AI,
+  AI_DIFFICULTY,
   REPAIR,
 } from './config.js';
 import { clamp, dist, formatTime } from './utils.js';
@@ -21,7 +22,10 @@ import { FogOfWar } from './fog.js';
 let nextBuildingId = 1;
 
 export class Game {
-  constructor({ scene, camera, factory, world, fx, graphics, audio, audioSettings }) {
+  constructor({
+    scene, camera, factory, world, fx, graphics, audio, audioSettings,
+    difficulty = 'normal', difficultySettings = null,
+  }) {
     this.scene = scene;
     this.camera = camera;
     this.factory = factory;
@@ -31,6 +35,8 @@ export class Game {
     this.graphics = graphics;
     this.audio = audio ?? null;
     this.audioSettings = audioSettings ?? null;
+    this.difficulty = AI_DIFFICULTY[difficulty] ? difficulty : 'normal';
+    this.difficultySettings = difficultySettings;
     this.ui = null;
     this.input = null;
 
@@ -68,8 +74,20 @@ export class Game {
     this.refreshNav();
     this.recomputePower();
     this.refreshArmyCap();
-    this.ai = new AIController(this);
+    this.ai = new AIController(this, this.difficulty);
     this.ui = null;
+  }
+
+  /**
+   * Сложность выбирается до начала партии: ИИ пересоздаётся с новыми
+   * правилами, а выбор запоминается в браузере.
+   */
+  setDifficulty(key) {
+    if (!AI_DIFFICULTY[key] || this.started) return false;
+    this.difficulty = key;
+    this.difficultySettings?.set(key);
+    this.ai = new AIController(this, key);
+    return true;
   }
 
   // ------------------------------------------------------------- setup

@@ -16,6 +16,8 @@ import {
   MESSAGES,
   MAP,
   FIELD_SUPPORT,
+  AI_DIFFICULTY,
+  DIFFICULTY_ORDER,
 } from './config.js';
 import { icon } from './icons.js';
 import { randomSeed, seedUrl } from './mapgen.js';
@@ -101,6 +103,12 @@ export class UI {
         this.refreshGraphicsControls();
         return;
       }
+      const diff = e.target.closest('[data-difficulty]');
+      if (diff) {
+        this.game.setDifficulty(diff.dataset.difficulty);
+        this.refreshDifficultyControls();
+        return;
+      }
       const action = e.target.closest('[data-action]')?.dataset.action;
       if (!action) return;
       if (action === 'start') this.startGame();
@@ -180,6 +188,7 @@ export class UI {
         <div class="map-strip-item"><span>ЛАНДШАФТ</span><b>${map.style.name}</b></div>
         <button class="btn-ghost btn-map" data-action="newmap">СГЕНЕРИРОВАТЬ ДРУГУЮ</button>
       </div>
+      ${this.difficultyBlock()}
       <div class="brief-grid">
         <div class="brief-copy">
           <p>Программа «Гелиос-7» отправила в этот сектор два одинаковых семенных корабля — так задумывалась страховка: если одна колония погибнет, работу продолжит вторая. Связь между ними потеряна, а последний принятый пакет приказа одинаков для обеих сторон: сектор останется за выжившей. ${map.symmetry.hint} Рельеф, месторождения и техника у обеих сторон совпадают до последнего винта — по ту сторону фронта стоит ваша копия.</p>
@@ -206,6 +215,32 @@ export class UI {
       </div>
     `;
     this.setOverlay(html, 'overlay--start');
+  }
+
+  /** Выбор сложности ИИ на стартовом экране: одна настройка на партию. */
+  difficultyBlock() {
+    const current = this.game.difficulty ?? 'normal';
+    const buttons = DIFFICULTY_ORDER.map((key) => {
+      const preset = AI_DIFFICULTY[key];
+      const active = key === current;
+      return `<button type="button" class="graphics-opt${active ? ' is-active' : ''}"
+        data-difficulty="${key}" aria-pressed="${active}"
+        title="${esc(preset.desc)}">${preset.name}</button>`;
+    }).join('');
+    return `
+      <div class="difficulty-row">
+        <span class="difficulty-label">СЛОЖНОСТЬ ИИ</span>
+        <div class="difficulty-options">${buttons}</div>
+      </div>`;
+  }
+
+  refreshDifficultyControls() {
+    const current = this.game.difficulty ?? 'normal';
+    this.el.overlay.querySelectorAll('[data-difficulty]').forEach((btn) => {
+      const active = btn.dataset.difficulty === current;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
   }
 
   showEnd(result) {

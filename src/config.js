@@ -491,6 +491,55 @@ export const AI = {
   engineerGuardCount: 3,
 };
 
+// Пресеты сложности: не отдельные ветки ИИ, а набор флагов и множителей
+// поверх одного поведения. Ключи совпадают с тем, что хранится в настройках.
+export const AI_DIFFICULTY = {
+  easy: {
+    key: 'easy',
+    name: 'ЛЁГКИЙ',
+    desc: 'Противник не запоминает провалы, не отступает и атакует реже. Для первой партии.',
+    income: 0.85,
+    waveInterval: 1.3,
+    firstWave: 1.15,
+    requiredAdvantage: 0.9,
+    memory: false,
+    targetCooldown: false,
+    retreat: false,
+    counter: false,
+    avoidTurrets: false,
+  },
+  normal: {
+    key: 'normal',
+    name: 'ОБЫЧНЫЙ',
+    desc: 'Противник учится на провалах, отступает, меняет цель и обходит турели.',
+    income: 1,
+    waveInterval: 1,
+    firstWave: 1,
+    requiredAdvantage: 1.35,
+    memory: true,
+    targetCooldown: true,
+    retreat: true,
+    counter: true,
+    avoidTurrets: true,
+  },
+  hard: {
+    key: 'hard',
+    name: 'СЛОЖНЫЙ',
+    desc: 'Тот же умный противник, но богаче, злее и требует больше войск для обороны.',
+    income: 1.1,
+    waveInterval: 0.9,
+    firstWave: 0.9,
+    requiredAdvantage: 1.5,
+    memory: true,
+    targetCooldown: true,
+    retreat: true,
+    counter: true,
+    avoidTurrets: true,
+  },
+};
+
+export const DIFFICULTY_ORDER = ['easy', 'normal', 'hard'];
+
 export const REPAIR = {
   // Полный ремонт занимает столько секунд при непрерывной оплате.
   duration: 18,

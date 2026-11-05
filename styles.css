@@ -1794,6 +1794,35 @@ body.mode-attack #scene {
   white-space: nowrap;
 }
 
+.difficulty-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line-soft);
+  background: rgba(8, 20, 27, 0.62);
+}
+
+.difficulty-label {
+  font-size: 6.5px;
+  letter-spacing: 0.18em;
+  color: var(--dim);
+}
+
+.difficulty-options {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.difficulty-options .graphics-opt {
+  padding: 6px 12px;
+  font-size: 8px;
+}
+
 .end-map {
   margin-top: 12px;
   padding: 8px 10px;
