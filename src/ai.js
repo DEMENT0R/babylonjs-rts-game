@@ -490,8 +490,44 @@ export class AIController {
       }
       // Приказ мог перебить гарнизон или волна: задача больше не наша,
       // иначе боец навсегда останется в списке «уже в разведке».
-      if (unit.order?.type !== 'attackMove') this.scoutTasks.delete(id);
+      if (unit.order?.type !== 'attackMove') {
+        this.scoutTasks.delete(id);
+        continue;
+      }
+      // Цель уже открыта — задача выполнена, дальше боец идёт по своему
+      // приказу и возвращается в строй, когда дойдёт до точки.
+      if (this.game.isExploredBy('enemy', task.x, task.z)) {
+        this.scoutTasks.delete(id);
+        continue;
+      }
+      if (!this.rules.retreat) continue;
+      // Разведка — не самоубийство: под огнём разведчик отходит к базе, а не
+      // идёт дальше в турели. Уцелевший боец пригодится в следующей волне.
+      const hurt = unit.hp < unit.maxHp * AI.scoutRetreatHp;
+      const underFire = now - unit.lastHitAt < AI.scoutRetreatHitWindow;
+      const tooLong = now - task.since > AI.scoutMaxTime;
+      if (hurt || underFire || tooLong) {
+        this.retreatScout(unit, hurt || underFire ? 'под огнём' : 'слишком долго');
+      }
     }
+  }
+
+  /**
+   * Возвращает разведчика к базе. Юнит остаётся в армии: через короткую паузу
+   * он снова может уйти в разведку или в волну, а не гибнет в чистом поле.
+   */
+  retreatScout(unit, reason) {
+    this.scoutTasks.delete(unit.id);
+    const rally = this.rally ?? this.baseRally();
+    unit.issueMove(
+      clamp(rally.x + (Math.random() - 0.5) * 8, -MAP.clamp, MAP.clamp),
+      clamp(rally.z + (Math.random() - 0.5) * 8, -MAP.clamp, MAP.clamp),
+    );
+    // Разведчика обстреляли — место опасно и для следующего, даже если этот
+    // ушёл живым.
+    if (reason === 'под огнём') this.rememberScoutLoss(unit.position.x, unit.position.z);
+    unit.aiScoutRest = this.game.elapsed + AI.scoutRest;
+    this.debugLog(`разведчик возвращается к базе: ${reason}`);
   }
 
   /**
@@ -514,6 +550,8 @@ export class AIController {
       // Уже идущий разведчик не переназначается: иначе отряд дёргается на
       // месте, а каждые десять секунд получает новую цель.
       && !this.scoutTasks.has(u.id)
+      // Вернувшийся из-под огня боец отдыхает у базы, а не идёт обратно.
+      && (u.aiScoutRest ?? 0) <= game.elapsed
       && (!u.order || u.order.type === 'move' || u.order.type === 'attackMove' || u.order.type === 'hold')
     ));
     // Позиционный гарнизон уже исключён: разведка берёт только свободных.
