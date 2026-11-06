@@ -1684,6 +1684,21 @@ export class AIController {
       squad.push(pool[squad.length]);
     }
 
+    // Волна не забирает всех: у базы остаётся резерв снабжения. Лишних
+    // бойцов сверх порога мощи оставляем дома — иначе после выхода отряда
+    // база пуста, и один ответный рейд заканчивает партию. Если убрать
+    // бойца нельзя без потери мощи, волна идёт как есть: резерв не должен
+    // останавливать наступление навсегда.
+    const fighterSupply = fighters.reduce((sum, u) => sum + (u.def.supply ?? 1), 0);
+    let homeSupply = fighterSupply
+      - squad.reduce((sum, u) => sum + (u.def.supply ?? 1), 0);
+    while (homeSupply < AI.waveHomeReserve && squad.length > 1) {
+      const last = squad[squad.length - 1];
+      if (this.squadPower(squad) - this.combatValue(last) < requiredPower) break;
+      squad.pop();
+      homeSupply += last.def.supply ?? 1;
+    }
+
     // Бойцы ушли в волну: разведка их больше не ждёт.
     for (const u of squad) this.scoutTasks.delete(u.id);
     squad.forEach((u, i) => {
