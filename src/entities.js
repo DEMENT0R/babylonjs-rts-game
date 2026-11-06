@@ -174,13 +174,16 @@ export class Entity {
     const dmg = Math.max(1, amount - armor);
     this.hp -= dmg;
     this.lastHitAt = this.game.elapsed;
-    if (source?.alive) this.lastAttacker = source;
+    // Своя РСЗО не становится «атакующим»: иначе юнит развернулся бы
+    // против своих, а ИИ записал бы братоубийство на счёт игрока.
+    if (source?.alive && source.faction !== this.faction) this.lastAttacker = source;
     this.game.onEntityDamaged(this, source, dmg);
     if (this.hp <= 0) {
       this.hp = 0;
       this.die(source);
     }
-    if (this instanceof Unit && this.alive && source?.alive && this.canFight) {
+    if (this instanceof Unit && this.alive && source?.alive
+      && source.faction !== this.faction && this.canFight) {
       const busyBuilding = this.def.builder
         && this.assistBuilding
         && this.assistBuilding.alive

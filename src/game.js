@@ -1232,22 +1232,32 @@ export class Game {
 
   splashDamage(point, radius, amount, source) {
     if (!source) return;
+    // РСЗО бьёт по площади без разбора: свои юниты получают урон, если
+    // оказались в зоне залпа. Здания и сама установка не страдают.
+    const friendlyFire = source.def?.friendlyFire ?? 0;
     for (const e of this.entities.slice()) {
-      if (!e.alive || e.faction === source.faction) continue;
+      if (!e.alive) continue;
       if (!(e instanceof Unit) && !(e instanceof Building)) continue;
+      const friendly = e.faction === source.faction;
+      if (friendly && (!(e instanceof Unit) || e === source || friendlyFire <= 0)) continue;
       const d = dist(point.x, point.z, e.position.x, e.position.z);
       if (d > radius + e.radius * 0.4) continue;
       const falloff = 1 - 0.5 * clamp(d / radius, 0, 1);
-      e.takeDamage(amount * falloff, source);
+      e.takeDamage(amount * falloff * (friendly ? friendlyFire : 1), source);
     }
   }
 
   onEntityDamaged(entity, source, dmg) {
     if (!entity || !source) return;
-    if (entity.faction === 'player' && source.faction === 'enemy') {
+    if (entity.faction !== 'player') return;
+    if (source.faction === 'enemy') {
       // ИИ копит статистику урона своей волны: по ней он решает,
       // повторять ли удар тем же составом.
       this.ai?.onDamageDealt?.(source, entity, dmg);
+      if (this.ui) this.ui.hitIndicator(entity);
+    } else if (source.def?.friendlyFire) {
+      // Своя РСЗО накрыла своих: подсвечиваем удар, чтобы это не прошло
+      // незамеченным на фоне боя.
       if (this.ui) this.ui.hitIndicator(entity);
     }
   }
@@ -1264,10 +1274,21 @@ export class Game {
     this.fx.buildDust(entity.position, entity.isBuilding ? 1.5 : 0.5);
     this.audio?.explosion(pos, scale);
 
-    if (entity.faction === 'enemy') this.stats.kills++;
+    // Убийство засчитывается только за урон игрока: если противник сгорел
+    // от собственного залпа, это не наша заслуга.
+    if (entity.faction === 'enemy' && source?.faction === 'player') this.stats.kills++;
     if (entity.faction === 'player') {
       this.stats.losses++;
       this.ai?.onPlayerLoss?.(entity, source);
+      if (source?.faction === 'player' && source.def?.friendlyFire) {
+        this.notify(
+          'Залп РСЗО накрыл своих. Не стреляйте по войскам в ближнем бою.',
+          'danger',
+          'friendly-fire',
+          8,
+          5,
+        );
+      }
     }
 
     if (entity.isBuilding && entity.type === 'derrick' && entity.oilPatch) {
