@@ -11,6 +11,11 @@
   --amber: #ffb02e;
   --red: #ff5b3c;
   --green: #63e6a8;
+  /* Один ресурс — один цвет во всех элементах интерфейса. */
+  --res-credits: var(--amber);
+  --res-power: var(--cyan);
+  --res-army: var(--green);
+  --res-army-soft: rgba(99, 230, 168, 0.28);
   --text: #cfe5ef;
   --dim: #7893a1;
   --font-display: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif;
@@ -168,7 +173,7 @@ body.mode-attack #scene {
 .res-ico {
   width: 21px;
   height: 21px;
-  color: var(--cyan);
+  color: var(--res-power);
   opacity: 0.9;
   display: inline-flex;
 }
@@ -183,7 +188,7 @@ body.mode-attack #scene {
   font-family: var(--font-mono);
   font-size: 15px;
   font-weight: 600;
-  color: #eafaff;
+  color: var(--text);
   line-height: 1;
   letter-spacing: 0.02em;
 }
@@ -194,6 +199,21 @@ body.mode-attack #scene {
   font-size: 7px;
   letter-spacing: 0.18em;
   color: var(--dim);
+}
+
+#resCredits .res-ico,
+#resCredits .res-copy b {
+  color: var(--res-credits);
+}
+
+#resPower .res-ico,
+#resPower .res-copy b {
+  color: var(--res-power);
+}
+
+#resArmy .res-ico,
+#resArmy .res-copy b {
+  color: var(--res-army);
 }
 
 #resPower.is-deficit .res-ico,
@@ -715,10 +735,10 @@ body.mode-attack #scene {
 .chip--status.ok { color: var(--green); border-color: rgba(99, 230, 168, 0.3); }
 .chip--status.warn { color: var(--amber); border-color: rgba(255, 176, 46, 0.3); }
 .chip--status.accent { color: var(--cyan); border-color: rgba(79, 210, 255, 0.3); }
-.chip--power { color: var(--cyan); }
-.chip--power-use { color: var(--amber); }
-.chip--income { color: var(--green); }
-.chip--army { color: var(--cyan-soft); border-color: rgba(79, 210, 255, 0.28); }
+.chip--power { color: var(--res-power); }
+.chip--power-use { color: var(--res-power); }
+.chip--income { color: var(--res-credits); }
+.chip--army { color: var(--res-army); border-color: var(--res-army-soft); }
 .chip--defense { color: var(--red); border-color: rgba(255, 91, 60, 0.3); }
 .chip--repair { color: var(--amber); border-color: rgba(255, 176, 46, 0.28); }
 .chip--research { color: var(--cyan); border-color: rgba(79, 210, 255, 0.28); }
@@ -1056,7 +1076,7 @@ body.mode-attack #scene {
   margin-top: 3px;
   font-family: var(--font-mono);
   font-size: 8px;
-  color: var(--amber);
+  color: var(--res-credits);
 }
 
 .cmd-cost svg {
@@ -1337,7 +1357,7 @@ body.mode-attack #scene {
   align-items: center;
   gap: 3px;
   font-family: var(--font-mono);
-  color: var(--amber);
+  color: var(--res-credits);
 }
 
 .tip-cost svg {
