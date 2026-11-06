@@ -774,7 +774,6 @@ export class AIController {
       if (u.order?.type === 'hold' || u.order?.type === 'escort') continue;
       const d = dist(u.position.x, u.position.z, hq.position.x, hq.position.z);
       if (d >= AI.defendRadius + 10) continue;
-      if (d <= AI.garrisonRadius) u.aiGarrison = true;
       u.issueHold(
         anchor.x + (Math.random() - 0.5) * 7,
         anchor.z + (Math.random() - 0.5) * 7,
