@@ -889,10 +889,15 @@ export class AIController {
     const weapon = entity.defense ?? def.defense ?? def;
     const damage = entity.damage ?? weapon.damage ?? 0;
     const cooldown = entity.cooldown ?? weapon.cooldown ?? 1;
-    const dps = damage / (cooldown || 1);
+    // Залп РСЗО — это пять ракет за одну перезарядку, а площадной урон
+    // делает машину сильнее в толпе. Без этих множителей артиллерия
+    // выглядела в оценке почти безоружной.
+    const salvo = entity.salvo ?? weapon.salvo ?? 1;
+    const splash = (entity.splash ?? weapon.splash) ? 1.15 : 1;
+    const dps = (damage * salvo) / (cooldown || 1);
     const hp = entity.hp ?? def.hp ?? 0;
     const armor = entity.armor ?? def.armor ?? 0;
-    return (dps * (hp + armor * 20 + 40)) / 100;
+    return (dps * splash * (hp + armor * 20 + 40)) / 100;
   }
 
   squadPower(units) {
@@ -910,6 +915,10 @@ export class AIController {
       if (!b.alive || b.faction !== 'player') continue;
       if (!this.game.isBuildingKnownTo('enemy', b)) continue;
       if (dist(point.x, point.z, b.position.x, b.position.z) > AI.defenseRadius + b.radius) continue;
+      if (b.type === 'wall') {
+        if (b.complete) value += AI.wallDefenseValue;
+        continue;
+      }
       value += this.combatValue(b);
     }
     for (const u of this.game.units) {
@@ -1430,11 +1439,15 @@ export class AIController {
     if (tactic === 'probe') wanted = Math.min(wanted, 2 + Math.floor(Math.random() * 2));
 
     // Разведка боем идёт налегке, остальные волны — только если отряд
-    // способен пробить то, что Рой знает об обороне цели.
+    // способен пробить то, что Рой знает об обороне цели. Чем дольше
+    // наступление откладывается, тем скромнее требуемое превосходство:
+    // иначе три турели у штаба способны заморозить ИИ навсегда.
+    const patience = Math.min(AI.maxPatienceDiscount, this.postponedRuns * AI.patienceStep);
+    const requiredAdvantage = this.rules.requiredAdvantage * (1 - patience);
     const defense = this.defenseAt(primaryTarget.position);
     const needed = tactic === 'probe'
       ? 0
-      : this.neededSquad(fighters, defense * this.rules.requiredAdvantage);
+      : this.neededSquad(fighters, defense * requiredAdvantage);
     if (needed > fighters.length) {
       this.waveTimer = AI.regroupDelay * (0.8 + Math.random() * 0.6);
       this.postponedRuns++;
@@ -1449,7 +1462,7 @@ export class AIController {
       }
       this.debugLog(
         `волна отложена: оборона ${Math.round(defense)}, армия `
-        + `${Math.round(this.squadPower(fighters))}`,
+        + `${Math.round(this.squadPower(fighters))}, нужно ×${requiredAdvantage.toFixed(2)}`,
       );
       return;
     }
