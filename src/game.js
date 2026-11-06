@@ -1232,14 +1232,14 @@ export class Game {
 
   splashDamage(point, radius, amount, source) {
     if (!source) return;
-    // РСЗО бьёт по площади без разбора: свои юниты получают урон, если
-    // оказались в зоне залпа. Здания и сама установка не страдают.
+    // РСЗО бьёт по площади без разбора: свои юниты, здания и сама
+    // установка получают урон, если оказались в зоне залпа.
     const friendlyFire = source.def?.friendlyFire ?? 0;
     for (const e of this.entities.slice()) {
       if (!e.alive) continue;
       if (!(e instanceof Unit) && !(e instanceof Building)) continue;
       const friendly = e.faction === source.faction;
-      if (friendly && (!(e instanceof Unit) || e === source || friendlyFire <= 0)) continue;
+      if (friendly && friendlyFire <= 0) continue;
       const d = dist(point.x, point.z, e.position.x, e.position.z);
       if (d > radius + e.radius * 0.4) continue;
       const falloff = 1 - 0.5 * clamp(d / radius, 0, 1);
@@ -1282,7 +1282,7 @@ export class Game {
       this.ai?.onPlayerLoss?.(entity, source);
       if (source?.faction === 'player' && source.def?.friendlyFire) {
         this.notify(
-          'Залп РСЗО накрыл своих. Не стреляйте по войскам в ближнем бою.',
+          'Залп РСЗО накрыл своих. Не стреляйте по своим войскам и зданиям.',
           'danger',
           'friendly-fire',
           8,
