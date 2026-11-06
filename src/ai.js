@@ -332,13 +332,14 @@ export class AIController {
       && this.credits > BUILDINGS.turret.cost + 80) {
       type = 'turret';
     } else if (lab === 0 && game.elapsed > 170 && this.credits > 320) type = 'lab';
+    else if (barracks < 2 && game.elapsed > 135) type = 'barracks';
+    else if (power.produced - power.used < 8) type = 'power';
     // Баррикады дешёвые и быстрые: линия перед турелями появляется после
-    // первых двух турелей, но не откладывает техцентр.
+    // первых двух турелей и второй казармы, чтобы не тормозить армию.
     else if (game.elapsed > 170 && turrets >= 2 && walls < AI.wallCap
       && this.credits > BUILDINGS.wall.cost + 20) {
       type = 'wall';
-    } else if (barracks < 2 && game.elapsed > 135) type = 'barracks';
-    else if (power.produced - power.used < 8) type = 'power';
+    }
     else if (game.elapsed > 240 && buildings < 20 && this.credits > 520) {
       const roll = Math.random();
       type = roll < 0.4 ? 'power' : roll < 0.7 ? 'barracks' : roll < 0.85 ? 'depot' : 'turret';
@@ -772,6 +773,8 @@ export class AIController {
       if (!u.alive || u.faction !== 'enemy' || u.def.builder || u.def.healer) continue;
       if (active && active.has(u.id)) continue;
       if (u.order?.type === 'hold' || u.order?.type === 'escort') continue;
+      // Уже дерётся с конкретной целью — не сбиваем приказ каждые 1.5 с.
+      if (u.order?.type === 'attack' && u.order.target?.alive) continue;
       const d = dist(u.position.x, u.position.z, hq.position.x, hq.position.z);
       if (d >= AI.defendRadius + 10) continue;
       u.issueHold(
