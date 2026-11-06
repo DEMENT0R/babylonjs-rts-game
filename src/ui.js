@@ -1156,7 +1156,7 @@ export class UI {
     const game = this.game;
     const def = UPGRADES[key];
     const done = game.upgrades.player.has(key);
-    const queued = building.queue.some((item) => item.upgrade === key);
+    const queued = game.hasPendingUpgrade('player', key);
     const queueFull = building.queue.length >= building.maxQueue;
     const disabled = !building.complete || done || queued || queueFull || game.credits < def.cost;
     const reason = !building.complete ? MESSAGES.notReady

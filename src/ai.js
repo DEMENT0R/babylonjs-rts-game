@@ -397,7 +397,7 @@ export class AIController {
     );
     if (!labs.length) return;
     const available = Object.keys(UPGRADES).filter(
-      (key) => !game.upgrades.enemy.has(key),
+      (key) => !game.upgrades.enemy.has(key) && !game.hasPendingUpgrade('enemy', key),
     );
     if (!available.length) return;
     // Иногда Рой откладывает науку в пользу армии — ещё одна вариация.

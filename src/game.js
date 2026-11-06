@@ -996,6 +996,15 @@ export class Game {
     return mods;
   }
 
+  /** Есть ли у фракции это исследование в очереди хотя бы одной лаборатории. */
+  hasPendingUpgrade(faction, key) {
+    return this.buildings.some((b) => (
+      b.alive
+      && b.faction === faction
+      && b.queue?.some((item) => item.upgrade === key)
+    ));
+  }
+
   /** Запускает исследование в техцентре. */
   startUpgrade(building, key) {
     const def = UPGRADES[key];
@@ -1008,9 +1017,9 @@ export class Game {
       }
       return false;
     }
-    if (building.queue.some((item) => item.upgrade === key)) {
+    if (this.hasPendingUpgrade(faction, key)) {
       if (faction === 'player') {
-        this.notify('Это улучшение уже в очереди.', 'hint', `research_queue_${key}`, 0, 3);
+        this.notify('Это улучшение уже исследуется.', 'hint', `research_queue_${key}`, 0, 3);
       }
       return false;
     }
@@ -1047,7 +1056,7 @@ export class Game {
         }
       }
     }
-    if (faction === 'player') {
+    if (first && faction === 'player') {
       this.notify(
         `Исследование завершено: ${def.name}. Отряд усилен.`,
         'success',
