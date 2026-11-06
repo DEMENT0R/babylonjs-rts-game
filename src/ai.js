@@ -2,7 +2,7 @@
 
 import { Vector3 } from './babylon.js';
 import { AI, AI_DIFFICULTY, BUILDINGS, MAP, UNITS, UPGRADES } from './config.js';
-import { clamp, dist, shuffle, TAU } from './utils.js';
+import { clamp, dist, distToSegment, shuffle, TAU } from './utils.js';
 
 export class AIController {
   constructor(game, difficulty = 'normal') {
@@ -26,6 +26,14 @@ export class AIController {
     this.assignTimer = 7;
     this.scoutTimer = 12 + Math.random() * 8;
     this.lastScoutNoticeAt = -999;
+    // Места, где разведка уже попадала под удар. Пока метка жива, ИИ не ведёт
+    // новых бойцов тем же маршрутом: иначе разведчики гибнут по одному и по
+    // одной и той же тропе.
+    this.scoutLosses = [];
+    // Ушедшие в разведку: id → { unit, x, z, since }. По ним видно, кто
+    // погиб, и по ним же разведка не переназначается каждый цикл.
+    this.scoutTasks = new Map();
+    this.scoutCheckTimer = 1;
     // Сколько секунд подряд казармы простаивают из-за нехватки кредитов.
     // Пока это значение велико, противник обороняется, а не нападает.
     this.starvedTime = 0;
@@ -242,6 +250,12 @@ export class AIController {
       this.sendScouts();
     }
 
+    this.scoutCheckTimer -= dt;
+    if (this.scoutCheckTimer <= 0) {
+      this.scoutCheckTimer = 1;
+      this.updateScouts();
+    }
+
     if (this.trainTimer <= 0) {
       this.trainTimer = 1.0;
       this.tryTrain();
@@ -411,22 +425,67 @@ export class AIController {
   /**
    * Куда отправить разведку: сначала к неразведанным месторождениям — они
    * окупают разведку, — и только потом к любой неисследованной точке.
+   * Опасные маршруты (там, где разведка уже гибла) стоят дороже: ИИ обходит
+   * такое место или берёт цель с другой стороны, а не повторяет ту же тропу.
    */
   scoutTarget(point) {
     const game = this.game;
+    const penalty = (x, z) => this.scoutDanger(point, { x, z });
     let best = null;
-    let bestD = Infinity;
+    let bestScore = Infinity;
     for (const patch of game.world.oilPatches ?? []) {
       if (patch.derrick && patch.derrick.alive) continue;
       if (game.isExploredBy('enemy', patch.x, patch.z)) continue;
-      const d = dist(point.x, point.z, patch.x, patch.z);
-      if (d < bestD) {
-        bestD = d;
+      const score = dist(point.x, point.z, patch.x, patch.z) + penalty(patch.x, patch.z);
+      if (score < bestScore) {
+        bestScore = score;
         best = { x: patch.x, z: patch.z };
       }
     }
     if (best) return best;
-    return game.fog.nearestUnexplored(point.x, point.z, 'enemy');
+    return game.fog.nearestUnexplored(point.x, point.z, 'enemy', penalty);
+  }
+
+  /**
+   * Насколько опасен маршрут к точке. Считается не расстояние до цели, а
+   * расстояние до отрезка «база → цель» для каждого места, где разведка уже
+   * попадала под удар: убивают разведчика обычно по дороге, а не у цели.
+   */
+  scoutDanger(from, to) {
+    if (!this.rules.memory || !this.scoutLosses.length) return 0;
+    let danger = 0;
+    for (const loss of this.scoutLosses) {
+      const d = distToSegment(loss.x, loss.z, from.x, from.z, to.x, to.z);
+      if (d < AI.scoutLossRadius) {
+        danger += (AI.scoutLossRadius - d) * AI.scoutDangerWeight;
+      }
+    }
+    return danger;
+  }
+
+  /** Запоминает место, где разведка попала под удар: туда больше не идут. */
+  rememberScoutLoss(x, z) {
+    if (!this.rules.memory) return;
+    this.scoutLosses.push({ x, z, until: this.game.elapsed + AI.scoutLossMemory });
+    // Долгая память не нужна: старые метки только сужают разведку.
+    if (this.scoutLosses.length > 8) this.scoutLosses.shift();
+  }
+
+  /**
+   * Следит за ушедшими в разведку: гибель бойца помечает маршрут опасным,
+   * чтобы следующая пара не пошла по той же тропе на те же турели.
+   */
+  updateScouts() {
+    const now = this.game.elapsed;
+    if (this.scoutLosses.length) {
+      this.scoutLosses = this.scoutLosses.filter((loss) => loss.until > now);
+    }
+    for (const [id, task] of this.scoutTasks) {
+      if (task.unit.alive) continue;
+      this.rememberScoutLoss(task.unit.position.x, task.unit.position.z);
+      this.scoutTasks.delete(id);
+      this.debugLog('разведчик погиб: маршрут помечен опасным');
+    }
   }
 
   /**
@@ -458,11 +517,11 @@ export class AIController {
     const count = Math.min(spare, wanted);
     for (let i = 0; i < count; i++) {
       const u = free[i];
-      u.issueAttackMove(
-        target.x + (Math.random() - 0.5) * 8,
-        target.z + (Math.random() - 0.5) * 8,
-      );
+      const x = target.x + (Math.random() - 0.5) * 8;
+      const z = target.z + (Math.random() - 0.5) * 8;
+      u.issueAttackMove(x, z);
       u.retaliateTimer = Math.max(u.retaliateTimer ?? 0, 8);
+      this.scoutTasks.set(u.id, { unit: u, x, z, since: game.elapsed });
     }
     if (game.elapsed - this.lastScoutNoticeAt > 150) {
       this.lastScoutNoticeAt = game.elapsed;

@@ -260,8 +260,12 @@ export class FogOfWar {
     );
   }
 
-  /** Находит место, где ещё не ступала нога игрока — цель для разведки. */
-  nearestUnexplored(x, z, faction = 'player') {
+  /**
+   * Находит место, где ещё не ступала нога игрока — цель для разведки.
+   * `penalty(x, z)` добавляет к расстоянию штраф в метрах: так ИИ обходит
+   * клетки, к которым ведёт уже опасный маршрут.
+   */
+  nearestUnexplored(x, z, faction = 'player', penalty = null) {
     const grid = this.grids[faction];
     let best = null;
     let bestD = Infinity;
@@ -274,7 +278,7 @@ export class FogOfWar {
         if (Math.abs(wx) > MAP.half - 8 || Math.abs(wz) > MAP.half - 8) continue;
         const dx = wx - x;
         const dz = wz - z;
-        const d = dx * dx + dz * dz;
+        const d = Math.sqrt(dx * dx + dz * dz) + (penalty ? penalty(wx, wz) : 0);
         if (d < bestD) {
           bestD = d;
           best = { x: wx, z: wz };

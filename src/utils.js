@@ -30,6 +30,19 @@ export const dist2 = (ax, az, bx, bz) => {
 
 export const dist = (ax, az, bx, bz) => Math.sqrt(dist2(ax, az, bx, bz));
 
+/**
+ * Расстояние от точки до отрезка. Нужно там, где важен маршрут, а не цель:
+ * например, когда ИИ решает, не пройдёт ли разведка мимо опасного места.
+ */
+export function distToSegment(px, pz, ax, az, bx, bz) {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const len2 = dx * dx + dz * dz;
+  if (len2 < 1e-6) return dist(px, pz, ax, az);
+  const t = clamp(((px - ax) * dx + (pz - az) * dz) / len2, 0, 1);
+  return dist(px, pz, ax + dx * t, az + dz * t);
+}
+
 export const formatTime = (seconds) => {
   const s = Math.max(0, Math.floor(seconds));
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
