@@ -874,6 +874,7 @@ export class Game {
       complete: false,
       patch: place.patch,
       silent: faction !== 'player',
+      rotation: opts.rotation,
     });
     this.pushUnitsOut(b);
     this.fx.buildDust(new Vector3(place.x, 0, place.z), 1.0);

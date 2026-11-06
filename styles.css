@@ -2626,6 +2626,18 @@ body.overlay-open #touch-controls {
   gap: 3px;
 }
 
+/* Поворот здания виден только в режиме размещения. */
+.tc-place {
+  display: none;
+  grid-template-columns: repeat(2, 34px);
+  gap: 3px;
+  justify-content: end;
+}
+
+body.mode-place .tc-place {
+  display: grid;
+}
+
 .tc-btn {
   width: 34px;
   height: 34px;
@@ -3259,6 +3271,15 @@ body.mode-attack .tc-cancel {
     width: 27px;
     height: 27px;
     font-size: 10px;
+  }
+
+  .tc-place {
+    grid-template-columns: repeat(2, 30px);
+  }
+
+  .tc-place .tc-btn {
+    width: 30px;
+    height: 30px;
   }
 
   #touch-controls {

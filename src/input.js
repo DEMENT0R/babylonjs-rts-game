@@ -127,6 +127,10 @@ export class Input {
         this.game.clearSelection();
         return;
       }
+      if (action === 'rotpl' || action === 'rotpr') {
+        this.rotatePlacement(action === 'rotpr' ? 1 : -1);
+        return;
+      }
       if (!Object.prototype.hasOwnProperty.call(this.touchState, action)) return;
       this.touchState[action] = true;
       btn.classList.add('is-active');
@@ -809,6 +813,13 @@ export class Input {
       return;
     }
 
+    // В режиме размещения R крутит здание, а не запускает ремонт.
+    if (this.placement && e.code === 'KeyR') {
+      e.preventDefault();
+      if (!e.repeat) this.rotatePlacement(e.shiftKey ? -1 : 1);
+      return;
+    }
+
     const hotkeyMap = {
       KeyZ: 'Z', KeyX: 'X', KeyC: 'C', KeyV: 'V', KeyB: 'B',
       KeyN: 'N', KeyM: 'M', KeyG: 'G', KeyH: 'H', KeyF: 'F', KeyR: 'R', KeyP: 'P',
@@ -995,10 +1006,15 @@ export class Input {
       x: 0,
       z: 0,
       patch: null,
+      // null — здание автоматически смотрит к центру карты. После поворота
+      // здесь лежит выбранный игроком абсолютный угол.
+      rotation: null,
+      clientX: null,
+      clientY: null,
     };
     document.body.classList.add('mode-place');
     this.game.notify(
-      `Разместите: ${BUILDINGS[type].name}. ЛКМ — построить, ПКМ — отмена.`,
+      `Разместите: ${BUILDINGS[type].name}. ЛКМ — построить, ПКМ — отмена, R — повернуть.`,
       'hint',
       'placing',
       0,
@@ -1026,8 +1042,11 @@ export class Input {
     this.placement.x = x;
     this.placement.z = z;
     this.placement.patch = place.patch ?? null;
+    this.placement.clientX = clientX;
+    this.placement.clientY = clientY;
 
-    const rot = Math.atan2(-x, -z);
+    const rot = this.placement.rotation ?? Math.atan2(-x, -z);
+    this.placement.currentRotation = rot;
     this.placement.ghost.position.set(x, 0, z);
     this.placement.ghost.rotation.y = rot;
     this.placement.ring.position.set(x, 0.12, z);
@@ -1038,6 +1057,23 @@ export class Input {
       m.visibility = 1;
     });
     this.placement.ring.material = ringMat;
+  }
+
+  /** Поворот призрака на 45°; направление — 1 по часовой, -1 против. */
+  rotatePlacement(direction = 1) {
+    if (!this.placement) return;
+    const base = this.placement.rotation
+      ?? this.placement.currentRotation
+      ?? Math.atan2(-this.placement.x, -this.placement.z);
+    this.placement.rotation = base + direction * Math.PI / 4;
+    const x = this.placement.clientX;
+    const y = this.placement.clientY;
+    if (x != null && y != null) {
+      this.updateGhost(x, y);
+    } else {
+      const rect = this.canvas.getBoundingClientRect();
+      this.updateGhost(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    }
   }
 
   tryPlaceAt(clientX, clientY, keep = false) {
@@ -1058,7 +1094,8 @@ export class Input {
       );
       return;
     }
-    const b = this.game.tryBuild(this.placement.type, place.x, place.z);
+    const rotation = this.placement.rotation ?? Math.atan2(-place.x, -place.z);
+    const b = this.game.tryBuild(this.placement.type, place.x, place.z, { rotation });
     if (!b) return;
     if (keep) {
       this.updateGhost(clientX, clientY);
