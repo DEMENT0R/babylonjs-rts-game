@@ -16,6 +16,7 @@ export class AIController {
     this.waveIndex = 0;
     this.rally = this.baseRally();
     this.defenseTimer = 0;
+    this.garrisonTimer = 1;
     this.trainTimer = 2;
     this.lastWaveAt = -999;
     this.targetPoint = null;
@@ -86,6 +87,100 @@ export class AIController {
     return new Vector3(enemyHq.x + (dx / len) * 13, 0, enemyHq.z + (dz / len) * 13);
   }
 
+  /** Направление от улья к базе игрока: ось, с которой ждать удара. */
+  threatDir() {
+    const enemyHq = this.game.map.spawn.enemy.hq;
+    const playerHq = this.game.map.spawn.player.hq;
+    const dx = playerHq.x - enemyHq.x;
+    const dz = playerHq.z - enemyHq.z;
+    const len = Math.hypot(dx, dz) || 1;
+    return { x: dx / len, z: dz / len };
+  }
+
+  /**
+   * Позиция гарнизона: вплотную к передней турели, в её радиусе. Если турелей
+   * ещё нет, гарнизон стоит на подходе к улью, а не в чистом поле.
+   */
+  defenseAnchor() {
+    const hq = this.enemyHq();
+    if (!hq) return this.baseRally();
+    const dir = this.threatDir();
+    let turret = null;
+    let bestScore = -Infinity;
+    for (const b of this.game.buildings) {
+      if (!b.alive || b.faction !== 'enemy' || b.type !== 'turret') continue;
+      const dx = b.position.x - hq.position.x;
+      const dz = b.position.z - hq.position.z;
+      const score = dx * dir.x + dz * dir.z;
+      if (score > bestScore) {
+        bestScore = score;
+        turret = b;
+      }
+    }
+    if (turret) {
+      const dx = turret.position.x - hq.position.x;
+      const dz = turret.position.z - hq.position.z;
+      const len = Math.hypot(dx, dz) || 1;
+      // Чуть впереди турели: гарнизон прикрывает её собой, оставаясь в её
+      // радиусе, а не прячется за штабом вне сектора обстрела.
+      return new Vector3(
+        turret.position.x + (dx / len) * 3.5,
+        0,
+        turret.position.z + (dz / len) * 3.5,
+      );
+    }
+    return new Vector3(
+      hq.position.x + dir.x * AI.garrisonHoldRadius,
+      0,
+      hq.position.z + dir.z * AI.garrisonHoldRadius,
+    );
+  }
+
+  /**
+   * Позиционный гарнизон. Он не уходит в волны и не гоняется за врагом:
+   * стоит под прикрытием турелей и принимает бой, когда противник подходит.
+   */
+  ensureGarrison() {
+    const hq = this.enemyHq();
+    if (!hq) return;
+    const fighters = this.game.units.filter(
+      (u) => u.alive && u.faction === 'enemy' && !u.def.builder && !u.def.healer,
+    );
+    // Не оголяем армию ради гарнизона: хотя бы пара бойцов должна остаться
+    // свободной для разведки и первой волны.
+    if (fighters.length <= AI.garrisonSupply + 1) return;
+
+    let supply = 0;
+    for (const u of this.game.units) {
+      if (!u.aiGarrison) continue;
+      if (u.alive) supply += u.def.supply ?? 1;
+      else u.aiGarrison = false;
+    }
+    if (supply >= AI.garrisonSupply) return;
+
+    const anchor = this.defenseAnchor();
+    const active = this.activeWave?.ids;
+    const candidates = fighters
+      .filter((u) => (
+        !u.aiGarrison
+        && !(active && active.has(u.id))
+        && (!u.order || u.order.type === 'move' || u.order.type === 'hold')
+        && dist(u.position.x, u.position.z, hq.position.x, hq.position.z) <= AI.garrisonRadius
+      ))
+      .sort((a, b) => dist(a.position.x, a.position.z, hq.position.x, hq.position.z)
+        - dist(b.position.x, b.position.z, hq.position.x, hq.position.z));
+
+    for (const u of candidates) {
+      if (supply >= AI.garrisonSupply) break;
+      u.aiGarrison = true;
+      u.issueHold(
+        anchor.x + (Math.random() - 0.5) * 6,
+        anchor.z + (Math.random() - 0.5) * 6,
+      );
+      supply += u.def.supply ?? 1;
+    }
+  }
+
   update(dt) {
     if (this.game.over) {
       this.debugEl?.remove();
@@ -102,6 +197,12 @@ export class AIController {
     this.scoutTimer -= dt;
 
     this.updateEconomy(dt);
+
+    this.garrisonTimer -= dt;
+    if (this.garrisonTimer <= 0) {
+      this.garrisonTimer = 2;
+      this.ensureGarrison();
+    }
 
     if (this.defenseTimer <= 0) {
       this.defenseTimer = 1.5;
@@ -322,10 +423,11 @@ export class AIController {
       && u.faction === 'enemy'
       && !u.def.builder
       && !u.def.healer
+      && !u.aiGarrison
       && (!u.order || u.order.type === 'move' || u.order.type === 'attackMove' || u.order.type === 'hold')
     ));
-    // Гарнизон улья не оголяем: разведка берёт только бойцов сверх него.
-    const spare = free.length - AI.scoutGarrison;
+    // Позиционный гарнизон уже исключён: разведка берёт только свободных.
+    const spare = free.length;
     if (spare < 1) return;
     // Быстрые юниты справляются с разведкой лучше: они успевают вернуться.
     free.sort((a, b) => (b.speed ?? 0) - (a.speed ?? 0));
@@ -526,23 +628,34 @@ export class AIController {
     const hq = this.enemyHq();
     if (!hq) return;
     let intruder = null;
-    let bestD = 999;
+    let bestD = Infinity;
     for (const e of this.game.entities) {
       if (!e.alive || e.faction !== 'player' || e.isBuilding) continue;
       if (!this.game.isEntityVisibleTo('enemy', e)) continue;
       const d = dist(e.position.x, e.position.z, hq.position.x, hq.position.z);
-      if (d < 32 && d < bestD) {
+      if (d < AI.defendRadius && d < bestD) {
         bestD = d;
         intruder = e;
       }
     }
     if (!intruder) return;
+
+    // Гарнизон не гонится за нарушителем: он занимает позицию под турелями.
+    // Иначе бойцы выманиваются из укрытия и гибнут по одному в чистом поле.
+    const anchor = this.defenseAnchor();
+    const active = this.activeWave?.ids;
     for (const u of this.game.units) {
-      if (!u.alive || u.faction !== 'enemy' || u.def.builder) continue;
+      if (!u.alive || u.faction !== 'enemy' || u.def.builder || u.def.healer) continue;
+      if (active && active.has(u.id)) continue;
+      if (u.order?.type === 'hold' || u.order?.type === 'escort') continue;
       const d = dist(u.position.x, u.position.z, hq.position.x, hq.position.z);
-      if (d < 40) {
-        if (!u.order || u.order.type === 'move' || u.order.type === 'attackMove') u.issueAttack(intruder);
-      }
+      if (d >= AI.defendRadius + 10) continue;
+      if (d <= AI.garrisonRadius) u.aiGarrison = true;
+      u.issueHold(
+        anchor.x + (Math.random() - 0.5) * 7,
+        anchor.z + (Math.random() - 0.5) * 7,
+      );
+      u.retaliateTimer = Math.max(u.retaliateTimer ?? 0, 4);
     }
   }
 
@@ -579,7 +692,8 @@ export class AIController {
     if (!threats.length) return;
 
     const defenders = game.units.filter(
-      (u) => u.alive && u.faction === 'enemy' && !u.def.builder && !u.def.healer,
+      (u) => u.alive && u.faction === 'enemy' && !u.def.builder && !u.def.healer
+        && !u.aiGarrison,
     );
     if (!defenders.length) return;
 
@@ -720,21 +834,27 @@ export class AIController {
       return;
     }
     if (age >= AI.waveTimeout) {
+      this.recallWave(record);
       this.finishWave(record, 'timeout');
+    }
+  }
+
+  /** Возвращает уцелевших к гарнизону под турелями, а не оставляет в поле. */
+  recallWave(record) {
+    const anchor = this.defenseAnchor();
+    for (const { unit } of record.units) {
+      if (!unit.alive) continue;
+      unit.issueMove(
+        anchor.x + (Math.random() - 0.5) * 7,
+        anchor.z + (Math.random() - 0.5) * 7,
+      );
+      unit.retaliateTimer = 0;
     }
   }
 
   /** Отводит остатки волны к точке сбора: они догонят следующий отряд. */
   retreatWave(record) {
-    const rally = this.baseRally();
-    for (const { unit } of record.units) {
-      if (!unit.alive) continue;
-      unit.issueMove(
-        rally.x + (Math.random() - 0.5) * 6,
-        rally.z + (Math.random() - 0.5) * 6,
-      );
-      unit.retaliateTimer = 0;
-    }
+    this.recallWave(record);
     this.stats.retreats++;
     this.finishWave(record, 'retreated');
     this.game.notify(
@@ -1040,9 +1160,11 @@ export class AIController {
     if (this.waveTimer > 0) return;
 
     // Слоты волны считаются только по бойцам: медики и инженеры — поддержка,
-    // она идёт сверх отряда и не должна разбавлять его силу.
+    // она идёт сверх отряда и не должна разбавлять его силу. Позиционный
+    // гарнизон в волны не входит.
     const fighters = this.game.units.filter(
-      (u) => u.alive && u.faction === 'enemy' && !u.def.builder && !u.def.healer,
+      (u) => u.alive && u.faction === 'enemy' && !u.def.builder && !u.def.healer
+        && !u.aiGarrison,
     );
     if (fighters.length < 2) {
       this.waveTimer = 8 + Math.random() * 8;
@@ -1118,10 +1240,8 @@ export class AIController {
       ? this.pointNear(raidTarget.position, 5)
       : null;
 
-    // В атаку идёт ограниченный отряд: остальные остаются охранять улей.
-    // Резерв и размер отряда тоже меняются от волны к волне.
-    const reserve = Math.min(3, Math.max(1, Math.floor(fighters.length * 0.25)));
-    const available = Math.max(1, fighters.length - reserve);
+    // Гарнизон уже остаётся у улья, поэтому в волну идут все остальные
+    // бойцы: размер отряда растёт от волны к волне, без случайного резерва.
     let wanted = Math.round((3 + this.waveIndex * 1.7) * this.aggression)
       + Math.floor(Math.random() * 3) - 1;
     if (tactic === 'probe') wanted = Math.min(wanted, 2 + Math.floor(Math.random() * 2));
@@ -1160,10 +1280,6 @@ export class AIController {
       : AI.minWaveSquad + recentWipes * AI.wipeSquadBonus;
 
     let squadSize = Math.max(wanted, minSquad, needed);
-    // Если иначе не пробить — снимаем резерв с базы, но не оголяем её без нужды.
-    squadSize = needed > available
-      ? Math.min(fighters.length, squadSize)
-      : Math.min(available, squadSize);
     squadSize = Math.max(1, Math.min(fighters.length, squadSize));
     const squad = shuffle(fighters.slice(), Math.random).slice(0, squadSize);
 

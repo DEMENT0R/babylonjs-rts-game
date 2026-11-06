@@ -463,9 +463,13 @@ export class Unit extends Entity {
     this.resetPath();
   }
 
-  /** Занять позицию: стрелять по целям в радиусе, но не преследовать их. */
-  issueHold() {
-    this.order = { type: 'hold' };
+  /**
+   * Занять позицию: стрелять по целям в радиусе, но не преследовать их.
+   * Без координат юнит держит текущее место; с координатами сначала идёт
+   * к указанной точке, а потом уже держит её.
+   */
+  issueHold(x = null, z = null) {
+    this.order = { type: 'hold', x, z };
     this.target = null;
     this.moving = false;
     this.stuckTime = 0;
@@ -577,6 +581,17 @@ export class Unit extends Entity {
     } else if (holdPosition) {
       // Держать позицию: только огонь по цели, которая уже в радиусе.
       // Догонять убегающего врага нельзя, иначе приказ теряет смысл.
+      if (order.x != null && order.z != null) {
+        const stop = 0.55 + this.radius * 0.35;
+        const d = dist(this.position.x, this.position.z, order.x, order.z);
+        if (d > stop) {
+          moveX = order.x;
+          moveZ = order.z;
+        } else {
+          order.x = null;
+          order.z = null;
+        }
+      }
       if (this.canFight) {
         const reach = Math.max(this.aggro, this.range);
         if (!this.target || !this.target.alive) {
@@ -654,7 +669,14 @@ export class Unit extends Entity {
       this.supportTarget = null;
       const arrived = this.navigateTo(moveX, moveZ, dt, 0.55 + this.radius * 0.35);
       if (arrived) {
-        this.order = null;
+        // Дойдя до якоря, гарнизон остаётся на позиции, а не становится
+        // свободным юнитом: иначе он снова уйдёт в погоню за врагом.
+        if (this.order?.type === 'hold') {
+          this.order.x = null;
+          this.order.z = null;
+        } else {
+          this.order = null;
+        }
         this.moving = false;
       }
     } else {
