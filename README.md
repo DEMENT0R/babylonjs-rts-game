@@ -286,6 +286,7 @@ vendor/
   LICENSE-babylon.md
 docs/
   ai-plan.md        план развития противника и сложности ИИ
+  teams-plan.md     план партий с несколькими ИИ и командами
 screenshots/        скриншоты для README
 ```
 
