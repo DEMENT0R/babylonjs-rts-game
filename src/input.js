@@ -1049,7 +1049,8 @@ export class Input {
       this.game.notify(
         place.reason === 'oil' ? 'Вышку можно поставить только на свободное месторождение.'
           : place.reason === 'fog' ? MESSAGES.needExplore
-            : 'Здесь нельзя строить.',
+            : place.reason === 'unit' ? MESSAGES.unitOnSite
+              : 'Здесь нельзя строить.',
         'warn',
         'bad-place',
         0,

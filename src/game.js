@@ -807,6 +807,15 @@ export class Game {
       return { valid: false, reason: 'fog', x: px, z: pz, patch };
     }
 
+    // Фундамент не должен появляться под юнитами: иначе стройка телепортирует
+    // их в сторону, а чужие отряды можно безнаказанно расталкивать.
+    for (const u of this.units) {
+      if (!u.alive) continue;
+      if (dist(px, pz, u.position.x, u.position.z) < r + u.radius + 0.25) {
+        return { valid: false, reason: 'unit', x: px, z: pz, patch };
+      }
+    }
+
     for (const o of this.world.obstacles) {
       if (dist(px, pz, o.x, o.z) < r + o.radius + 0.5) {
         return { valid: false, reason: 'rock', x: px, z: pz, patch };
@@ -854,6 +863,7 @@ export class Game {
       if (faction === 'player') {
         if (place.reason === 'oil') this.notify(MESSAGES.needOil, 'warn', 'bad-place', 0, 2);
         else if (place.reason === 'fog') this.notify(MESSAGES.needExplore, 'warn', 'bad-place', 0, 2);
+        else if (place.reason === 'unit') this.notify(MESSAGES.unitOnSite, 'warn', 'bad-place', 0, 2);
         else this.notify(MESSAGES.badPlace, 'warn', 'bad-place', 0, 2);
       }
       return null;
@@ -877,9 +887,10 @@ export class Game {
     return b;
   }
 
+  /** Страховка для своих юнитов: чужие отряды стройка не расталкивает. */
   pushUnitsOut(building) {
     for (const u of this.units) {
-      if (!u.alive) continue;
+      if (!u.alive || u.faction !== building.faction) continue;
       const dx = u.position.x - building.position.x;
       const dz = u.position.z - building.position.z;
       const d = Math.hypot(dx, dz);
