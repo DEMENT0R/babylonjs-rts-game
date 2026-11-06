@@ -555,7 +555,9 @@ export class AIController {
       && (!u.order || u.order.type === 'move' || u.order.type === 'attackMove' || u.order.type === 'hold')
     ));
     // Позиционный гарнизон уже исключён: разведка берёт только свободных.
-    const spare = free.length;
+    // Разведка не оголяет армию: у базы остаётся резерв, из которого
+    // собирается волна. Иначе бойцы уходят по одному и гибнут в тумане.
+    const spare = free.length - AI.scoutArmyReserve;
     if (spare < 1) return;
     // Быстрые юниты справляются с разведкой лучше: они успевают вернуться.
     free.sort((a, b) => (b.speed ?? 0) - (a.speed ?? 0));
