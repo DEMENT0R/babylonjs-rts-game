@@ -109,6 +109,9 @@ export class AIController {
     let bestScore = -Infinity;
     for (const b of this.game.buildings) {
       if (!b.alive || b.faction !== 'enemy' || b.type !== 'turret') continue;
+      // Турели у дальних вышек не должны уводить гарнизон с базы.
+      if (dist(b.position.x, b.position.z, hq.position.x, hq.position.z)
+        > AI.garrisonRadius + 6) continue;
       const dx = b.position.x - hq.position.x;
       const dz = b.position.z - hq.position.z;
       const score = dx * dir.x + dz * dir.z;
@@ -207,6 +210,7 @@ export class AIController {
     if (this.defenseTimer <= 0) {
       this.defenseTimer = 1.5;
       this.defendBase();
+      this.defendStructures();
       this.defendEngineers();
     }
 
@@ -299,6 +303,9 @@ export class AIController {
     const turrets = game.buildings.filter(
       (b) => b.alive && b.faction === 'enemy' && b.type === 'turret' && b.complete,
     ).length;
+    const walls = game.buildings.filter(
+      (b) => b.alive && b.faction === 'enemy' && b.type === 'wall',
+    ).length;
     const buildings = game.buildings.filter((b) => b.alive && b.faction === 'enemy').length;
     const power = game.power.enemy;
     const freePatch = this.findFreePatch();
@@ -315,11 +322,16 @@ export class AIController {
     } else if (turrets === 0 && game.elapsed > 130) {
       // Первую турель Рой копит целенаправленно: армия на время замирает.
       type = 'turret';
-    } else if (game.elapsed > 110 && turrets < (game.elapsed > 220 ? 3 : 2)
+    } else if (game.elapsed > 110 && turrets < (game.elapsed > 220 ? AI.turretCap : 2)
       && this.credits > BUILDINGS.turret.cost + 80) {
       type = 'turret';
     } else if (lab === 0 && game.elapsed > 170 && this.credits > 320) type = 'lab';
-    else if (barracks < 2 && game.elapsed > 135) type = 'barracks';
+    // Баррикады дешёвые и быстрые: линия перед турелями появляется после
+    // первых двух турелей, но не откладывает техцентр.
+    else if (game.elapsed > 170 && turrets >= 2 && walls < AI.wallCap
+      && this.credits > BUILDINGS.wall.cost + 20) {
+      type = 'wall';
+    } else if (barracks < 2 && game.elapsed > 135) type = 'barracks';
     else if (power.produced - power.used < 8) type = 'power';
     else if (game.elapsed > 240 && buildings < 20 && this.credits > 520) {
       const roll = Math.random();
@@ -338,9 +350,11 @@ export class AIController {
 
   buildStructure(type) {
     if (!type || this.credits < BUILDINGS[type].cost) return false;
-    const spot = type === 'derrick'
-      ? this.findFreePatch()
-      : this.findBuildSpot(type);
+    let spot = null;
+    if (type === 'derrick') spot = this.findFreePatch();
+    else if (type === 'turret') spot = this.findTurretSpot();
+    else if (type === 'wall') spot = this.findWallSpot();
+    else spot = this.findBuildSpot(type);
     if (!spot) {
       this.buildIntent = null;
       return false;
@@ -348,7 +362,8 @@ export class AIController {
     const b = this.game.tryBuild(type, spot.x, spot.z, {
       faction: 'enemy',
       wallet: this,
-      padding: AI.buildSpacing,
+      // Баррикады ставим встык: зазор нужен зданиям, а не линии обороны.
+      padding: type === 'wall' ? 0 : AI.buildSpacing,
     });
     if (!b) return false;
     this.buildIntent = null;
@@ -465,6 +480,109 @@ export class AIController {
       }
     }
     return null;
+  }
+
+  /** Позиция на оси удара: так турели прикрывают подход, а не тыл. */
+  findFrontSpot(type) {
+    const hq = this.enemyHq();
+    if (!hq) return null;
+    const dir = this.threatDir();
+    const baseAngle = Math.atan2(dir.z, dir.x);
+    const offsets = [0, -0.55, 0.55, -1.0, 1.0];
+    const radii = [11, 13.5, 16, 18];
+    for (const offset of offsets) {
+      for (const radius of radii) {
+        const angle = baseAngle + offset;
+        const x = hq.position.x + Math.cos(angle) * radius;
+        const z = hq.position.z + Math.sin(angle) * radius;
+        if (Math.abs(x) > MAP.clamp - 4 || Math.abs(z) > MAP.clamp - 4) continue;
+        const place = this.game.findPlacement(type, x, z, {
+          padding: AI.buildSpacing,
+          faction: 'enemy',
+        });
+        if (place.valid) return place;
+      }
+    }
+    return null;
+  }
+
+  /** Вышка, которую ещё не прикрывает ни одна турель. */
+  findUncoveredDerrick() {
+    const hq = this.enemyHq();
+    if (!hq) return null;
+    const turrets = this.game.buildings.filter(
+      (b) => b.alive && b.faction === 'enemy' && b.type === 'turret',
+    );
+    let best = null;
+    let bestD = -1;
+    for (const b of this.game.buildings) {
+      if (!b.alive || b.faction !== 'enemy' || b.type !== 'derrick') continue;
+      const covered = turrets.some((t) => (
+        dist(t.position.x, t.position.z, b.position.x, b.position.z) <= AI.derrickTurretRadius
+      ));
+      if (covered) continue;
+      const d = dist(hq.position.x, hq.position.z, b.position.x, b.position.z);
+      if (d > bestD) {
+        bestD = d;
+        best = b;
+      }
+    }
+    return best;
+  }
+
+  /** Свободное место рядом с точкой: для турели у вышки. */
+  findSpotAround(point, type, radius = 10) {
+    for (let ring = 0; ring < 3; ring++) {
+      const r = radius + ring * 2.5;
+      for (let i = 0; i < 16; i++) {
+        const angle = (i / 16) * TAU;
+        const x = point.x + Math.cos(angle) * r;
+        const z = point.z + Math.sin(angle) * r;
+        if (Math.abs(x) > MAP.clamp - 4 || Math.abs(z) > MAP.clamp - 4) continue;
+        const place = this.game.findPlacement(type, x, z, {
+          padding: AI.buildSpacing,
+          faction: 'enemy',
+        });
+        if (place.valid) return place;
+      }
+    }
+    return null;
+  }
+
+  /** Куда ставить турель: сначала на ось удара, потом к дальней вышке. */
+  findTurretSpot() {
+    const turrets = this.game.buildings.filter(
+      (b) => b.alive && b.faction === 'enemy' && b.type === 'turret' && b.complete,
+    ).length;
+    // Первые три турели прикрывают базу, четвёртая и следующие — вышки.
+    if (turrets >= 3) {
+      const derrick = this.findUncoveredDerrick();
+      if (derrick) {
+        const spot = this.findSpotAround(derrick.position, 'turret', 10);
+        if (spot) return spot;
+      }
+    }
+    return this.findFrontSpot('turret') ?? this.findBuildSpot('turret');
+  }
+
+  /** Линия баррикад перед базой с проходом в центре. */
+  findWallSpot() {
+    const hq = this.enemyHq();
+    if (!hq) return null;
+    const dir = this.threatDir();
+    const side = { x: -dir.z, z: dir.x };
+    const offsets = [6, 11.5, 17, -6, -11.5, -17];
+    for (const offset of offsets) {
+      const x = hq.position.x + dir.x * AI.wallDistance + side.x * offset;
+      const z = hq.position.z + dir.z * AI.wallDistance + side.z * offset;
+      if (Math.abs(x) > MAP.clamp - 4 || Math.abs(z) > MAP.clamp - 4) continue;
+      const place = this.game.findPlacement('wall', x, z, {
+        padding: 0,
+        faction: 'enemy',
+      });
+      if (place.valid) return place;
+    }
+    return this.findBuildSpot('wall');
   }
 
   ensureBuildersOnSites() {
@@ -713,6 +831,40 @@ export class AIController {
       }
       const wanted = 1 + Math.floor(Math.random() * AI.engineerGuardCount);
       for (const { u } of guard.slice(0, wanted)) {
+        u.issueAttack(attacker);
+        u.retaliateTimer = Math.max(u.retaliateTimer ?? 0, 6);
+      }
+    }
+  }
+
+  /**
+   * Оборона построек: если игрок обстреливает вышку или турель, ближайшие
+   * свободные бойцы идут на помощь. Гарнизон и волна с маршрута не снимаются.
+   */
+  defendStructures() {
+    const game = this.game;
+    const active = this.activeWave?.ids;
+    for (const b of game.buildings) {
+      if (!b.alive || b.faction !== 'enemy' || b.type === 'hq') continue;
+      const attacker = b.lastAttacker;
+      if (!attacker?.alive || attacker.faction !== 'player') continue;
+      if (game.elapsed - b.lastHitAt > 8) continue;
+      if (!game.isEntityVisibleTo('enemy', attacker)) continue;
+      const guards = game.units
+        .filter((u) => (
+          u.alive
+          && u.faction === 'enemy'
+          && !u.def.builder
+          && !u.def.healer
+          && !u.aiGarrison
+          && !(active && active.has(u.id))
+          && (!u.order || u.order.type === 'move' || u.order.type === 'hold')
+          && dist(u.position.x, u.position.z, b.position.x, b.position.z) <= AI.structureGuardRadius
+        ))
+        .sort((a, b2) => dist(a.position.x, a.position.z, b.position.x, b.position.z)
+          - dist(b2.position.x, b2.position.z, b.position.x, b.position.z))
+        .slice(0, AI.structureGuardCount);
+      for (const u of guards) {
         u.issueAttack(attacker);
         u.retaliateTimer = Math.max(u.retaliateTimer ?? 0, 6);
       }
