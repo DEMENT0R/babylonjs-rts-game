@@ -27,7 +27,7 @@ export class AIController {
     this.scoutTimer = 12 + Math.random() * 8;
     this.lastScoutNoticeAt = -999;
     // Сколько секунд подряд казармы простаивают из-за нехватки кредитов.
-    // Пока это значение велико, Рой обороняется, а не нападает.
+    // Пока это значение велико, противник обороняется, а не нападает.
     this.starvedTime = 0;
     this.buildIntent = null;
     this.buildCount = 0;
@@ -87,7 +87,7 @@ export class AIController {
     return new Vector3(enemyHq.x + (dx / len) * 13, 0, enemyHq.z + (dz / len) * 13);
   }
 
-  /** Направление от улья к базе игрока: ось, с которой ждать удара. */
+  /** Направление от базы противника к базе игрока: ось, с которой ждать удара. */
   threatDir() {
     const enemyHq = this.game.map.spawn.enemy.hq;
     const playerHq = this.game.map.spawn.player.hq;
@@ -99,7 +99,7 @@ export class AIController {
 
   /**
    * Позиция гарнизона: вплотную к передней турели, в её радиусе. Если турелей
-   * ещё нет, гарнизон стоит на подходе к улью, а не в чистом поле.
+   * ещё нет, гарнизон стоит на подходе к базе противника, а не в чистом поле.
    */
   defenseAnchor() {
     const hq = this.enemyHq();
@@ -235,7 +235,7 @@ export class AIController {
     }
 
     if (this.scoutTimer <= 0) {
-      // Бедный Рой бережёт силы: разведка реже, чтобы не терять бойцов в тумане.
+      // Бедный противник бережёт силы: разведка реже, чтобы не терять бойцов в тумане.
       this.scoutTimer = this.isStarved()
         ? AI.scoutWeakInterval + Math.random() * 16
         : 10 + Math.random() * 8;
@@ -253,7 +253,7 @@ export class AIController {
   }
 
   // ------------------------------------------------------------- строительство
-  /** Живые инженеры Роя. */
+  /** Живые инженеры противника. */
   engineerCount() {
     return this.game.units.filter(
       (u) => u.alive && u.faction === 'enemy' && u.def.builder,
@@ -326,7 +326,7 @@ export class AIController {
     else if (armyCap - armyUsed < 6 && depots < 5 && this.credits > BUILDINGS.depot.cost + 30) {
       type = 'depot';
     } else if (turrets === 0 && game.elapsed > 130) {
-      // Первую турель Рой копит целенаправленно: армия на время замирает.
+      // Первую турель противник копит целенаправленно: армия на время замирает.
       type = 'turret';
     } else if (game.elapsed > 110 && turrets < (game.elapsed > 220 ? AI.turretCap : 2)
       && this.credits > BUILDINGS.turret.cost + 80) {
@@ -348,7 +348,7 @@ export class AIController {
     this.buildIntent = type;
     if (!type) return;
     const def = BUILDINGS[type];
-    // На вышку Рой копит без запаса: она сразу возвращает вложенное, а с
+    // На вышку противник копит без запаса: она сразу возвращает вложенное, а с
     // резервом в 30 кредитов ИИ не мог накопить на неё полминуты.
     const reserve = type === 'derrick' ? 0 : 30;
     if (!def || this.credits < def.cost + reserve) return;
@@ -392,7 +392,7 @@ export class AIController {
     const hq = this.enemyHq();
     if (!hq) return null;
     const game = this.game;
-    // Чем дольше идёт бой, тем дальше Рой готов тянуться за нефтью. Важно
+    // Чем дольше идёт бой, тем дальше противник готов тянуться за нефтью. Важно
     // только то, что месторождение уже разведано: в тумане его не видно.
     const limit = Math.min(200, 62 + game.elapsed * 0.55);
     let best = null;
@@ -430,7 +430,7 @@ export class AIController {
   }
 
   /**
-   * Разведка: если у Роя есть свободные бойцы, они идут к ближайшей
+   * Разведка: если у противника есть свободные бойцы, они идут к ближайшей
    * неисследованной области. Без этого ИИ не находил ни новых месторождений,
    * ни подходящих путей к базе игрока.
    */
@@ -453,7 +453,7 @@ export class AIController {
     if (spare < 1) return;
     // Быстрые юниты справляются с разведкой лучше: они успевают вернуться.
     free.sort((a, b) => (b.speed ?? 0) - (a.speed ?? 0));
-    // Бедный Рой посылает одного разведчика и реже: силы нужнее в обороне.
+    // Бедный противник посылает одного разведчика и реже: силы нужнее в обороне.
     const wanted = this.isStarved() ? 1 : 1 + Math.floor(Math.random() * 2);
     const count = Math.min(spare, wanted);
     for (let i = 0; i < count; i++) {
@@ -470,7 +470,7 @@ export class AIController {
     }
   }
 
-  /** Свободное место под здание в окрестностях улья. */
+  /** Свободное место под здание в окрестностях базы противника. */
   findBuildSpot(type) {
     const hq = this.enemyHq();
     if (!hq) return null;
@@ -623,7 +623,7 @@ export class AIController {
         && b.complete && b.queue.length === 0,
     );
     if (!labs.length) return;
-    // Иногда Рой откладывает науку в пользу армии — ещё одна вариация.
+    // Иногда противник откладывает науку в пользу армии — ещё одна вариация.
     if (Math.random() < 0.25) return;
     const available = game.availableUpgrades('enemy')
       .filter((key) => this.credits >= (UPGRADES[key]?.cost ?? 0) + 80);
@@ -705,7 +705,7 @@ export class AIController {
 
     const t = game.elapsed;
     // Случайный, но осмысленный состав: чем агрессивнее партия, тем охотнее
-    // Рой вкладывается в тяжёлую технику; на старте преобладает пехота.
+    // Противник вкладывается в тяжёлую технику; на старте преобладает пехота.
     const weights = [
       { type: 'marine', weight: 1 },
       { type: 'medic', weight: t > 40 ? 0.4 : 0 },
@@ -713,7 +713,7 @@ export class AIController {
       { type: 'tank', weight: t > 95 ? 0.55 * this.aggression : 0 },
       { type: 'artillery', weight: t > 170 ? 0.4 * this.aggression : 0 },
     ];
-    // Прошлую волну сожгли турели — Рой делает ставку на тяжёлую технику.
+    // Прошлую волну сожгли турели — противник делает ставку на тяжёлую технику.
     if (this.rules.counter && this.isTurretCause(this.lastFailureCause())) {
       for (const item of weights) {
         if (item.type === 'tank' && t > 60) item.weight = Math.max(item.weight, 0.9);
@@ -732,7 +732,7 @@ export class AIController {
     }
 
     let def = UNITS[type];
-    // Если под выбранную машину не хватает лимита, Рой добирает пехоту.
+    // Если под выбранную машину не хватает лимита, противник добирает пехоту.
     if (used + (def.supply ?? 1) > cap) {
       type = 'marine';
       def = UNITS.marine;
@@ -833,7 +833,7 @@ export class AIController {
         .sort((a, b) => a.d - b.d);
       let guard = ranked.filter((x) => x.d <= AI.engineerGuardRadius);
       // Если рядом никого нет, снимаем ближайших с базы: инженер важнее
-      // пары секунд марша, но гарнизон улья всё равно не оголяем полностью.
+      // пары секунд марша, но гарнизон базы всё равно не оголяем полностью.
       if (!guard.length) {
         guard = ranked.filter((x) => x.d <= AI.engineerGuardRadius * 1.7).slice(0, 2);
       }
@@ -909,7 +909,7 @@ export class AIController {
   /**
    * Что ИИ знает об обороне вокруг точки: постройки — по разведке (они не
    * двигаются, их помнят), войска — только по текущему обзору. В тумане
-   * гарнизон для Роя не существует, и придумывать его он не должен.
+   * гарнизон для противника не существует, и придумывать его он не должен.
    */
   defenseAt(point) {
     let value = 0;
@@ -1201,7 +1201,7 @@ export class AIController {
 
   /**
    * Подход с той стороны, где меньше известно турелей. Настоящего поиска
-   * пути тут нет: Рой перебирает точки по кругу и выбирает ту, что дальше
+   * пути тут нет: противник перебирает точки по кругу и выбирает ту, что дальше
    * от секторов обстрела.
    */
   safeApproachPoint(position, radius = AI.assaultApproachRadius) {
@@ -1258,7 +1258,7 @@ export class AIController {
       && b.type !== 'hq'
       // Цель, на которой уже провалились, временно не трогаем.
       && !this.isTargetCooling(b.id)
-      // Рейд идёт по разведанным постройкам: того, чего Рой не видел,
+      // Рейд идёт по разведанным постройкам: того, чего противник не видел,
       // он просто не знает.
       && this.game.isBuildingKnownTo('enemy', b)
     ));
@@ -1288,8 +1288,8 @@ export class AIController {
     );
     out.push(...medics.slice(0, wantedMedics));
 
-    // Один свободный инженер всегда остаётся в улье: без него встанут
-    // стройка и ремонт техники, а волна — не единственная забота Роя.
+    // Один свободный инженер всегда остаётся на базе: без него встанут
+    // стройка и ремонт техники, а волна — не единственная забота противника.
     const vehicles = squad.filter((u) => u.def.vehicle).length;
     const engineers = this.freeSupport('engineer', squad);
     const wantedEngineers = Math.min(
@@ -1380,7 +1380,7 @@ export class AIController {
       return;
     }
 
-    // Экономика не тянет пополнение — Рой копит силы у базы и не рискует
+    // Экономика не тянет пополнение — противник копит силы у базы и не рискует
     // последними бойцами. Сообщение объясняет игроку затянувшееся затишье.
     if (this.isStarved()) {
       this.waveTimer = AI.regroupDelay * (0.8 + Math.random() * 0.6);
@@ -1440,7 +1440,7 @@ export class AIController {
       + Math.floor(Math.random() * 3) - 1;
     if (tactic === 'probe') wanted = Math.min(wanted, 2 + Math.floor(Math.random() * 2));
 
-    // Остальные волны идут, только если отряд способен пробить то, что Рой
+    // Остальные волны идут, только если отряд способен пробить то, что противник
     // знает об обороне цели. Чем дольше наступление откладывается, тем
     // скромнее требуемое превосходство: иначе три турели у штаба способны
     // заморозить ИИ навсегда.
