@@ -261,8 +261,10 @@ export class Game {
     for (const b of this.buildings) {
       if (b.alive && b.faction === 'enemy' && b.type === 'derrick' && b.complete) sum += b.def.income;
     }
-    // Противник не должен развиваться быстрее игрока: у него нет микроконтроля.
-    return sum * 0.7 * this.globalModifiers('enemy').income;
+    // У противника нет микроконтроля, поэтому его доход чуть ниже дохода
+    // игрока с тех же вышек. Но и голодать одной лишь экономикой он не
+    // должен: иначе армия не успевает восстановиться между волнами.
+    return sum * 0.85 * this.globalModifiers('enemy').income;
   }
 
   /**
