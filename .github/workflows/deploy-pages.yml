@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Игра не требует сборки: копируем в артефакт только файлы сайта,
       # чтобы в Pages не попали .git, README и служебные файлы репозитория.
@@ -33,12 +33,15 @@ jobs:
           cp -R src vendor _site/
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: _site
+          # Начиная с v4 артефакт по умолчанию отбрасывает скрытые файлы,
+          # а сайту нужен .nojekyll — иначе он молча не попадёт в деплой.
+          include-hidden-files: true
 
   deploy:
     name: Deploy
@@ -50,4 +53,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
