@@ -264,12 +264,18 @@ export class AIController {
     if (!hq || !hq.complete || hq.queue.length > 1) return;
     if (hq.queue.some((item) => item.type === 'engineer')) return;
     const count = this.engineerCount();
-    const target = this.game.elapsed > 90 ? 2 : 1;
+    const vehicles = this.game.units.filter(
+      (u) => u.alive && u.faction === 'enemy' && u.def.vehicle,
+    ).length;
+    // Двое инженеров чинят технику в волне, один остаётся на стройке.
+    // Третий нужен только когда машин уже достаточно много.
+    const target = this.game.elapsed > AI.engineerThirdAt && vehicles >= 3 ? 3
+      : this.game.elapsed > 90 ? 2 : 1;
     if (count >= target) return;
     const used = this.game.getArmyUsed('enemy') + this.game.getQueuedSupply('enemy');
     if (used + (UNITS.engineer.supply ?? 1) > this.game.getArmyCap('enemy')) return;
     const def = UNITS.engineer;
-    const reserve = count === 0 ? 90 : 60;
+    const reserve = count === 0 ? 90 : 50;
     if (this.credits < def.cost + reserve) return;
     this.credits -= def.cost;
     hq.enqueue('engineer');
@@ -1263,7 +1269,12 @@ export class AIController {
 
     const infantry = squad.filter((u) => u.def.infantry).length;
     const medics = this.freeSupport('medic', squad);
-    const wantedMedics = Math.min(AI.waveMedicCap, Math.floor(infantry / AI.waveMedicPer));
+    // Хотя бы один медик уже при трёх пехотинцах: иначе поддержка почти
+    // никогда не попадает в волну, ведь морпехов в отряде немного.
+    const wantedMedics = Math.min(
+      AI.waveMedicCap,
+      Math.max(infantry >= 3 ? 1 : 0, Math.floor(infantry / AI.waveMedicPer)),
+    );
     out.push(...medics.slice(0, wantedMedics));
 
     // Один свободный инженер всегда остаётся в улье: без него встанут
@@ -1278,6 +1289,26 @@ export class AIController {
     out.push(...engineers.slice(0, wantedEngineers));
 
     return out;
+  }
+
+  /**
+   * Точка сбора поддержки: чуть позади цели по линии от отряда к цели,
+   * чтобы медики и инженеры не шли в первый ряд.
+   */
+  escortPoint(squad, primary) {
+    if (!squad.length) return primary;
+    const cx = squad.reduce((sum, u) => sum + u.position.x, 0) / squad.length;
+    const cz = squad.reduce((sum, u) => sum + u.position.z, 0) / squad.length;
+    let dx = primary.x - cx;
+    let dz = primary.z - cz;
+    const len = Math.hypot(dx, dz);
+    if (len < 0.01) return { x: primary.x, z: primary.z };
+    dx /= len;
+    dz /= len;
+    return {
+      x: clamp(primary.x - dx * AI.supportTrail, -MAP.clamp, MAP.clamp),
+      z: clamp(primary.z - dz * AI.supportTrail, -MAP.clamp, MAP.clamp),
+    };
   }
 
   /**
@@ -1443,8 +1474,12 @@ export class AIController {
       );
     });
     const support = this.waveSupport(squad, tactic);
+    const escort = this.escortPoint(squad, primary);
     for (const u of support) {
-      u.issueEscort(primary.x + (Math.random() - 0.5) * 5, primary.z + (Math.random() - 0.5) * 5);
+      u.issueEscort(
+        escort.x + (Math.random() - 0.5) * 5,
+        escort.z + (Math.random() - 0.5) * 5,
+      );
     }
     this.beginWave({
       tactic,
