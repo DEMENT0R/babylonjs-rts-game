@@ -1561,23 +1561,30 @@ export class UI {
       const emptyLabel = b.type === 'lab' ? 'ВЫБЕРИТЕ УЛУЧШЕНИЕ' : 'ГОТОВ К НАЙМУ';
       return `<div class="queue queue--empty"><span>Очередь производства пуста</span><span>${b.complete ? emptyLabel : 'ИДЁТ СТРОЙКА'}</span></div>`;
     }
-    const items = b.queue.map((item, i) => {
+    const slots = [];
+    for (let i = 0; i < b.maxQueue; i++) {
+      const item = b.queue[i];
+      if (!item) {
+        slots.push('<div class="queue-tile queue-tile--empty" aria-hidden="true"></div>');
+        continue;
+      }
       const def = item.upgrade ? UPGRADES[item.upgrade] : UNITS[item.type];
       const progress = i === 0 ? (1 - item.remaining / item.total) * 100 : 0;
       const time = i === 0 ? item.remaining : item.total;
-      return `
-        <button class="queue-item" data-cancel-queue="${i}" title="Отменить и вернуть кредиты">
+      slots.push(`
+        <button class="queue-tile${i === 0 ? ' is-active' : ''}" data-cancel-queue="${i}"
+          title="Отменить: ${esc(def.name)}" aria-label="Отменить: ${esc(def.name)}">
+          <span class="q-x" aria-hidden="true">×</span>
           <span class="q-icon">${icon(def.icon)}</span>
-          <span class="q-name">${def.name}</span>
-          <span class="q-progress"><i style="width:${clamp(progress, 0, 100)}%"></i></span>
+          <span class="q-name">${esc(def.name)}</span>
           <span class="q-time">${formatTime(time)}</span>
-          <span class="q-x">×</span>
-        </button>`;
-    }).join('');
+          <span class="q-progress"><i style="width:${clamp(progress, 0, 100)}%"></i></span>
+        </button>`);
+    }
     return `
       <div class="queue">
         <div class="queue-head"><span>ОЧЕРЕДЬ ПРОИЗВОДСТВА</span><span>${b.queue.length} / ${b.maxQueue}</span></div>
-        <div class="queue-list">${items}</div>
+        <div class="queue-list">${slots.join('')}</div>
       </div>`;
   }
 
