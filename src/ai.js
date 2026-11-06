@@ -1434,22 +1434,30 @@ export class AIController {
       ? this.pointNear(raidTarget.position, 5)
       : null;
 
-    // Гарнизон уже остаётся у улья, поэтому в волну идут все остальные
-    // бойцы: размер отряда растёт от волны к волне, без случайного резерва.
+    // Размер отряда растёт от волны к волне, но это лишь пожелание: ниже
+    // он проверяется по боевой мощи, чтобы в бой не уходили случайные крохи.
     let wanted = Math.round((3 + this.waveIndex * 1.7) * this.aggression)
       + Math.floor(Math.random() * 3) - 1;
     if (tactic === 'probe') wanted = Math.min(wanted, 2 + Math.floor(Math.random() * 2));
 
-    // Разведка боем идёт налегке, остальные волны — только если отряд
-    // способен пробить то, что Рой знает об обороне цели. Чем дольше
-    // наступление откладывается, тем скромнее требуемое превосходство:
-    // иначе три турели у штаба способны заморозить ИИ навсегда.
+    // Остальные волны идут, только если отряд способен пробить то, что Рой
+    // знает об обороне цели. Чем дольше наступление откладывается, тем
+    // скромнее требуемое превосходство: иначе три турели у штаба способны
+    // заморозить ИИ навсегда.
     const patience = Math.min(AI.maxPatienceDiscount, this.postponedRuns * AI.patienceStep);
     const requiredAdvantage = this.rules.requiredAdvantage * (1 - patience);
     const defense = this.defenseAt(primaryTarget.position);
-    const needed = tactic === 'probe'
-      ? 0
-      : this.neededSquad(fighters, defense * requiredAdvantage);
+    // Порог мощи: без него ИИ наступал, как только истекал таймер, даже если
+    // разведка не нашла обороны и в бой шли два-три случайных бойца. Порог
+    // растёт с номером волны, поэтому поздние удары крупнее ранних.
+    const basePower = tactic === 'probe'
+      ? AI.probePower
+      : (AI.waveBasePower + this.waveIndex * AI.wavePowerStep) * this.aggression;
+    const requiredPower = Math.max(
+      tactic === 'probe' ? 0 : defense * requiredAdvantage,
+      basePower,
+    );
+    const needed = this.neededSquad(fighters, requiredPower);
     if (needed > fighters.length) {
       this.waveTimer = AI.regroupDelay * (0.8 + Math.random() * 0.6);
       this.postponedRuns++;
@@ -1463,8 +1471,9 @@ export class AIController {
         );
       }
       this.debugLog(
-        `волна отложена: оборона ${Math.round(defense)}, армия `
-        + `${Math.round(this.squadPower(fighters))}, нужно ×${requiredAdvantage.toFixed(2)}`,
+        `волна отложена: мощь ${Math.round(this.squadPower(fighters))}`
+        + `/${Math.round(requiredPower)}, оборона ${Math.round(defense)}, `
+        + `бойцов ${fighters.length}`,
       );
       return;
     }
@@ -1479,7 +1488,13 @@ export class AIController {
 
     let squadSize = Math.max(wanted, minSquad, needed);
     squadSize = Math.max(1, Math.min(fighters.length, squadSize));
-    const squad = shuffle(fighters.slice(), Math.random).slice(0, squadSize);
+    const pool = shuffle(fighters.slice(), Math.random);
+    const squad = pool.slice(0, squadSize);
+    // `neededSquad` считает сильнейших бойцов, а в отряд попадают случайные:
+    // добираем его, пока он реально не наберёт порог мощи.
+    while (this.squadPower(squad) < requiredPower && squad.length < pool.length) {
+      squad.push(pool[squad.length]);
+    }
 
     squad.forEach((u, i) => {
       const point = secondary && i % 2 === 0 ? secondary : primary;
