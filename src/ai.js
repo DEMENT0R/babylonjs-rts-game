@@ -325,7 +325,10 @@ export class AIController {
       (b) => b.alive && b.faction === 'enemy' && b.type === 'lab' && b.complete,
     ).length;
     const depots = game.buildings.filter(
-      (b) => b.alive && b.faction === 'enemy' && b.type === 'depot',
+      (b) => b.alive && b.faction === 'enemy' && b.type === 'depot' && b.complete,
+    ).length;
+    const depotSites = game.buildings.filter(
+      (b) => b.alive && b.faction === 'enemy' && b.type === 'depot' && !b.complete,
     ).length;
     const turrets = game.buildings.filter(
       (b) => b.alive && b.faction === 'enemy' && b.type === 'turret' && b.complete,
@@ -348,6 +351,17 @@ export class AIController {
     const freePatch = this.findFreePatch();
     const armyUsed = game.getArmyUsed('enemy') + game.getQueuedSupply('enemy');
     const armyCap = game.getArmyCap('enemy');
+    // Модули строятся под план следующей волны, а не когда лимит уже занят:
+    // после выхода отряда лимит «освобождается», и по старому правилу новые
+    // модули не закладывались никогда. Площадки тоже считаются — иначе ИИ
+    // ставил бы несколько модулей подряд на один и тот же провал лимита.
+    const depotStep = BUILDINGS.depot.armyCap ?? 10;
+    const capTarget = Math.min(
+      AI.armyCap,
+      AI.armyCapPlan + this.waveIndex * AI.armyCapPerWave,
+    );
+    const plannedCap = armyCap + depotSites * depotStep;
+    const needDepot = plannedCap < capTarget || armyCap - armyUsed < 6;
 
     let type = null;
     if (barracks === 0) type = 'barracks';
@@ -356,7 +370,8 @@ export class AIController {
     else if (powerMargin < AI.powerReserve) type = 'power';
     // Разведанное месторождение — приоритет: вышка дешёвая и сразу платит.
     else if (freePatch && this.credits > BUILDINGS.derrick.cost + 60) type = 'derrick';
-    else if (armyCap - armyUsed < 6 && depots < 5 && this.credits > BUILDINGS.depot.cost + 30) {
+    else if (needDepot && plannedCap + depotStep <= AI.armyCap
+      && depots + depotSites < 5 && this.credits > BUILDINGS.depot.cost + 30) {
       type = 'depot';
     } else if (turrets === 0 && game.elapsed > 130) {
       // Первую турель противник копит целенаправленно: армия на время замирает.
