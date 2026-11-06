@@ -41,6 +41,10 @@ export class AIController {
     // Сколько секунд текущий план стройки ждёт кредитов. По этому счётчику
     // найм решает, пора ли перестать копить и купить бойца.
     this.saveTime = 0;
+    // Телеметрия для отладочной панели: сколько всего прошло времени и
+    // какую его долю у ИИ висел план стройки (то есть казармы ждали).
+    this.uptime = 0;
+    this.planTime = 0;
     this.buildCount = 0;
     this.lastBuildNoticeAt = -999;
     // Характер конкретной партии: влияет на размер волн, состав армии и
@@ -212,8 +216,15 @@ export class AIController {
 
     this.updateEconomy(dt);
     // Пока висит план стройки, копим на него, но не бесконечно: счётчик
-    // ограничивает паузу в найме (см. tryTrain).
-    this.saveTime = this.buildIntent ? this.saveTime + dt : 0;
+    // ограничивает паузу в найме (см. tryTrain). Заодно копим телеметрию
+    // для отладочной панели.
+    this.uptime += dt;
+    if (this.buildIntent) {
+      this.saveTime += dt;
+      this.planTime += dt;
+    } else {
+      this.saveTime = 0;
+    }
 
     this.garrisonTimer -= dt;
     if (this.garrisonTimer <= 0) {
@@ -1344,16 +1355,36 @@ export class AIController {
 
     const s = this.stats;
     const settled = Math.max(1, s.settled);
-    const playerHQ = this.game.entities.find(
+    const game = this.game;
+    const playerHQ = game.entities.find(
       (e) => e.alive && e.faction === 'player' && e.isBuilding && e.type === 'hq',
     );
-    const combat = this.game.units.filter(
+    const combat = game.units.filter(
       (u) => u.alive && u.faction === 'enemy' && !u.def.builder,
     );
     const active = this.activeWave;
     const alive = active ? active.units.filter(({ unit }) => unit.alive).length : 0;
+    // Экономика и лимиты: по этим числам видно, копит ИИ или воюет.
+    const power = game.power.enemy;
+    const income = game.enemyIncome() * this.rules.income;
+    const armyUsed = game.getArmyUsed('enemy') + game.getQueuedSupply('enemy');
+    const armyCap = game.getArmyCap('enemy');
+    const depots = game.buildings.filter(
+      (b) => b.alive && b.faction === 'enemy' && b.type === 'depot',
+    ).length;
+    const plants = game.buildings.filter(
+      (b) => b.alive && b.faction === 'enemy' && b.type === 'power',
+    ).length;
+    const planShare = this.uptime > 0 ? (100 * this.planTime) / this.uptime : 0;
     const lines = [
-      'ИИ: волны и итоги',
+      'ИИ: экономика и волны',
+      `кредиты ${Math.round(this.credits)}, доход ${income.toFixed(1)}/с`,
+      `энергия ${power.used}/${power.produced}${power.factor < 1 ? ' — дефицит' : ''}`
+        + `, станций ${plants}`,
+      `армия ${armyUsed}/${armyCap} (потолок ${AI.armyCap}), модулей ${depots}`,
+      `план: ${this.buildIntent ?? '—'}`
+        + `${this.buildIntent ? `, копит ${this.saveTime.toFixed(0)} с` : ''}`
+        + `, стройка ${Math.round(planShare)}% времени`,
       `волн ${s.waves}, провалов ${s.failures} (${Math.round((100 * s.failures) / settled)}%)`,
       `разгромов ${s.wiped}, зависших ${s.timeouts}, отходов ${s.retreats}`,
       `потери ${Math.round(s.supplyLost / settled)} снабж./волна`,
