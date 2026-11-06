@@ -38,6 +38,9 @@ export class AIController {
     // Пока это значение велико, противник обороняется, а не нападает.
     this.starvedTime = 0;
     this.buildIntent = null;
+    // Сколько секунд текущий план стройки ждёт кредитов. По этому счётчику
+    // найм решает, пора ли перестать копить и купить бойца.
+    this.saveTime = 0;
     this.buildCount = 0;
     this.lastBuildNoticeAt = -999;
     // Характер конкретной партии: влияет на размер волн, состав армии и
@@ -208,6 +211,9 @@ export class AIController {
     this.scoutTimer -= dt;
 
     this.updateEconomy(dt);
+    // Пока висит план стройки, копим на него, но не бесконечно: счётчик
+    // ограничивает паузу в найме (см. tryTrain).
+    this.saveTime = this.buildIntent ? this.saveTime + dt : 0;
 
     this.garrisonTimer -= dt;
     if (this.garrisonTimer <= 0) {
@@ -308,6 +314,7 @@ export class AIController {
     const maxSites = game.elapsed > 150 ? 2 : 1;
     if (unfinished.length >= maxSites) {
       this.buildIntent = null;
+      this.saveTime = 0;
       return;
     }
 
@@ -359,7 +366,12 @@ export class AIController {
       type = roll < 0.4 ? 'power' : roll < 0.7 ? 'barracks' : roll < 0.85 ? 'depot' : 'turret';
     }
 
-    this.buildIntent = type;
+    // Смена цели начинает отсчёт ожидания заново: иначе пауза в найме
+    // доставалась бы новому плану от старого.
+    if (this.buildIntent !== type) {
+      this.buildIntent = type;
+      this.saveTime = 0;
+    }
     if (!type) return;
     const def = BUILDINGS[type];
     // На вышку противник копит без запаса: она сразу возвращает вложенное, а с
@@ -378,6 +390,7 @@ export class AIController {
     else spot = this.findBuildSpot(type);
     if (!spot) {
       this.buildIntent = null;
+      this.saveTime = 0;
       return false;
     }
     const b = this.game.tryBuild(type, spot.x, spot.z, {
@@ -388,6 +401,7 @@ export class AIController {
     });
     if (!b) return false;
     this.buildIntent = null;
+    this.saveTime = 0;
     this.buildCount++;
     if (this.game.elapsed - this.lastBuildNoticeAt > 90) {
       this.lastBuildNoticeAt = this.game.elapsed;
@@ -803,6 +817,36 @@ export class AIController {
     return this.starvedTime >= AI.starvedDelay;
   }
 
+  /**
+   * Стройка, ради которой можно придержать найм: без казармы армию не
+   * пополнить, при дефиците энергии производство падает втрое, а турель,
+   * когда базу уже щупают, нужна немедленно. Остальные здания копятся
+   * короткими паузами, не останавливая казармы.
+   */
+  isUrgentBuild(type) {
+    if (!type) return false;
+    if (type === 'barracks') return true;
+    if (type === 'power') {
+      const power = this.game.power.enemy;
+      return power.used >= power.produced;
+    }
+    if (type === 'turret') return this.baseUnderThreat();
+    return false;
+  }
+
+  /** Игрок уже подошёл к базе: турель и резерв важнее наступления. */
+  baseUnderThreat() {
+    const hq = this.enemyHq();
+    if (!hq) return false;
+    return this.game.entities.some((e) => (
+      e.alive
+      && e.faction === 'player'
+      && !e.isBuilding
+      && this.game.isEntityVisibleTo('enemy', e)
+      && dist(e.position.x, e.position.z, hq.position.x, hq.position.z) < AI.defendRadius
+    ));
+  }
+
   tryTrain() {
     const game = this.game;
     const used = game.getArmyUsed('enemy') + game.getQueuedSupply('enemy');
@@ -850,13 +894,20 @@ export class AIController {
       if (used + def.supply > cap) return;
     }
     if (this.credits < def.cost + 40) return;
-    // Пока есть план строительства, армия ждёт: иначе наём съедает
-    // кредиты, и база противника никогда не развивается.
-    if (this.buildIntent) return;
+    // Пока копим на стройку, армия ждёт, но не дольше лимита: иначе найм
+    // замирал на всю закупку здания. После паузы покупаем одного бойца, и
+    // окно ожидания начинается заново — стройка и армия делят доход.
+    if (this.buildIntent) {
+      const patience = this.isUrgentBuild(this.buildIntent)
+        ? AI.savePatienceUrgent
+        : AI.savePatience;
+      if (this.saveTime < patience) return;
+    }
     if (game.powerFactor('enemy') < 0.9 && Math.random() < 0.35) return;
     this.credits -= def.cost;
     const builder = barracks[Math.floor(Math.random() * barracks.length)];
     builder.enqueue(type);
+    this.saveTime = 0;
     this.trainTimer = 3.5 + Math.random() * 2.5;
   }
 
