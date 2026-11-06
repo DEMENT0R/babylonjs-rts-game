@@ -335,13 +335,25 @@ export class AIController {
     ).length;
     const buildings = game.buildings.filter((b) => b.alive && b.faction === 'enemy').length;
     const power = game.power.enemy;
+    // Стройка ещё не даёт энергии, но уже начнёт её потреблять: учитываем
+    // площадки в запасе, иначе ИИ заказывал бы вторую станцию, пока первая
+    // строится, или спохватывался бы только по факту дефицита.
+    let incomingUse = 0;
+    let incomingProduce = 0;
+    for (const b of unfinished) {
+      incomingUse += b.def.powerUse || 0;
+      incomingProduce += b.def.powerProduce || 0;
+    }
+    const powerMargin = power.produced + incomingProduce - power.used - incomingUse;
     const freePatch = this.findFreePatch();
     const armyUsed = game.getArmyUsed('enemy') + game.getQueuedSupply('enemy');
     const armyCap = game.getArmyCap('enemy');
 
     let type = null;
     if (barracks === 0) type = 'barracks';
-    else if (power.used >= power.produced) type = 'power';
+    // Энергию держим с запасом, а не по факту дефицита: при перерасходе
+    // производство падает втрое, и армия встаёт вместе с базой.
+    else if (powerMargin < AI.powerReserve) type = 'power';
     // Разведанное месторождение — приоритет: вышка дешёвая и сразу платит.
     else if (freePatch && this.credits > BUILDINGS.derrick.cost + 60) type = 'derrick';
     else if (armyCap - armyUsed < 6 && depots < 5 && this.credits > BUILDINGS.depot.cost + 30) {
@@ -354,7 +366,6 @@ export class AIController {
       type = 'turret';
     } else if (lab === 0 && game.elapsed > 170 && this.credits > 320) type = 'lab';
     else if (barracks < 2 && game.elapsed > 135) type = 'barracks';
-    else if (power.produced - power.used < 8) type = 'power';
     // Баррикады дешёвые и быстрые: линия перед турелями появляется после
     // первых двух турелей и второй казармы, чтобы не тормозить армию.
     else if (game.elapsed > 170 && turrets >= 2 && walls < AI.wallCap
