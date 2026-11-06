@@ -396,17 +396,45 @@ export class AIController {
         && b.complete && b.queue.length === 0,
     );
     if (!labs.length) return;
-    const available = Object.keys(UPGRADES).filter(
-      (key) => !game.upgrades.enemy.has(key) && !game.hasPendingUpgrade('enemy', key),
-    );
-    if (!available.length) return;
     // Иногда Рой откладывает науку в пользу армии — ещё одна вариация.
     if (Math.random() < 0.25) return;
-    const key = available[Math.floor(Math.random() * available.length)];
-    const def = UPGRADES[key];
-    if (!def || this.credits < def.cost + 80) return;
+    const available = game.availableUpgrades('enemy')
+      .filter((key) => this.credits >= (UPGRADES[key]?.cost ?? 0) + 80);
+    if (!available.length) return;
+
+    // Приоритет зависит от состава армии и базы: качать линию юнита, которого
+    // нет, или экономику без вышек — бессмысленно.
+    const counts = new Map();
+    for (const unit of game.units) {
+      if (!unit.alive || unit.faction !== 'enemy') continue;
+      counts.set(unit.type, (counts.get(unit.type) ?? 0) + 1);
+    }
+    const buildings = game.buildings.filter((b) => b.alive && b.faction === 'enemy');
+    const turrets = buildings.filter((b) => b.type === 'turret').length;
+    const derricks = buildings.filter((b) => b.type === 'derrick').length;
+    const capUsed = game.getArmyUsed('enemy');
+    const cap = game.getArmyCap('enemy');
+
+    let best = null;
+    let bestScore = -Infinity;
+    for (const key of available) {
+      const def = UPGRADES[key];
+      let score = 1 + Math.random() * 2;
+      if (def.scope === 'unit') score += (counts.get(def.target) ?? 0) * 3;
+      else if (def.scope === 'building') {
+        score += def.target === 'turret' ? turrets * 4 : buildings.length * 0.35;
+      } else if (key === 'income') score += derricks * 3;
+      else if (key === 'reserve') score += (capUsed / Math.max(1, cap)) * 6;
+      else if (key === 'logistics') score += 2.5;
+      else if (key === 'maintenance') score += 1.5;
+      if (score > bestScore) {
+        bestScore = score;
+        best = key;
+      }
+    }
+    if (!best) return;
     const lab = labs[Math.floor(Math.random() * labs.length)];
-    game.startUpgrade(lab, key);
+    game.startUpgrade(lab, best);
   }
 
   // ------------------------------------------------------------- армия
@@ -586,8 +614,10 @@ export class AIController {
   combatValue(entity) {
     if (!entity?.alive) return 0;
     const def = entity.def ?? {};
-    const weapon = def.defense ?? def;
-    const dps = (weapon.damage ?? 0) / (weapon.cooldown || 1);
+    const weapon = entity.defense ?? def.defense ?? def;
+    const damage = entity.damage ?? weapon.damage ?? 0;
+    const cooldown = entity.cooldown ?? weapon.cooldown ?? 1;
+    const dps = damage / (cooldown || 1);
     const hp = entity.hp ?? def.hp ?? 0;
     const armor = entity.armor ?? def.armor ?? 0;
     return (dps * (hp + armor * 20 + 40)) / 100;
@@ -905,7 +935,7 @@ export class AIController {
       };
       let score = Math.random() * 2;
       for (const turret of turrets) {
-        const reach = (turret.def.defense?.range ?? 17) + 6;
+        const reach = (turret.defense?.range ?? turret.def.defense?.range ?? 17) + 6;
         const d = dist(point.x, point.z, turret.position.x, turret.position.z);
         if (d < reach) score += (reach - d) * 3;
       }

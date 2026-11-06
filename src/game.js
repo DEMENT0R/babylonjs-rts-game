@@ -6,6 +6,8 @@ import {
   UNITS,
   BUILDINGS,
   UPGRADES,
+  UPGRADE_LINES,
+  UPGRADE_LINE_KEYS,
   FACTIONS,
   MAP,
   MESSAGES,
@@ -251,7 +253,7 @@ export class Game {
     for (const b of this.buildings) {
       if (b.alive && b.faction === 'player' && b.type === 'derrick' && b.complete) sum += b.def.income;
     }
-    return sum;
+    return sum * this.globalModifiers('player').income;
   }
 
   enemyIncome() {
@@ -260,7 +262,44 @@ export class Game {
       if (b.alive && b.faction === 'enemy' && b.type === 'derrick' && b.complete) sum += b.def.income;
     }
     // Противник не должен развиваться быстрее игрока: у него нет микроконтроля.
-    return sum * 0.7;
+    return sum * 0.7 * this.globalModifiers('enemy').income;
+  }
+
+  /**
+   * Глобальные эффекты изученных исследований: доход, цена ремонта, время
+   * найма и стройки, бонус к лимиту армии. Считается на лету, поэтому
+   * действует и на будущие постройки, и на уже существующие.
+   */
+  globalModifiers(faction) {
+    const mods = { income: 1, repairCost: 1, trainTime: 1, buildTime: 1, armyCap: 0 };
+    for (const key of this.upgrades[faction] ?? []) {
+      const def = UPGRADES[key];
+      if (!def || def.scope !== 'global') continue;
+      const effects = def.effects ?? {};
+      if (effects.income) mods.income *= effects.income;
+      if (effects.repairCost) mods.repairCost *= effects.repairCost;
+      if (effects.trainTime) mods.trainTime *= effects.trainTime;
+      if (effects.buildTime) mods.buildTime *= effects.buildTime;
+      if (effects.armyCap) mods.armyCap += effects.armyCap;
+    }
+    return mods;
+  }
+
+  /** Множители характеристик здания с учётом изученных улучшений. */
+  buildingModifiers(faction, type) {
+    const mods = { hp: 1, armor: 0, damage: 1, range: 1, cooldown: 1 };
+    for (const key of this.upgrades[faction] ?? []) {
+      const def = UPGRADES[key];
+      if (!def || def.scope !== 'building') continue;
+      if (def.target !== 'building' && def.target !== type) continue;
+      const effects = def.effects ?? {};
+      if (effects.hp) mods.hp *= effects.hp;
+      if (effects.armor) mods.armor += effects.armor;
+      if (effects.damage) mods.damage *= effects.damage;
+      if (effects.range) mods.range *= effects.range;
+      if (effects.cooldown) mods.cooldown *= effects.cooldown;
+    }
+    return mods;
   }
 
   recomputePower() {
@@ -291,7 +330,7 @@ export class Game {
     for (const b of this.buildings) {
       if (b.alive && b.complete && b.faction === faction) cap += b.def.armyCap || 0;
     }
-    return cap;
+    return cap + this.globalModifiers(faction).armyCap;
   }
 
   /** Сколько лимита уже занимают живые юниты фракции. */
@@ -340,9 +379,18 @@ export class Game {
 
   repairCostPerHp(building) {
     const def = building.def;
+    const costMult = this.globalModifiers(building.faction).repairCost;
     return def.cost > 0
-      ? (def.cost * REPAIR.costFraction) / def.hp
-      : REPAIR.hqCostPerHp;
+      ? (def.cost * REPAIR.costFraction * costMult) / def.hp
+      : REPAIR.hqCostPerHp * costMult;
+  }
+
+  trainTimeMultiplier(faction = 'player') {
+    return this.globalModifiers(faction).trainTime;
+  }
+
+  buildTimeMultiplier(faction = 'player') {
+    return this.globalModifiers(faction).buildTime;
   }
 
   repairRate(building) {
@@ -980,20 +1028,66 @@ export class Game {
    * юнитов этого типа — и на уже построенных, и на новых.
    */
   unitModifiers(faction, type) {
-    const mods = { hp: 1, damage: 1, range: 1, speed: 1, armor: 0 };
+    const mods = {
+      hp: 1,
+      damage: 1,
+      range: 1,
+      speed: 1,
+      armor: 0,
+      pierce: 0,
+      visionAdd: 0,
+      cooldown: 1,
+      splash: 1,
+      salvoAdd: 0,
+      healRate: 1,
+      healRadius: 1,
+      repairRate: 1,
+      buildSpeed: 1,
+    };
     const active = this.upgrades[faction];
     if (!active) return mods;
     for (const key of active) {
       const def = UPGRADES[key];
-      if (!def || def.target !== type) continue;
+      if (!def || def.scope !== 'unit' || def.target !== type) continue;
       const effects = def.effects ?? {};
       if (effects.hp) mods.hp *= effects.hp;
       if (effects.damage) mods.damage *= effects.damage;
       if (effects.range) mods.range *= effects.range;
       if (effects.speed) mods.speed *= effects.speed;
       if (effects.armor) mods.armor += effects.armor;
+      if (effects.pierce) mods.pierce += effects.pierce;
+      if (effects.visionAdd) mods.visionAdd += effects.visionAdd;
+      if (effects.cooldown) mods.cooldown *= effects.cooldown;
+      if (effects.splash) mods.splash *= effects.splash;
+      if (effects.salvoAdd) mods.salvoAdd += effects.salvoAdd;
+      if (effects.healRate) mods.healRate *= effects.healRate;
+      if (effects.healRadius) mods.healRadius *= effects.healRadius;
+      if (effects.repairRate) mods.repairRate *= effects.repairRate;
+      if (effects.buildSpeed) mods.buildSpeed *= effects.buildSpeed;
     }
     return mods;
+  }
+
+  /** Следующий неизученный уровень линии или null, если линия закрыта. */
+  nextUpgradeKey(faction, lineKey) {
+    for (const key of UPGRADE_LINE_KEYS[lineKey] ?? []) {
+      if (!this.upgrades[faction]?.has(key)) return key;
+    }
+    return null;
+  }
+
+  /** Доступные ИИ исследования: следующие уровни линий без дублей. */
+  availableUpgrades(faction) {
+    const list = [];
+    for (const line of UPGRADE_LINES) {
+      const key = this.nextUpgradeKey(faction, line.key);
+      if (!key) continue;
+      if (this.hasPendingUpgrade(faction, key)) continue;
+      const def = UPGRADES[key];
+      if (def.requires && !this.upgrades[faction]?.has(def.requires)) continue;
+      list.push(key);
+    }
+    return list;
   }
 
   /** Есть ли у фракции это исследование в очереди хотя бы одной лаборатории. */
@@ -1023,6 +1117,12 @@ export class Game {
       }
       return false;
     }
+    if (def.requires && !this.upgrades[faction]?.has(def.requires)) {
+      if (faction === 'player') {
+        this.notify('Сначала изучите предыдущий уровень.', 'hint', `research_requires_${key}`, 0, 3);
+      }
+      return false;
+    }
     if (building.queue.length >= building.maxQueue) {
       if (faction === 'player') this.notify(MESSAGES.queueFull, 'warn', 'queue-full', 0, 3);
       return false;
@@ -1040,7 +1140,7 @@ export class Game {
     return true;
   }
 
-  /** Завершает исследование и сразу усиливает всех юнитов этого типа. */
+  /** Завершает исследование и сразу применяет эффект ко всем целям. */
   completeUpgrade(building, key) {
     const def = UPGRADES[key];
     if (!def || !building) return;
@@ -1050,21 +1150,38 @@ export class Game {
     const first = !active.has(key);
     active.add(key);
     if (first) {
-      for (const unit of this.units) {
-        if (unit.alive && unit.faction === faction && unit.type === def.target) {
-          unit.applyUpgrades(true);
+      if (def.scope === 'unit') {
+        for (const unit of this.units) {
+          if (unit.alive && unit.faction === faction && unit.type === def.target) {
+            unit.applyUpgrades(true);
+          }
         }
+      } else if (def.scope === 'building') {
+        for (const b of this.buildings) {
+          if (!b.alive || b.faction !== faction) continue;
+          if (def.target !== 'building' && b.type !== def.target) continue;
+          b.applyUpgrades?.(true);
+        }
+      } else if (def.scope === 'global') {
+        // Лимит армии кэшируется в публичном поле — обновляем его сразу,
+        // не дожидаясь следующего пересчёта энергосети.
+        this.refreshArmyCap();
       }
     }
     if (first && faction === 'player') {
+      const tail = def.scope === 'unit'
+        ? 'Отряд усилен.'
+        : def.scope === 'building'
+          ? 'Постройки усилены.'
+          : 'Эффект действует на всю колонию.';
       this.notify(
-        `Исследование завершено: ${def.name}. Отряд усилен.`,
+        `Исследование завершено: ${def.name}. ${tail}`,
         'success',
         `research_done_${key}`,
         0,
         5,
       );
-      // Карточка выбранного юнита должна сразу показать новые характеристики.
+      // Карточка выбранного юнита или здания должна сразу показать новые характеристики.
       if (this.ui) this.ui.onSelectionChanged();
     }
   }

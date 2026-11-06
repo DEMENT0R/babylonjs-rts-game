@@ -8,7 +8,7 @@ import {
   Vector3,
   Color3,
 } from './babylon.js';
-import { UNITS, BUILDINGS, UPGRADES, FACTIONS, MAP, MESSAGES, FIELD_SUPPORT, CONSTRUCTION } from './config.js';
+import { UNITS, BUILDINGS, UPGRADES, FACTIONS, MAP, MESSAGES, FIELD_SUPPORT, CONSTRUCTION, VISION } from './config.js';
 import { clamp, dist, turnTowards, damp, angleDiff } from './utils.js';
 import { segmentDistance } from './nav.js';
 
@@ -170,7 +170,7 @@ export class Entity {
 
   takeDamage(amount, source) {
     if (!this.alive || this.game.over) return;
-    const armor = this.armor ?? this.def.armor ?? 0;
+    const armor = Math.max(0, (this.armor ?? this.def.armor ?? 0) - (source?.pierce ?? 0));
     const dmg = Math.max(1, amount - armor);
     this.hp -= dmg;
     this.lastHitAt = this.game.elapsed;
@@ -301,7 +301,7 @@ export class Unit extends Entity {
   }
 
   supportRange() {
-    return this.def.healer ? FIELD_SUPPORT.medicRange : FIELD_SUPPORT.engineerRange;
+    return this.def.healer ? this.healRange : FIELD_SUPPORT.engineerRange;
   }
 
   /** Раненый пехотинец или повреждённая машина поблизости. */
@@ -324,7 +324,7 @@ export class Unit extends Entity {
     ) {
       return null;
     }
-    const seek = this.def.healer ? FIELD_SUPPORT.medicSeekRadius : FIELD_SUPPORT.engineerSeekRadius;
+    const seek = this.def.healer ? this.healSeek : FIELD_SUPPORT.engineerSeekRadius;
     let best = null;
     let bestScore = Infinity;
     for (const unit of this.game.units) {
@@ -369,7 +369,7 @@ export class Unit extends Entity {
     this.supportFx -= dt;
     if (this.def.healer) {
       const before = target.hp;
-      target.hp = Math.min(target.maxHp, target.hp + FIELD_SUPPORT.medicRate * dt);
+      target.hp = Math.min(target.maxHp, target.hp + this.healRate * dt);
       if (this.supportFx <= 0) {
         this.supportFx = 0.35 + Math.random() * 0.2;
         this.game.fx.healSparks(target.position, 0.9);
@@ -377,7 +377,7 @@ export class Unit extends Entity {
       if (target.hp !== before) target.updateBar?.();
     } else if (this.def.repairer) {
       const before = target.hp;
-      target.hp = Math.min(target.maxHp, target.hp + FIELD_SUPPORT.engineerRate * dt);
+      target.hp = Math.min(target.maxHp, target.hp + this.repairRate * dt);
       if (this.supportFx <= 0) {
         this.supportFx = 0.22 + Math.random() * 0.16;
         this.game.fx.repairSparks(target.position, Math.min(1.5, 0.55 + target.radius * 0.25));
@@ -402,6 +402,16 @@ export class Unit extends Entity {
     // на новой дистанции и улучшение дальности почти бесполезно.
     this.aggro = Math.max(this.def.aggro * Math.max(1, mods.range), this.range + 4);
     this.speed = this.def.speed * mods.speed;
+    this.pierce = mods.pierce;
+    this.vision = (this.def.vision ?? VISION.unit) + mods.visionAdd;
+    this.cooldown = this.def.cooldown * mods.cooldown;
+    this.splash = (this.def.splash ?? 0) * mods.splash;
+    this.salvo = (this.def.salvo ?? 1) + mods.salvoAdd;
+    this.healRate = FIELD_SUPPORT.medicRate * mods.healRate;
+    this.healSeek = FIELD_SUPPORT.medicSeekRadius * mods.healRadius;
+    this.healRange = FIELD_SUPPORT.medicRange * mods.healRadius;
+    this.repairRate = FIELD_SUPPORT.engineerRate * mods.repairRate;
+    this.buildSpeed = mods.buildSpeed;
     this.updateBar?.();
   }
 
@@ -682,7 +692,7 @@ export class Unit extends Entity {
 
   fire(target) {
     if (!this.alive || this.game.over || !this.canFight) return;
-    this.attackCd = this.def.cooldown;
+    this.attackCd = this.cooldown ?? this.def.cooldown;
     this.recoil = 1;
 
     const kind = this.def.projectile ?? 'bullet';
@@ -720,7 +730,7 @@ export class Unit extends Entity {
         arc: Math.min(1.8, shotDistance * 0.06),
         onImpact: (impact) => {
           if (this.game.over) return;
-          this.game.splashDamage(impact, this.def.splash, this.damage, this);
+          this.game.splashDamage(impact, this.splash ?? this.def.splash, this.damage, this);
           this.game.fx.explode(impact, 0.8, { scorch: true });
           this.game.audio?.explosion(impact, 0.8);
         },
@@ -745,7 +755,7 @@ export class Unit extends Entity {
 
   /** РСЗО выпускает ракеты очередью, а не одним залпом в один кадр. */
   startVolley(target) {
-    const count = this.def.salvo ?? 1;
+    const count = this.salvo ?? this.def.salvo ?? 1;
     const delay = this.def.salvoDelay ?? 0.14;
     const spread = this.def.salvoSpread ?? 2.5;
     const impactY = Math.min(target.def.height * 0.55, 4);
@@ -785,7 +795,7 @@ export class Unit extends Entity {
       arc: Math.min(5, shotDistance * 0.16),
       onImpact: (impact) => {
         if (this.game.over) return;
-        this.game.splashDamage(impact, this.def.splash, this.damage, this);
+        this.game.splashDamage(impact, this.splash ?? this.def.splash, this.damage, this);
         this.game.fx.explode(impact, 0.72, { scorch: true });
         this.game.fx.impactDust(impact, 1.1);
         this.game.audio?.explosion(impact, 0.72);
@@ -1140,6 +1150,7 @@ export class Building extends Entity {
     this.fogGhost = null;
     this.root.rotation.y = this.rotation;
     this.setupVisual();
+    this.applyUpgrades();
 
     if (!this.complete) {
       this.ghostMat = game.factory.mat('ghostCyan', {
@@ -1171,6 +1182,39 @@ export class Building extends Entity {
     this.rally = this.defaultRally();
     if (type === 'barracks') this.ensureRallyVisual();
     this.updateBar();
+  }
+
+  /**
+   * Пересчитывает прочность и оборонные характеристики постройки с учётом
+   * изученных улучшений. Для недостроенного здания сохраняется прогресс.
+   */
+  applyUpgrades(heal = false) {
+    const mods = this.game.buildingModifiers?.(this.faction, this.type);
+    if (!mods) return;
+    const previousMax = this.maxHp;
+    this.maxHp = Math.max(1, Math.round(this.def.hp * mods.hp));
+    this.armor = (this.def.armor ?? 0) + (mods.armor ?? 0);
+    if (this.complete) {
+      this.hpCap = this.maxHp;
+      this.hp = heal
+        ? Math.min(this.maxHp, this.hp + Math.max(0, this.maxHp - previousMax))
+        : this.maxHp;
+    } else {
+      // setConstruction пересчитает потолок прочности и добавит прирост
+      // к текущим HP, поэтому урон, полученный на стройке, сохраняется.
+      this.setConstruction(this.construction);
+    }
+    if (this.type === 'turret' && this.def.defense) {
+      const d = this.def.defense;
+      this.defense = {
+        ...d,
+        damage: d.damage * mods.damage,
+        range: d.range * mods.range,
+        cooldown: d.cooldown * mods.cooldown,
+        aggro: d.aggro * Math.max(1, mods.range),
+      };
+    }
+    this.updateBar?.();
   }
 
   setFogState(state) {
@@ -1405,7 +1449,8 @@ export class Building extends Entity {
   enqueue(type) {
     if (this.queue.length >= this.maxQueue) return false;
     const def = UNITS[type];
-    this.queue.push({ type, remaining: def.buildTime, total: def.buildTime });
+    const time = def.buildTime * (this.game.trainTimeMultiplier?.(this.faction) ?? 1);
+    this.queue.push({ type, remaining: time, total: time });
     this.forceBar = true;
     return true;
   }
@@ -1453,7 +1498,7 @@ export class Building extends Entity {
 
   /** Стационарное орудие: наводится, стреляет и не требует команд игрока. */
   updateDefense(dt) {
-    const def = this.def.defense;
+    const def = this.defense;
     if (!def) return;
     this.attackCd = Math.max(0, this.attackCd - dt);
     this.recoil = Math.max(0, this.recoil - dt * 6);
@@ -1521,7 +1566,9 @@ export class Building extends Entity {
       if (builders.length) {
         this.stalledTime = 0;
         const workers = Math.min(builders.length, 4);
-        this.setConstruction(this.construction + (dt / this.def.buildTime) * workers);
+        const engineerBoost = builders[0]?.buildSpeed ?? 1;
+        const buildTime = this.def.buildTime * (game.buildTimeMultiplier?.(this.faction) ?? 1);
+        this.setConstruction(this.construction + (dt / buildTime) * workers * engineerBoost);
         for (const unit of builders) unit.workTimer = 0.22;
         this.buildFx -= dt;
         if (this.buildFx <= 0) {

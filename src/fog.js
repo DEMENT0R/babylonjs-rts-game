@@ -58,6 +58,7 @@ export class FogOfWar {
 
   /** Радиус обзора сущности в мировых единицах. */
   visionOf(entity) {
+    if (entity.vision) return entity.vision;
     if (entity.isBuilding) {
       return entity.type === 'hq' ? VISION.hq : VISION.building;
     }

@@ -6,9 +6,10 @@ import {
   UNITS,
   BUILDINGS,
   UPGRADES,
+  UPGRADE_PAGES,
+  UPGRADE_LINE_KEYS,
   BUILD_ORDER,
   BUILD_HOTKEYS,
-  UPGRADE_ORDER,
   TRAIN_ORDER,
   TRAIN_HOTKEYS,
   HQ_TRAIN_ORDER,
@@ -52,6 +53,8 @@ export class UI {
     // в лобби, а из него можно вернуться в меню.
     this.inLobby = false;
     this.settingsTab = 'graphics';
+    // Страница исследований техцентра: 0 — войска, 1 — база.
+    this.researchPage = 0;
     // Лобби: сложность выбирается сразу, а сид карты — случайно (по умолчанию)
     // или вручную. Режим из адреса нужен, чтобы F5 после ручного сида возвращал
     // в лобби с тем же выбором, а не сбрасывал его.
@@ -1093,7 +1096,11 @@ export class UI {
     }
 
     if (b.type === 'lab') {
-      const commands = UPGRADE_ORDER.map((key, i) => this.upgradeCommand(key, b, BUILD_HOTKEYS[i]));
+      // Линии разнесены на две страницы, чтобы панель не уходила в прокрутку,
+      // а на каждую команду хватало горячей клавиши.
+      const lines = UPGRADE_PAGES[this.researchPage] ?? UPGRADE_PAGES[0];
+      const commands = lines.map((lineKey, i) => this.upgradeCommand(lineKey, b, BUILD_HOTKEYS[i]));
+      commands.push(this.researchPageCommand());
       if (repair) commands.push(repair);
       return commands;
     }
@@ -1180,11 +1187,33 @@ export class UI {
     };
   }
 
-  upgradeCommand(key, building, hotkey) {
+  researchPageCommand() {
+    const toBase = this.researchPage === 0;
+    return {
+      id: 'research-page',
+      label: toBase ? 'База' : 'Войска',
+      short: toBase ? 'БАЗА' : 'ВОЙСКА',
+      icon: 'lab',
+      hotkey: 'T',
+      desc: toBase
+        ? 'Перейти к исследованиям базы: экономика, оборона, снабжение и лимит армии.'
+        : 'Вернуться к исследованиям войск: пехота, скауты, танки, РСЗО, медики и инженеры.',
+      kind: 'research',
+      disabled: false,
+      action: () => {
+        this.researchPage = toBase ? 1 : 0;
+        this.renderCommands();
+      },
+    };
+  }
+
+  upgradeCommand(lineKey, building, hotkey) {
     const game = this.game;
-    const def = UPGRADES[key];
-    const done = game.upgrades.player.has(key);
-    const queued = game.hasPendingUpgrade('player', key);
+    const nextKey = game.nextUpgradeKey('player', lineKey);
+    const lineKeys = UPGRADE_LINE_KEYS[lineKey] ?? [lineKey];
+    const def = UPGRADES[nextKey ?? lineKeys[lineKeys.length - 1]];
+    const done = !nextKey;
+    const queued = nextKey ? game.hasPendingUpgrade('player', nextKey) : false;
     const queueFull = building.queue.length >= building.maxQueue;
     const disabled = !building.complete || done || queued || queueFull || game.credits < def.cost;
     const reason = !building.complete ? MESSAGES.notReady
@@ -1193,7 +1222,7 @@ export class UI {
           : queueFull ? MESSAGES.queueFull
             : `Недостаточно кредитов. Нужно ${def.cost}.`;
     return {
-      id: `research:${key}`,
+      id: `research:${nextKey ?? lineKey}`,
       label: def.name,
       short: def.name.toUpperCase(),
       icon: def.icon,
@@ -1204,7 +1233,7 @@ export class UI {
       disabled,
       reason,
       action: () => {
-        if (game.startUpgrade(building, key)) {
+        if (nextKey && game.startUpgrade(building, nextKey)) {
           this.renderSelection();
           this.renderCommands();
         }
@@ -1220,12 +1249,32 @@ export class UI {
       range: 'ДАЛЬНОСТЬ',
       speed: 'СКОРОСТЬ',
       armor: 'БРОНЯ',
+      pierce: 'ПРОБИТИЕ',
+      visionAdd: 'ОБЗОР',
+      cooldown: 'ПЕРЕЗАРЯДКА',
+      splash: 'СПЛЕШ',
+      salvoAdd: 'РАКЕТЫ',
+      healRate: 'ЛЕЧЕНИЕ',
+      healRadius: 'РАДИУС ЛЕЧЕНИЯ',
+      repairRate: 'РЕМОНТ',
+      buildSpeed: 'СТРОЙКА',
+      income: 'ДОХОД',
+      repairCost: 'ЦЕНА РЕМОНТА',
+      trainTime: 'НАЁМ',
+      buildTime: 'СТРОЙКА',
+      armyCap: 'ЛИМИТ',
     };
-    const effects = Object.entries(def.effects).map(([stat, value]) => {
-      const text = stat === 'armor' ? `+${value}` : `+${Math.round((value - 1) * 100)}%`;
+    const flat = new Set(['armor', 'pierce', 'visionAdd', 'salvoAdd', 'armyCap']);
+    const lower = new Set(['cooldown', 'trainTime', 'buildTime', 'repairCost']);
+    const effects = Object.entries(def.effects ?? {}).map(([stat, value]) => {
+      let text;
+      if (flat.has(stat)) text = `+${value}`;
+      else if (lower.has(stat)) text = `−${Math.round((1 - value) * 100)}%`;
+      else text = `+${Math.round((value - 1) * 100)}%`;
       return `<span><i>${labels[stat] ?? stat.toUpperCase()}</i>${text}</span>`;
     }).join('');
-    const state = done ? 'уже изучено' : queued ? 'уже в очереди' : 'техцентр';
+    const levels = UPGRADE_LINE_KEYS[def.line]?.length ?? 1;
+    const state = done ? 'уже изучено' : queued ? 'уже в очереди' : `уровень ${def.tier}/${levels}`;
     return `
       <div class="tip-head"><span class="tip-role">ИССЛЕДОВАНИЕ</span><b>${def.name}</b></div>
       <p>${def.desc}</p>
@@ -1272,17 +1321,22 @@ export class UI {
   }
 
   unitTip(def) {
+    const mods = this.game.unitModifiers('player', def.key);
+    const hp = Math.round(def.hp * mods.hp);
+    const damage = Math.round(def.damage * mods.damage);
+    const range = Math.round(def.range * mods.range);
+    const speed = (def.speed * mods.speed).toFixed(1);
     const support = def.healer
-      ? `<span><i>ЛЕЧЕНИЕ</i>${FIELD_SUPPORT.medicRate}/с</span><span><i>РАДИУС</i>${FIELD_SUPPORT.medicSeekRadius}</span>`
+      ? `<span><i>ЛЕЧЕНИЕ</i>${(FIELD_SUPPORT.medicRate * mods.healRate).toFixed(1)}/с</span><span><i>РАДИУС</i>${Math.round(FIELD_SUPPORT.medicSeekRadius * mods.healRadius)}</span>`
       : def.repairer
-        ? `<span><i>РЕМОНТ ТЕХНИКИ</i>${FIELD_SUPPORT.engineerRate}/с</span>`
+        ? `<span><i>РЕМОНТ ТЕХНИКИ</i>${(FIELD_SUPPORT.engineerRate * mods.repairRate).toFixed(1)}/с</span>`
         : '';
     return `
       <div class="tip-head"><span class="tip-role">${def.role}</span><b>${def.name}</b></div>
       <p>${def.desc}</p>
       <div class="tip-stats">
-        <span><i>HP</i>${def.hp}</span><span><i>УРОН</i>${def.damage}</span>
-        <span><i>ДАЛЬНОСТЬ</i>${def.range}</span><span><i>СКОРОСТЬ</i>${def.speed}</span>
+        <span><i>HP</i>${hp}</span><span><i>УРОН</i>${damage}</span>
+        <span><i>ДАЛЬНОСТЬ</i>${range}</span><span><i>СКОРОСТЬ</i>${speed}</span>
         <span><i>ЛИМИТ АРМИИ</i>${def.supply ?? 1}</span>
         ${def.builder ? '<span><i>СТРОЙКА</i>до ×4</span>' : ''}
         ${support}
@@ -1292,15 +1346,27 @@ export class UI {
   }
 
   buildTip(def) {
+    const game = this.game;
+    const mods = game.buildingModifiers('player', def.key);
+    const hp = Math.round(def.hp * mods.hp);
+    const income = def.income
+      ? (def.income * game.globalModifiers('player').income).toFixed(1)
+      : null;
+    const defense = def.defense
+      ? {
+        damage: Math.round(def.defense.damage * mods.damage),
+        range: Math.round(def.defense.range * mods.range),
+      }
+      : null;
     const power = def.powerProduce ? `+${def.powerProduce}` : def.powerUse ? `−${def.powerUse}` : '';
     return `
       <div class="tip-head"><span class="tip-role">${def.role}</span><b>${def.name}</b></div>
       <p>${def.desc}</p>
       <div class="tip-stats">
-        <span><i>HP</i>${def.hp}</span>${power ? `<span><i>ЭНЕРГИЯ</i>${power}</span>` : ''}
-        ${def.income ? `<span><i>ДОХОД</i>${def.income}/с</span>` : ''}
+        <span><i>HP</i>${hp}</span>${power ? `<span><i>ЭНЕРГИЯ</i>${power}</span>` : ''}
+        ${income ? `<span><i>ДОХОД</i>${income}/с</span>` : ''}
         ${def.armyCap ? `<span><i>ЛИМИТ АРМИИ</i>+${def.armyCap}</span>` : ''}
-        ${def.defense ? `<span><i>УРОН</i>${def.defense.damage}</span><span><i>ДАЛЬНОСТЬ</i>${def.defense.range}</span>` : ''}
+        ${defense ? `<span><i>УРОН</i>${defense.damage}</span><span><i>ДАЛЬНОСТЬ</i>${defense.range}</span>` : ''}
       </div>
       <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.buildTime} с · нужны инженеры рядом</span></div>
     `;
@@ -1416,12 +1482,14 @@ export class UI {
       const chips = types.length > 1
         ? `<div class="type-chips">${types.map((t) => `<span class="type-chip">${icon(UNITS[t].icon)} ${UNITS[t].name} <b>×${counts.get(t)}</b></span>`).join('')}</div>`
         : '';
-      const upgradeKey = same
-        ? Object.keys(UPGRADES).find((key) => UPGRADES[key].target === primary.type
-          && this.game.upgrades.player.has(key))
-        : null;
-      const upgradeChip = upgradeKey
-        ? `<span class="chip chip--research">${icon('research')} ${UPGRADES[upgradeKey].name}</span>`
+      const upgradeNames = same
+        ? Object.keys(UPGRADES)
+          .filter((key) => UPGRADES[key].target === primary.type
+            && this.game.upgrades.player.has(key))
+          .map((key) => UPGRADES[key].name)
+        : [];
+      const upgradeChip = upgradeNames.length
+        ? `<span class="chip chip--research">${icon('research')} ${upgradeNames.join(' · ')}</span>`
         : '';
       body.innerHTML = `
         <div class="sel-main">
@@ -1436,13 +1504,13 @@ export class UI {
             <div class="hpbar"><i style="width:${pct}%"></i><b>${Math.ceil(totalHp)} / ${totalMax}</b></div>
             ${same ? `<div class="sel-stats">
               ${def.healer
-                ? `<span>ЛЕЧЕНИЕ <b>${FIELD_SUPPORT.medicRate}/с</b></span>
-                   <span>РАДИУС <b>${FIELD_SUPPORT.medicSeekRadius}</b></span>`
+                ? `<span>ЛЕЧЕНИЕ <b>${(primary.healRate ?? FIELD_SUPPORT.medicRate).toFixed(1)}/с</b></span>
+                   <span>РАДИУС <b>${Math.round(primary.healSeek ?? FIELD_SUPPORT.medicSeekRadius)}</b></span>`
                 : `<span>УРОН <b>${Math.round(primary.damage ?? def.damage)}</b></span>
                    <span>ДАЛЬНОСТЬ <b>${Math.round(primary.range ?? def.range)}</b></span>`}
               <span>СКОРОСТЬ <b>${(primary.speed ?? def.speed).toFixed(1)}</b></span>
               <span>ЛИМИТ <b>${def.supply ?? 1}</b></span>
-              ${def.repairer ? `<span>РЕМОНТ ТЕХНИКИ <b>${FIELD_SUPPORT.engineerRate}/с</b></span>` : ''}
+              ${def.repairer ? `<span>РЕМОНТ ТЕХНИКИ <b>${(primary.repairRate ?? FIELD_SUPPORT.engineerRate).toFixed(1)}/с</b></span>` : ''}
             </div>` : `<div class="sel-note">В отряде несколько типов юнитов. Наведите на карточку найма для характеристик.</div>`}
             ${chips}
             ${upgradeChip}
@@ -1484,10 +1552,13 @@ export class UI {
       : def.powerUse
         ? `<span class="chip chip--power-use">${icon('bolt')} −${def.powerUse}</span>`
         : '';
-    const incomeChip = def.income ? `<span class="chip chip--income">${icon('credits')} ${def.income}/с</span>` : '';
+    const defense = b.defense ?? def.defense;
+    const incomeChip = def.income
+      ? `<span class="chip chip--income">${icon('credits')} ${(def.income * this.game.globalModifiers(b.faction).income).toFixed(1)}/с</span>`
+      : '';
     const armyChip = def.armyCap ? `<span class="chip chip--army">${icon('army')} +${def.armyCap} ЛИМИТ</span>` : '';
-    const defenseChip = def.defense
-      ? `<span class="chip chip--defense">${icon('turret')} ${def.defense.damage} УРОН · ${def.defense.range} ДАЛЬН.</span>`
+    const defenseChip = defense
+      ? `<span class="chip chip--defense">${icon('turret')} ${Math.round(defense.damage)} УРОН · ${Math.round(defense.range)} ДАЛЬН.</span>`
       : '';
     const repairChip = b.repairing
       ? `<span class="chip chip--repair">${icon('repair')} +${this.game.repairRate(b).toFixed(1)} HP/с</span>`
