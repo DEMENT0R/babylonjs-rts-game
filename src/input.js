@@ -5,7 +5,7 @@ import {
   Matrix,
   MeshBuilder,
 } from './babylon.js';
-import { BUILDINGS, CAMERA, MAP } from './config.js';
+import { BUILDINGS, CAMERA, MAP, MESSAGES } from './config.js';
 import { clamp, damp, dist } from './utils.js';
 
 const NEUTRAL_GHOST = '#4fd2ff';
@@ -1047,7 +1047,9 @@ export class Input {
     const place = this.game.findPlacement(this.placement.type, p.x, p.z);
     if (!place.valid) {
       this.game.notify(
-        place.reason === 'oil' ? 'Вышку можно поставить только на свободное месторождение.' : 'Здесь нельзя строить.',
+        place.reason === 'oil' ? 'Вышку можно поставить только на свободное месторождение.'
+          : place.reason === 'fog' ? MESSAGES.needExplore
+            : 'Здесь нельзя строить.',
         'warn',
         'bad-place',
         0,

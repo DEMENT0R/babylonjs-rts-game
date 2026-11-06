@@ -780,6 +780,7 @@ export class Game {
   // ------------------------------------------------------------- building placement
   findPlacement(type, x, z, opts = {}) {
     const def = BUILDINGS[type];
+    const faction = opts.faction ?? 'player';
     const r = def.radius;
     // Дополнительный зазор между зданиями. ИИ просит его больше, чтобы
     // постройки не лепились вплотную. Вышку не двигаем: её место задаёт
@@ -798,6 +799,12 @@ export class Game {
 
     if (Math.abs(px) > MAP.half - r - 1 || Math.abs(pz) > MAP.half - r - 1) {
       return { valid: false, reason: 'bounds', x: px, z: pz, patch };
+    }
+
+    // Строить можно только там, что уже разведано этой стороной. Проверка
+    // идёт по итоговой точке: у вышки это центр месторождения, а не клик.
+    if (this.fog && !this.fog.isExplored(faction, px, pz)) {
+      return { valid: false, reason: 'fog', x: px, z: pz, patch };
     }
 
     for (const o of this.world.obstacles) {
@@ -846,6 +853,7 @@ export class Game {
     if (!place.valid) {
       if (faction === 'player') {
         if (place.reason === 'oil') this.notify(MESSAGES.needOil, 'warn', 'bad-place', 0, 2);
+        else if (place.reason === 'fog') this.notify(MESSAGES.needExplore, 'warn', 'bad-place', 0, 2);
         else this.notify(MESSAGES.badPlace, 'warn', 'bad-place', 0, 2);
       }
       return null;

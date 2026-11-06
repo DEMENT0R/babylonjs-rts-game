@@ -358,7 +358,7 @@ export class AIController {
         const x = hq.position.x + Math.cos(angle) * radius;
         const z = hq.position.z + Math.sin(angle) * radius;
         if (Math.abs(x) > MAP.clamp - 4 || Math.abs(z) > MAP.clamp - 4) continue;
-        const place = this.game.findPlacement(type, x, z, { padding: AI.buildSpacing });
+        const place = this.game.findPlacement(type, x, z, { padding: AI.buildSpacing, faction: 'enemy' });
         if (place.valid) return place;
       }
     }
