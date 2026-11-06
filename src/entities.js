@@ -8,7 +8,7 @@ import {
   Vector3,
   Color3,
 } from './babylon.js';
-import { UNITS, BUILDINGS, UPGRADES, FACTIONS, MAP, MESSAGES, FIELD_SUPPORT } from './config.js';
+import { UNITS, BUILDINGS, UPGRADES, FACTIONS, MAP, MESSAGES, FIELD_SUPPORT, CONSTRUCTION } from './config.js';
 import { clamp, dist, turnTowards, damp, angleDiff } from './utils.js';
 import { segmentDistance } from './nav.js';
 
@@ -1109,6 +1109,13 @@ export class Building extends Entity {
     super(game, faction, type, def, x, z, true);
     this.complete = !!opts.complete;
     this.construction = this.complete ? 1 : 0;
+    this.hpCap = this.maxHp;
+    if (!this.complete) {
+      // У только что заложенного здания есть лишь фундамент: полный запас
+      // прочности появится вместе со стенами, а не мгновенно.
+      this.hpCap = this.maxHp * CONSTRUCTION.minHpFraction;
+      this.hp = this.hpCap;
+    }
     this.queue = [];
     this.maxQueue = 5;
     this.rally = null;
@@ -1290,10 +1297,26 @@ export class Building extends Entity {
     }
   }
 
+  /**
+   * Пересчитывает прочность по прогрессу стройки. Прирост «новых» HP
+   * добавляется к текущим, поэтому уже полученный урон сохраняется: здание
+   * не лечится само, когда достраивается.
+   */
+  setConstruction(value) {
+    const previousCap = this.hpCap ?? this.maxHp;
+    this.construction = clamp(value, 0, 1);
+    this.hpCap = this.maxHp * (
+      CONSTRUCTION.minHpFraction
+      + (1 - CONSTRUCTION.minHpFraction) * this.construction
+    );
+    const gained = this.hpCap - previousCap;
+    if (gained > 0) this.hp = Math.min(this.hpCap, this.hp + gained);
+  }
+
   finishConstruction() {
     if (this.complete) return;
+    this.setConstruction(1);
     this.complete = true;
-    this.construction = 1;
     this.forceBar = false;
     this.root.scaling.set(1, 1, 1);
     if (this.originalMaterials) {
@@ -1498,7 +1521,7 @@ export class Building extends Entity {
       if (builders.length) {
         this.stalledTime = 0;
         const workers = Math.min(builders.length, 4);
-        this.construction = Math.min(1, this.construction + (dt / this.def.buildTime) * workers);
+        this.setConstruction(this.construction + (dt / this.def.buildTime) * workers);
         for (const unit of builders) unit.workTimer = 0.22;
         this.buildFx -= dt;
         if (this.buildFx <= 0) {

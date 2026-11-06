@@ -72,6 +72,13 @@ export const START = {
   },
 };
 
+// Строительство: недоделанное здание не должно иметь полный запас прочности.
+export const CONSTRUCTION = {
+  // Доля максимальной прочности сразу после закладки. Дальше она растёт
+  // линейно до 100% вместе с прогрессом стройки.
+  minHpFraction: 0.1,
+};
+
 // order — порядок кнопок в командной панели.
 export const BUILD_ORDER = ['power', 'barracks', 'derrick', 'lab', 'turret', 'depot', 'wall'];
 export const BUILD_HOTKEYS = ['Z', 'X', 'C', 'V', 'B', 'N', 'M'];
