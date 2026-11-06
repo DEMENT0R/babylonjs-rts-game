@@ -17,6 +17,10 @@ const outPath = path.join(root, 'src', 'changelog.js');
 const packagePath = path.join(root, 'package.json');
 
 const SECTION_ORDER = ['Добавлено', 'Изменено', 'Исправлено', 'Удалено', 'Документация'];
+// Служебные разделы и записи не попадают в игру: это история для разработчиков,
+// а не изменения, которые видит игрок.
+const HIDDEN_SECTIONS = new Set(['Служебное', 'Документация']);
+const SERVICE_PATTERN = /(GitHub|Pages|workflow|npm|Node\.js|README|server\.mjs|CHANGELOG|changelog:build|verify:maps|deploy-pages|репозитори|Журнал изменений)/i;
 
 function git(args) {
   try {
@@ -107,12 +111,22 @@ const fallbackDate = git(['log', '-1', '--format=%cs', '--', 'CHANGELOG.md'])
 const groups = new Map();
 let resolved = 0;
 let guessed = 0;
+let skipped = 0;
 
 for (const release of releases) {
   for (const section of release.sections) {
+    if (HIDDEN_SECTIONS.has(section.title)) {
+      skipped += section.items.length;
+      continue;
+    }
     for (const item of section.items) {
       const text = plain(item.raw);
       if (!text) continue;
+      // Страховка для служебной записи, забытой в обычном разделе.
+      if (SERVICE_PATTERN.test(text)) {
+        skipped++;
+        continue;
+      }
       const date = release.date ?? commitDate(item.firstLine) ?? fallbackDate;
       if (release.date || (!release.date && commitDate(item.firstLine))) resolved++;
       else guessed++;
@@ -166,5 +180,6 @@ const total = ordered.reduce(
   0,
 );
 console.log(`Журнал изменений: ${total} записей в ${ordered.length} датах → src/changelog.js`);
+if (skipped) console.log(`  служебных записей скрыто: ${skipped}`);
 if (guessed) console.log(`  дат из коммитов не нашлось: ${guessed} (подставлена последняя дата)`);
 if (!resolved) console.log('  предупреждение: git недоступен, все даты условные');
