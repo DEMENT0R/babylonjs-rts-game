@@ -1085,7 +1085,9 @@ export class UI {
     }
 
     if (b.type === 'barracks') {
-      const commands = TRAIN_ORDER.map((type, i) => this.trainCommand(type, b, TRAIN_HOTKEYS[i]));
+      // Найм идёт во все выбранные казармы, а не только в первую.
+      const barracks = buildings.filter((item) => item.type === 'barracks');
+      const commands = TRAIN_ORDER.map((type, i) => this.trainCommand(type, barracks, TRAIN_HOTKEYS[i]));
       if (repair) commands.push(repair);
       return commands;
     }
@@ -1120,13 +1122,23 @@ export class UI {
     };
   }
 
-  trainCommand(type, building, hotkey) {
+  trainCommand(type, buildings, hotkey) {
     const game = this.game;
     const def = UNITS[type];
-    const queueFull = building.queue.length >= building.maxQueue;
+    const expected = type === 'engineer' ? 'hq' : 'barracks';
+    const list = (Array.isArray(buildings) ? buildings : [buildings])
+      .filter((b) => b && b.alive && b.type === expected);
     const supply = def.supply ?? 1;
-    const cap = game.getArmyUsed('player') + game.getQueuedSupply('player') + supply > game.getArmyCap('player');
-    const disabled = !building.complete || queueFull || game.credits < def.cost || cap;
+    const capReached = game.getArmyUsed('player') + game.getQueuedSupply('player') + supply
+      > game.getArmyCap('player');
+    const ready = list.filter((b) => b.complete && b.queue.length < b.maxQueue);
+    const queueFull = list.length > 0 && list.every((b) => b.complete && b.queue.length >= b.maxQueue);
+    const disabled = ready.length === 0 || capReached || game.credits < def.cost;
+    const reason = list.length === 0 ? MESSAGES.notReady
+      : ready.length === 0
+        ? (queueFull ? MESSAGES.queueFull : MESSAGES.notReady)
+        : capReached ? MESSAGES.capReached
+          : `Недостаточно кредитов. Нужно ${def.cost}.`;
     return {
       id: `train:${type}`,
       label: def.name,
@@ -1138,14 +1150,30 @@ export class UI {
       desc: def.desc,
       kind: 'train',
       disabled,
-      reason: !building.complete ? MESSAGES.notReady
-        : queueFull ? MESSAGES.queueFull
-          : cap ? MESSAGES.capReached
-            : `Недостаточно кредитов. Нужно ${def.cost}.`,
+      reason,
       action: () => {
-        if (game.trainUnit(type, building)) {
+        let queued = 0;
+        for (const b of list) {
+          if (!b.complete || b.queue.length >= b.maxQueue) continue;
+          if (game.credits < def.cost) break;
+          const used = game.getArmyUsed('player') + game.getQueuedSupply('player');
+          if (used + supply > game.getArmyCap('player')) break;
+          if (game.trainUnit(type, b)) queued++;
+        }
+        if (queued) {
           this.renderSelection();
           this.renderCommands();
+        }
+        if (queued > 0 && queued < list.length) {
+          game.notify(
+            `Заказ ушёл в ${queued} из ${list.length} казарм: часть занята или не хватает ресурсов.`,
+            'info',
+            `train-partial-${type}`,
+            0,
+            3,
+          );
+        } else if (!queued) {
+          game.notify(reason, 'warn', `train-${type}`, 0, 3);
         }
       },
       tip: this.unitTip(def),
