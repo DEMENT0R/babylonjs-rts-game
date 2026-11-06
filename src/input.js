@@ -5,7 +5,7 @@ import {
   Matrix,
   MeshBuilder,
 } from './babylon.js';
-import { BUILDINGS, CAMERA, MAP, MESSAGES } from './config.js';
+import { BUILDINGS, CAMERA, MAP } from './config.js';
 import { clamp, damp, dist } from './utils.js';
 
 const NEUTRAL_GHOST = '#4fd2ff';
@@ -27,6 +27,7 @@ export class Input {
     this.camera = game.camera;
     this.canvas = this.scene.getEngine().getRenderingCanvas();
     this.selectBoxEl = document.querySelector('#selectBox');
+    this.placeHintEl = document.querySelector('#placeHint');
     this.pointer = { x: 0, y: 0, has: false };
     this.keys = new Set();
     this.desired = {
@@ -924,6 +925,7 @@ export class Input {
 
   cancelPlacement() {
     if (!this.placement) return;
+    this.hidePlaceHint();
     this.placement.ghost.getChildMeshes(false).forEach((m) => m.dispose());
     this.placement.ghost.dispose();
     this.placement.ring.dispose();
@@ -1057,6 +1059,29 @@ export class Input {
       m.visibility = 1;
     });
     this.placement.ring.material = ringMat;
+
+    const issue = this.game.placementIssue(place, canAfford);
+    if (issue) this.showPlaceHint(clientX, clientY, issue);
+    else this.hidePlaceHint();
+  }
+
+  /** Небольшая подсказка у курсора: почему здесь нельзя строить. */
+  showPlaceHint(clientX, clientY, text) {
+    const el = this.placeHintEl;
+    // На телефоне нет наведения: там причина придёт сообщением при тапе.
+    if (!el || this.isTouch) return;
+    if (el.textContent !== text) el.textContent = text;
+    el.classList.add('is-visible');
+    const width = el.offsetWidth || 220;
+    const height = el.offsetHeight || 26;
+    const left = Math.min(clientX + 16, window.innerWidth - width - 10);
+    const top = Math.min(clientY + 18, window.innerHeight - height - 10);
+    el.style.left = `${Math.max(10, left)}px`;
+    el.style.top = `${Math.max(10, top)}px`;
+  }
+
+  hidePlaceHint() {
+    this.placeHintEl?.classList.remove('is-visible');
   }
 
   /** Поворот призрака на 45°; направление — 1 по часовой, -1 против. */
@@ -1081,17 +1106,10 @@ export class Input {
     const p = this.groundPoint(clientX, clientY);
     if (!p) return;
     const place = this.game.findPlacement(this.placement.type, p.x, p.z);
-    if (!place.valid) {
-      this.game.notify(
-        place.reason === 'oil' ? 'Вышку можно поставить только на свободное месторождение.'
-          : place.reason === 'fog' ? MESSAGES.needExplore
-            : place.reason === 'unit' ? MESSAGES.unitOnSite
-              : 'Здесь нельзя строить.',
-        'warn',
-        'bad-place',
-        0,
-        3,
-      );
+    const canAfford = this.game.credits >= BUILDINGS[this.placement.type].cost;
+    const issue = this.game.placementIssue(place, canAfford);
+    if (issue) {
+      this.game.notify(issue, 'warn', 'bad-place', 0, 3);
       return;
     }
     const rotation = this.placement.rotation ?? Math.atan2(-place.x, -place.z);

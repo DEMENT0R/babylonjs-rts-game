@@ -844,6 +844,22 @@ export class Game {
     return { valid: true, x: px, z: pz, patch };
   }
 
+  /** Понятная причина, почему точку нельзя застроить. null — можно. */
+  placementIssue(place, canAfford = true) {
+    if (!place) return MESSAGES.badPlace;
+    if (place.valid) return canAfford ? null : MESSAGES.noCredits;
+    switch (place.reason) {
+      case 'oil': return MESSAGES.needOil;
+      case 'fog': return MESSAGES.needExplore;
+      case 'unit': return MESSAGES.unitOnSite;
+      case 'bounds': return MESSAGES.placementBounds;
+      case 'rock': return MESSAGES.placementRock;
+      case 'wall': return MESSAGES.placementWall;
+      case 'building': return MESSAGES.placementBuilding;
+      default: return MESSAGES.badPlace;
+    }
+  }
+
   /**
    * Закладывает здание. opts.faction позволяет ИИ строить за свой счёт,
    * opts.wallet — объект с полем credits (контроллер ИИ).
@@ -861,10 +877,7 @@ export class Game {
     const place = this.findPlacement(type, x, z, opts);
     if (!place.valid) {
       if (faction === 'player') {
-        if (place.reason === 'oil') this.notify(MESSAGES.needOil, 'warn', 'bad-place', 0, 2);
-        else if (place.reason === 'fog') this.notify(MESSAGES.needExplore, 'warn', 'bad-place', 0, 2);
-        else if (place.reason === 'unit') this.notify(MESSAGES.unitOnSite, 'warn', 'bad-place', 0, 2);
-        else this.notify(MESSAGES.badPlace, 'warn', 'bad-place', 0, 2);
+        this.notify(this.placementIssue(place, true), 'warn', 'bad-place', 0, 2);
       }
       return null;
     }

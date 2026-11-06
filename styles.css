@@ -1252,6 +1252,27 @@ body.mode-attack #scene {
   display: block;
 }
 
+/* Подсказка у курсора в режиме стройки: почему точку нельзя занять. */
+#placeHint {
+  position: fixed;
+  z-index: 70;
+  display: none;
+  max-width: 250px;
+  padding: 5px 8px;
+  background: rgba(24, 7, 5, 0.94);
+  border: 1px solid rgba(255, 91, 60, 0.55);
+  color: #ffb09e;
+  font-size: 9px;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
+}
+
+#placeHint.is-visible {
+  display: block;
+}
+
 .tip-head {
   display: flex;
   align-items: baseline;
