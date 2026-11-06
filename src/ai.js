@@ -552,6 +552,9 @@ export class AIController {
       && !this.scoutTasks.has(u.id)
       // Вернувшийся из-под огня боец отдыхает у базы, а не идёт обратно.
       && (u.aiScoutRest ?? 0) <= game.elapsed
+      // Боец в активной волне занят атакой: разведка его не снимает,
+      // иначе удар слабеет прямо на полпути к цели.
+      && !this.activeWave?.ids.has(u.id)
       && (!u.order || u.order.type === 'move' || u.order.type === 'attackMove' || u.order.type === 'hold')
     ));
     // Позиционный гарнизон уже исключён: разведка берёт только свободных.
