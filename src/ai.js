@@ -481,10 +481,16 @@ export class AIController {
       this.scoutLosses = this.scoutLosses.filter((loss) => loss.until > now);
     }
     for (const [id, task] of this.scoutTasks) {
-      if (task.unit.alive) continue;
-      this.rememberScoutLoss(task.unit.position.x, task.unit.position.z);
-      this.scoutTasks.delete(id);
-      this.debugLog('разведчик погиб: маршрут помечен опасным');
+      const unit = task.unit;
+      if (!unit.alive) {
+        this.rememberScoutLoss(unit.position.x, unit.position.z);
+        this.scoutTasks.delete(id);
+        this.debugLog('разведчик погиб: маршрут помечен опасным');
+        continue;
+      }
+      // Приказ мог перебить гарнизон или волна: задача больше не наша,
+      // иначе боец навсегда останется в списке «уже в разведке».
+      if (unit.order?.type !== 'attackMove') this.scoutTasks.delete(id);
     }
   }
 
@@ -505,6 +511,9 @@ export class AIController {
       && !u.def.builder
       && !u.def.healer
       && !u.aiGarrison
+      // Уже идущий разведчик не переназначается: иначе отряд дёргается на
+      // месте, а каждые десять секунд получает новую цель.
+      && !this.scoutTasks.has(u.id)
       && (!u.order || u.order.type === 'move' || u.order.type === 'attackMove' || u.order.type === 'hold')
     ));
     // Позиционный гарнизон уже исключён: разведка берёт только свободных.
@@ -1555,6 +1564,8 @@ export class AIController {
       squad.push(pool[squad.length]);
     }
 
+    // Бойцы ушли в волну: разведка их больше не ждёт.
+    for (const u of squad) this.scoutTasks.delete(u.id);
     squad.forEach((u, i) => {
       const point = secondary && i % 2 === 0 ? secondary : primary;
       u.issueAttackMove(
