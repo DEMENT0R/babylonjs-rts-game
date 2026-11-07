@@ -1000,30 +1000,39 @@ export class AIController {
     if (!barracks.length) return;
 
     const t = game.elapsed;
-    // Случайный, но осмысленный состав: чем агрессивнее партия, тем охотнее
-    // Противник вкладывается в тяжёлую технику; на старте преобладает пехота.
-    const weights = [
-      { type: 'marine', weight: 1 },
-      { type: 'medic', weight: t > 40 ? 0.4 : 0 },
-      { type: 'scout', weight: t > 35 ? 0.8 : 0.25 },
-      { type: 'tank', weight: t > 95 ? 0.55 * this.aggression : 0 },
-      { type: 'artillery', weight: t > 170 ? 0.4 * this.aggression : 0 },
-    ];
-    // Прошлую волну сожгли турели — противник делает ставку на тяжёлую технику.
-    if (this.rules.counter && this.isTurretCause(this.lastFailureCause())) {
-      for (const item of weights) {
-        if (item.type === 'tank' && t > 60) item.weight = Math.max(item.weight, 0.9);
-        if (item.type === 'artillery' && t > 120) item.weight = Math.max(item.weight, 0.7);
+    // Игрок ушёл в оборону: против турелей нужен осадный ответ, а не ещё
+    // одна волна пехоты под огонь. РСЗО заказывается вне случайного выбора,
+    // иначе осадного звена можно не дождаться всю партию.
+    const siegeNeeded = t > AI.siegeArtilleryFrom ? this.siegeArtilleryNeeded() : 0;
+    let type;
+    if (siegeNeeded > this.artilleryCount()) {
+      type = 'artillery';
+    } else {
+      // Случайный, но осмысленный состав: чем агрессивнее партия, тем охотнее
+      // Противник вкладывается в тяжёлую технику; на старте преобладает пехота.
+      const weights = [
+        { type: 'marine', weight: 1 },
+        { type: 'medic', weight: t > 40 ? 0.4 : 0 },
+        { type: 'scout', weight: t > 35 ? 0.8 : 0.25 },
+        { type: 'tank', weight: t > 95 ? 0.6 * this.aggression : 0 },
+        { type: 'artillery', weight: t > AI.siegeArtilleryFrom ? 0.5 * this.aggression : 0 },
+      ];
+      // Прошлую волну сожгли турели — противник делает ставку на тяжёлую технику.
+      if (this.rules.counter && this.isTurretCause(this.lastFailureCause())) {
+        for (const item of weights) {
+          if (item.type === 'tank' && t > 60) item.weight = Math.max(item.weight, 0.9);
+          if (item.type === 'artillery' && t > 120) item.weight = Math.max(item.weight, 0.7);
+        }
       }
-    }
-    const total = weights.reduce((sum, item) => sum + item.weight, 0);
-    let roll = Math.random() * total;
-    let type = 'marine';
-    for (const item of weights) {
-      roll -= item.weight;
-      if (roll <= 0 && item.weight > 0) {
-        type = item.type;
-        break;
+      const total = weights.reduce((sum, item) => sum + item.weight, 0);
+      let roll = Math.random() * total;
+      type = 'marine';
+      for (const item of weights) {
+        roll -= item.weight;
+        if (roll <= 0 && item.weight > 0) {
+          type = item.type;
+          break;
+        }
       }
     }
 
@@ -1050,6 +1059,53 @@ export class AIController {
     builder.enqueue(type);
     this.saveTime = 0;
     this.trainTimer = 3.5 + Math.random() * 2.5;
+  }
+
+  /** Сколько РСЗО уже есть в армии или заказано в казармах. */
+  artilleryCount() {
+    let count = 0;
+    for (const u of this.game.units) {
+      if (u.alive && u.faction === 'enemy' && u.type === 'artillery') count++;
+    }
+    for (const b of this.game.buildings) {
+      if (!b.alive || b.faction !== 'enemy') continue;
+      for (const item of b.queue ?? []) {
+        if (item.type === 'artillery') count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Что игрок построил у цели: известные турели и баррикады. Считаются только
+   * разведанные постройки — в тумане ИИ о них не знает.
+   */
+  knownFortifications(point) {
+    let turrets = 0;
+    let walls = 0;
+    for (const b of this.game.buildings) {
+      if (!b.alive || b.faction !== 'player') continue;
+      if (b.type !== 'turret' && b.type !== 'wall') continue;
+      if (b.type === 'turret' && !b.complete) continue;
+      if (!this.game.isBuildingKnownTo('enemy', b)) continue;
+      if (dist(point.x, point.z, b.position.x, b.position.z) > AI.fortificationRadius) continue;
+      if (b.type === 'turret') turrets++;
+      else walls++;
+    }
+    // Баррикады не стреляют, но линия из них тоже требует осадного подхода:
+    // считаем их долей турели.
+    return { turrets, walls, hard: turrets + walls / 3 };
+  }
+
+  /** Сколько РСЗО нужно, чтобы вскрыть известные укрепления у штаба игрока. */
+  siegeArtilleryNeeded() {
+    const hq = this.game.entities.find(
+      (e) => e.alive && e.faction === 'player' && e.isBuilding && e.type === 'hq',
+    );
+    if (!hq) return 0;
+    const fort = this.knownFortifications(hq.position);
+    if (fort.hard < AI.siegeFortificationThreshold) return 0;
+    return Math.min(AI.siegeArtilleryCap, Math.max(1, Math.ceil(fort.hard / 2)));
   }
 
   defendBase() {
@@ -1271,8 +1327,14 @@ export class AIController {
     return (dps * splash * (hp + armor * 20 + 40)) / 100;
   }
 
-  squadPower(units) {
-    return units.reduce((sum, u) => sum + this.combatValue(u), 0);
+  /**
+   * Боевая мощь отряда. Против укреплений РСЗО считается дороже: она бьёт
+   * турели вне их сектора обстрела, и без поправки ИИ требовал для штурма
+   * непомерную армию.
+   */
+  squadPower(units, artilleryBonus = 1) {
+    return units.reduce((sum, u) => sum + this.combatValue(u)
+      * (artilleryBonus > 1 && u.type === 'artillery' ? artilleryBonus : 1), 0);
   }
 
   /**
@@ -1302,12 +1364,14 @@ export class AIController {
   }
 
   /** Сколько бойцов нужно, чтобы набрать требуемую мощь. */
-  neededSquad(combat, requiredPower) {
+  neededSquad(combat, requiredPower, artilleryBonus = 1) {
     if (requiredPower <= 0) return 0;
-    const sorted = combat.slice().sort((a, b) => this.combatValue(b) - this.combatValue(a));
+    const value = (u) => this.combatValue(u)
+      * (artilleryBonus > 1 && u.type === 'artillery' ? artilleryBonus : 1);
+    const sorted = combat.slice().sort((a, b) => value(b) - value(a));
     let sum = 0;
     for (let i = 0; i < sorted.length; i++) {
-      sum += this.combatValue(sorted[i]);
+      sum += value(sorted[i]);
       if (sum >= requiredPower) return i + 1;
     }
     return Infinity;
@@ -1823,6 +1887,13 @@ export class AIController {
       ? this.pointNear(raidTarget.position, 5)
       : null;
 
+    // Оборона цели известна по разведке. Если игрок застроился турелями и
+    // баррикадами, РСЗО идёт в отряд первой и считается дороже: только она
+    // бьёт турели с дистанции вне их сектора обстрела.
+    const fort = this.knownFortifications(primaryTarget.position);
+    const siege = tactic !== 'probe' && fort.hard >= AI.siegeFortificationThreshold;
+    const siegeBonus = siege ? AI.siegeArtilleryBonus : 1;
+
     // Размер отряда растёт от волны к волне, но это лишь пожелание: ниже
     // он проверяется по боевой мощи, чтобы в бой не уходили случайные крохи.
     let wanted = Math.round((3 + this.waveIndex * 1.7) * this.aggression)
@@ -1846,7 +1917,7 @@ export class AIController {
       tactic === 'probe' ? 0 : defense * requiredAdvantage,
       basePower,
     );
-    const needed = this.neededSquad(fighters, requiredPower);
+    const needed = this.neededSquad(fighters, requiredPower, siegeBonus);
     if (needed > fighters.length) {
       this.waveTimer = AI.regroupDelay * (0.8 + Math.random() * 0.6);
       this.postponedRuns++;
@@ -1878,10 +1949,15 @@ export class AIController {
     let squadSize = Math.max(wanted, minSquad, needed);
     squadSize = Math.max(1, Math.min(fighters.length, squadSize));
     const pool = shuffle(fighters.slice(), Math.random);
+    // Осадное звено идёт в отряд первым: иначе случайный набор снова оставит
+    // РСЗО на базе, а пехоту — под турелями.
+    if (siege) {
+      pool.sort((a, b) => (b.type === 'artillery' ? 1 : 0) - (a.type === 'artillery' ? 1 : 0));
+    }
     const squad = pool.slice(0, squadSize);
     // `neededSquad` считает сильнейших бойцов, а в отряд попадают случайные:
     // добираем его, пока он реально не наберёт порог мощи.
-    while (this.squadPower(squad) < requiredPower && squad.length < pool.length) {
+    while (this.squadPower(squad, siegeBonus) < requiredPower && squad.length < pool.length) {
       squad.push(pool[squad.length]);
     }
 
@@ -1895,7 +1971,8 @@ export class AIController {
       - squad.reduce((sum, u) => sum + (u.def.supply ?? 1), 0);
     while (homeSupply < AI.waveHomeReserve && squad.length > 1) {
       const last = squad[squad.length - 1];
-      if (this.squadPower(squad) - this.combatValue(last) < requiredPower) break;
+      if (this.squadPower(squad, siegeBonus) - this.squadPower([last], siegeBonus)
+        < requiredPower) break;
       squad.pop();
       homeSupply += last.def.supply ?? 1;
     }
