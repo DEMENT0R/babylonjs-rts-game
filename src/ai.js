@@ -368,7 +368,7 @@ export class AIController {
     // ставил бы несколько модулей подряд на один и тот же провал лимита.
     const depotStep = BUILDINGS.depot.armyCap ?? 10;
     const capTarget = Math.min(
-      AI.armyCap,
+      this.rules.armyCap,
       AI.armyCapPlan + this.waveIndex * AI.armyCapPerWave,
     );
     const plannedCap = armyCap + depotSites * depotStep;
@@ -381,8 +381,8 @@ export class AIController {
     else if (powerMargin < AI.powerReserve) type = 'power';
     // Разведанное месторождение — приоритет: вышка дешёвая и сразу платит.
     else if (freePatch && this.credits > BUILDINGS.derrick.cost + 60) type = 'derrick';
-    else if (needDepot && plannedCap + depotStep <= AI.armyCap
-      && depots + depotSites < 5 && this.credits > BUILDINGS.depot.cost + 30) {
+    else if (needDepot && plannedCap + depotStep <= this.rules.armyCap
+      && depots + depotSites < this.rules.depotCap && this.credits > BUILDINGS.depot.cost + 30) {
       type = 'depot';
     } else if (turrets === 0 && game.elapsed > 130) {
       // Первую турель противник копит целенаправленно: армия на время замирает.
@@ -842,7 +842,7 @@ export class AIController {
   updateEconomy(dt) {
     const game = this.game;
     const used = game.getArmyUsed('enemy') + game.getQueuedSupply('enemy');
-    const cap = Math.min(AI.armyCap, game.getArmyCap('enemy'));
+    const cap = Math.min(this.rules.armyCap, game.getArmyCap('enemy'));
     const stalled = this.hasBarracks()
       && used < cap
       && this.credits < AI.economyCredits;
@@ -887,7 +887,7 @@ export class AIController {
   tryTrain() {
     const game = this.game;
     const used = game.getArmyUsed('enemy') + game.getQueuedSupply('enemy');
-    const cap = Math.min(AI.armyCap, game.getArmyCap('enemy'));
+    const cap = Math.min(this.rules.armyCap, game.getArmyCap('enemy'));
     if (used >= cap) return;
     const barracks = game.buildings.filter(
       (b) => b.alive && b.faction === 'enemy' && b.type === 'barracks'
@@ -1381,7 +1381,7 @@ export class AIController {
       `кредиты ${Math.round(this.credits)}, доход ${income.toFixed(1)}/с`,
       `энергия ${power.used}/${power.produced}${power.factor < 1 ? ' — дефицит' : ''}`
         + `, станций ${plants}`,
-      `армия ${armyUsed}/${armyCap} (потолок ${AI.armyCap}), модулей ${depots}`,
+      `армия ${armyUsed}/${armyCap} (потолок ${this.rules.armyCap}), модулей ${depots}`,
       `план: ${this.buildIntent ?? '—'}`
         + `${this.buildIntent ? `, копит ${this.saveTime.toFixed(0)} с` : ''}`
         + `, стройка ${Math.round(planShare)}% времени`,
