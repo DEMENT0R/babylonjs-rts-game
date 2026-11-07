@@ -174,9 +174,12 @@ export class AIController {
       if (u.alive) supply += u.def.supply ?? 1;
       else u.aiGarrison = false;
     }
-    if (supply >= AI.garrisonSupply) return;
-
     const anchor = this.defenseAnchor();
+    if (supply >= AI.garrisonSupply) {
+      this.holdGarrisonPost(anchor);
+      return;
+    }
+
     const active = this.activeWave?.ids;
     const candidates = fighters
       .filter((u) => (
@@ -196,6 +199,23 @@ export class AIController {
         anchor.z + (Math.random() - 0.5) * 6,
       );
       supply += u.def.supply ?? 1;
+    }
+  }
+
+  /**
+   * Гарнизон возвращается на пост после погони за нарушителем: иначе один
+   * выстрел уводил бойцов с позиции под турелями навсегда.
+   */
+  holdGarrisonPost(anchor) {
+    for (const u of this.game.units) {
+      if (!u.alive || !u.aiGarrison) continue;
+      if (u.order?.type === 'attack' && u.order.target?.alive) continue;
+      const d = dist(u.position.x, u.position.z, anchor.x, anchor.z);
+      if (d <= AI.garrisonHoldRadius + 8) continue;
+      u.issueHold(
+        anchor.x + (Math.random() - 0.5) * 6,
+        anchor.z + (Math.random() - 0.5) * 6,
+      );
     }
   }
 
@@ -1045,37 +1065,96 @@ export class AIController {
   }
 
   /**
-   * Оборона построек: если игрок обстреливает вышку или турель, ближайшие
-   * свободные бойцы идут на помощь. Гарнизон и волна с маршрута не снимаются.
+   * Оборона построек: если игрок обстреливает вышку, турель или казарму,
+   * свободные бойцы идут на помощь. Раньше помощь приходила только после
+   * попадания, только в 30 единицах от здания и не больше двух — дальние
+   * постройки успевали умереть до реакции. Теперь угроза видна заранее, а при
+   * пустой округе защитники подходят с базы, не оголяя её.
    */
   defendStructures() {
     const game = this.game;
+    const hq = this.enemyHq();
+    if (!hq) return;
     const active = this.activeWave?.ids;
+    let homeSupply = this.homeGuardSupply(active);
+
     for (const b of game.buildings) {
       if (!b.alive || b.faction !== 'enemy' || b.type === 'hq') continue;
-      const attacker = b.lastAttacker;
-      if (!attacker?.alive || attacker.faction !== 'player') continue;
-      if (game.elapsed - b.lastHitAt > 8) continue;
-      if (!game.isEntityVisibleTo('enemy', attacker)) continue;
-      const guards = game.units
+      // Баррикады дешёвые и сменные: на них тратить бойцов незачем.
+      if (b.type === 'wall') continue;
+      const threats = this.structureThreats(b);
+      if (!threats.length) continue;
+      const want = Math.min(AI.structureGuardCount, threats.length + 1);
+
+      const candidates = game.units
         .filter((u) => (
           u.alive
           && u.faction === 'enemy'
           && !u.def.builder
           && !u.def.healer
-          && !u.aiGarrison
           && !(active && active.has(u.id))
-          && (!u.order || u.order.type === 'move' || u.order.type === 'hold')
-          && dist(u.position.x, u.position.z, b.position.x, b.position.z) <= AI.structureGuardRadius
+          // Уже дерётся с конкретной целью — не сбиваем приказ каждые 1.5 с.
+          && !(u.order?.type === 'attack' && u.order.target?.alive)
         ))
-        .sort((a, b2) => dist(a.position.x, a.position.z, b.position.x, b.position.z)
-          - dist(b2.position.x, b2.position.z, b.position.x, b.position.z))
-        .slice(0, AI.structureGuardCount);
-      for (const u of guards) {
-        u.issueAttack(attacker);
+        .map((u) => ({ u, d: dist(u.position.x, u.position.z, b.position.x, b.position.z) }))
+        .sort((a, c) => a.d - c.d);
+
+      let sent = 0;
+      for (const { u, d } of candidates) {
+        if (sent >= want) break;
+        const supply = u.def.supply ?? 1;
+        const near = d <= AI.structureGuardRadius;
+        // С базы снимаем только при угрозе в зоне реакции и не оголяя её:
+        // иначе рейд по дальней вышке уводит всю армию, а штаб стоит открытым.
+        if (!near) {
+          if (d > AI.structureCallRadius) continue;
+          if (homeSupply - supply < AI.garrisonSupply) continue;
+        }
+        u.issueAttack(threats[sent % threats.length]);
         u.retaliateTimer = Math.max(u.retaliateTimer ?? 0, 6);
+        if (!near) homeSupply -= supply;
+        sent++;
       }
     }
+  }
+
+  /** Кто угрожает постройке: обстреливает её или подошёл вплотную. */
+  structureThreats(building) {
+    const threats = [];
+    const attacker = building.lastAttacker;
+    if (
+      attacker?.alive
+      && attacker.faction === 'player'
+      && this.game.elapsed - (building.lastHitAt ?? -Infinity) <= AI.structureHitWindow
+      && this.game.isEntityVisibleTo('enemy', attacker)
+    ) {
+      threats.push(attacker);
+    }
+    for (const u of this.game.units) {
+      if (!u.alive || u.faction !== 'player') continue;
+      if (threats.includes(u)) continue;
+      if (!this.game.isEntityVisibleTo('enemy', u)) continue;
+      const d = dist(u.position.x, u.position.z, building.position.x, building.position.z);
+      if (d > AI.structureThreatRadius) continue;
+      threats.push(u);
+      if (threats.length >= AI.structureGuardCount) break;
+    }
+    return threats;
+  }
+
+  /** Сколько снабжения стоит у штаба: база не должна оставаться пустой. */
+  homeGuardSupply(active) {
+    const hq = this.enemyHq();
+    if (!hq) return 0;
+    let supply = 0;
+    for (const u of this.game.units) {
+      if (!u.alive || u.faction !== 'enemy' || u.def.builder || u.def.healer) continue;
+      if (active && active.has(u.id)) continue;
+      const d = dist(u.position.x, u.position.z, hq.position.x, hq.position.z);
+      if (d > AI.garrisonRadius) continue;
+      supply += u.def.supply ?? 1;
+    }
+    return supply;
   }
 
   // ------------------------------------------------------------- оценка сил
