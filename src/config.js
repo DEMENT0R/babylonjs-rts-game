@@ -13,6 +13,10 @@ export const CAMERA = {
   startRadius: 86,
   minBeta: 0.62,
   maxBeta: 1.3,
+  // Дальний отъезд смотрит сверху: от wideFrom до maxRadius камера плавно
+  // наклоняется к wideBeta, иначе обзор «всей карты» получается вдоль земли.
+  wideFrom: 110,
+  wideBeta: 0.8,
   panSpeed: 1.35,
 };
 

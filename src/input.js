@@ -30,6 +30,7 @@ export class Input {
     this.placeHintEl = document.querySelector('#placeHint');
     this.pointer = { x: 0, y: 0, has: false };
     this.keys = new Set();
+    this.nearBeta = this.camera.beta;
     this.desired = {
       alpha: this.camera.alpha,
       beta: this.camera.beta,
@@ -779,6 +780,16 @@ export class Input {
     this.desired.radius = clamp(this.desired.radius, CAMERA.minRadius, CAMERA.maxRadius);
   }
 
+  /**
+   * Наклон камеры привязан к отдалению: на ближнем зуме — привычный ракурс,
+   * на дальнем — плавно к верхнему обзору, чтобы не упираться в горизонт.
+   */
+  zoomBeta(radius) {
+    const span = Math.max(1, CAMERA.maxRadius - CAMERA.wideFrom);
+    const t = clamp((radius - CAMERA.wideFrom) / span, 0, 1);
+    return this.nearBeta + (CAMERA.wideBeta - this.nearBeta) * t;
+  }
+
   onKeyDown(e) {
     if (e.code === 'Escape') {
       if (this.placement) {
@@ -893,6 +904,7 @@ export class Input {
       this.desired.radius = clamp(this.desired.radius * (1 + dt * 1.6), CAMERA.minRadius, CAMERA.maxRadius);
     }
 
+    this.desired.beta = this.zoomBeta(this.desired.radius);
     this.camera.alpha = damp(this.camera.alpha, this.desired.alpha, 7, dt);
     this.camera.beta = damp(this.camera.beta, this.desired.beta, 7, dt);
     this.camera.radius = damp(this.camera.radius, this.desired.radius, 6, dt);
