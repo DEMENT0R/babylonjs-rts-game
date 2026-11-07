@@ -25,9 +25,10 @@ const ALPHA_UNSEEN = 255;
 const ALPHA_EXPLORED = 138;
 
 export class FogOfWar {
-  constructor(game) {
+  constructor(game, { enabled = true } = {}) {
     this.game = game;
     this.scene = game.scene;
+    this.enabled = enabled !== false;
     this.timer = 0;
     this.grids = {
       player: { visible: new Uint8Array(SIZE * SIZE), explored: new Uint8Array(SIZE * SIZE) },
@@ -40,9 +41,51 @@ export class FogOfWar {
       player: new Set(),
       enemy: new Set(),
     };
-    this._buildTerrain();
+    if (this.enabled) {
+      this._buildTerrain();
+      this.refresh();
+      this.applyVisibility();
+      this.drawTerrain();
+    } else {
+      this.revealAll();
+    }
+  }
+
+  /**
+   * Открыть обеим сторонам всю карту. Используется в режиме без тумана:
+   * недостаточно спрятать плоскость — от сетки зависит видимость юнитов,
+   * наведение, стройка и разведка ИИ.
+   */
+  revealAll() {
+    for (const grid of Object.values(this.grids)) {
+      grid.visible.fill(1);
+      grid.explored.fill(1);
+    }
+    this.applyVisibility();
+    this.game.world?.applyFogVisibility?.(this);
+  }
+
+  /** Переключение тумана до начала боя: лобби создаёт игру заранее. */
+  setEnabled(value) {
+    const enabled = value !== false;
+    if (this.enabled === enabled) return;
+    this.enabled = enabled;
+    if (!enabled) {
+      this.revealAll();
+      this.mesh?.setEnabled(false);
+      this.minimapCtx?.clearRect(0, 0, this.minimapCanvas.width, this.minimapCanvas.height);
+      return;
+    }
+    if (!this.mesh) this._buildTerrain();
+    this.mesh?.setEnabled(true);
+    for (const grid of Object.values(this.grids)) {
+      grid.visible.fill(0);
+      grid.explored.fill(0);
+    }
+    for (const known of Object.values(this.knownBuildings)) known.clear();
     this.refresh();
     this.applyVisibility();
+    this.game.world?.applyFogVisibility?.(this);
     this.drawTerrain();
   }
 
@@ -87,6 +130,7 @@ export class FogOfWar {
 
   /** Пересобирает обзор обеих сторон по всем живым юнитам и зданиям. */
   refresh() {
+    if (!this.enabled) return;
     const grids = this.grids;
     for (const faction of ['player', 'enemy']) {
       grids[faction].visible.fill(0);
@@ -119,6 +163,7 @@ export class FogOfWar {
   }
 
   update(dt) {
+    if (!this.enabled) return;
     this.timer -= dt;
     if (this.timer > 0) return;
     this.timer = 0.2;
@@ -130,6 +175,7 @@ export class FogOfWar {
 
   // ------------------------------------------------------------- запросы
   isVisible(faction, x, z) {
+    if (!this.enabled) return true;
     const grid = this.grids[faction];
     if (!grid) return true;
     const { cx, cz } = this.cellOf(x, z);
@@ -137,6 +183,7 @@ export class FogOfWar {
   }
 
   isExplored(faction, x, z) {
+    if (!this.enabled) return true;
     const grid = this.grids[faction];
     if (!grid) return true;
     const { cx, cz } = this.cellOf(x, z);
@@ -152,6 +199,7 @@ export class FogOfWar {
   /** Известна ли стороне эта постройка — сейчас или по прошлой разведке. */
   isBuildingKnown(faction, building) {
     if (!building) return false;
+    if (!this.enabled) return true;
     if (building.faction === faction) return true;
     return this.knownBuildings[faction]?.has(building.id) ?? false;
   }
@@ -228,6 +276,7 @@ export class FogOfWar {
   }
 
   drawTerrain() {
+    if (!this.enabled) return;
     const grid = this.grids.player;
     const data = this.image.data;
     for (let i = 0; i < grid.visible.length; i++) {
@@ -266,6 +315,7 @@ export class FogOfWar {
    * клетки, к которым ведёт уже опасный маршрут.
    */
   nearestUnexplored(x, z, faction = 'player', penalty = null) {
+    if (!this.enabled) return null;
     const grid = this.grids[faction];
     let best = null;
     let bestD = Infinity;
@@ -290,6 +340,7 @@ export class FogOfWar {
 
   /** Доля исследованной карты — для статистики и подсказок. */
   exploredRatio(faction = 'player') {
+    if (!this.enabled) return 1;
     const grid = this.grids[faction];
     let n = 0;
     for (let i = 0; i < grid.explored.length; i++) n += grid.explored[i];

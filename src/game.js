@@ -27,6 +27,7 @@ export class Game {
   constructor({
     scene, camera, factory, world, fx, graphics, audio, audioSettings,
     difficulty = 'normal', difficultySettings = null,
+    fog = 'on', fogSettings = null,
   }) {
     this.scene = scene;
     this.camera = camera;
@@ -39,6 +40,8 @@ export class Game {
     this.audioSettings = audioSettings ?? null;
     this.difficulty = AI_DIFFICULTY[difficulty] ? difficulty : 'normal';
     this.difficultySettings = difficultySettings;
+    this.fogEnabled = fog !== 'off';
+    this.fogSettings = fogSettings;
     this.ui = null;
     this.input = null;
 
@@ -72,7 +75,7 @@ export class Game {
     this.nav = new NavGrid({ half: MAP.half, cell: 2, margin: 1.0 });
 
     this.setupBases();
-    this.fog = new FogOfWar(this);
+    this.fog = new FogOfWar(this, { enabled: this.fogEnabled });
     this.refreshNav();
     this.recomputePower();
     this.refreshArmyCap();
@@ -89,6 +92,20 @@ export class Game {
     this.difficulty = key;
     this.difficultySettings?.set(key);
     this.ai = new AIController(this, key);
+    return true;
+  }
+
+  /**
+   * Туман войны включается и выключается только в лобби: в бою смена правила
+   * открыла бы противнику всю карту посреди схватки.
+   */
+  setFog(value) {
+    if (this.started) return false;
+    const enabled = value !== 'off';
+    if (this.fogEnabled === enabled) return false;
+    this.fogEnabled = enabled;
+    this.fogSettings?.set(enabled ? 'on' : 'off');
+    this.fog?.setEnabled(enabled);
     return true;
   }
 

@@ -16,7 +16,7 @@ import { Effects } from './effects.js';
 import { Game } from './game.js';
 import { UI } from './ui.js';
 import { Input } from './input.js';
-import { GraphicsSettings, AudioSettings, DifficultySettings } from './settings.js';
+import { GraphicsSettings, AudioSettings, DifficultySettings, FogSettings } from './settings.js';
 import { AudioEngine } from './audio.js';
 
 function fatal(err) {
@@ -133,6 +133,9 @@ function boot() {
   const difficultySettings = new DifficultySettings();
   difficultySettings.load();
 
+  const fogSettings = new FogSettings();
+  fogSettings.load();
+
   const game = new Game({
     scene,
     camera,
@@ -144,6 +147,8 @@ function boot() {
     audioSettings,
     difficulty: difficultySettings.get(),
     difficultySettings,
+    fog: fogSettings.get(),
+    fogSettings,
   });
   const ui = new UI(game);
   const input = new Input(game);
@@ -170,7 +175,7 @@ function boot() {
 
   // Отладочные инструменты доступны только с ?debug и не мешают обычной игре.
   if (new URLSearchParams(window.location.search).has('debug')) {
-    window.__GAME__ = { engine, scene, camera, game, ui, input, world, map, fx, factory, graphics, audio, audioSettings, difficultySettings };
+    window.__GAME__ = { engine, scene, camera, game, ui, input, world, map, fx, factory, graphics, audio, audioSettings, difficultySettings, fogSettings };
     window.game = game;
     window.__MAP__ = map;
     window.__advance = (seconds = 1) => {

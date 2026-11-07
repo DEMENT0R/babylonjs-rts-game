@@ -133,6 +133,12 @@ export class UI {
         this.refreshDifficultyControls();
         return;
       }
+      const fog = e.target.closest('[data-fog]');
+      if (fog) {
+        this.game.setFog(fog.dataset.fog);
+        this.refreshFogControls();
+        return;
+      }
       const seedMode = e.target.closest('[data-seedmode]');
       if (seedMode) {
         this.setSeedMode(seedMode.dataset.seedmode);
@@ -263,7 +269,7 @@ export class UI {
       <div class="overlay-top">
         <div class="eyebrow"><i></i> ЛОББИ // СЕКТОР <span id="lobbySector">${map.label}</span></div>
         <h1>ГЕЛИОС<span>-7</span></h1>
-        <p class="tagline">Параметры операции: сложность противника и карта. Выбор действует до начала боя.</p>
+        <p class="tagline">Параметры операции: сложность противника, туман войны и карта. Выбор действует до начала боя.</p>
       </div>
       <div class="map-strip lobby-map-strip" id="lobbyMapStrip">
         <div class="map-strip-item"><span>СИД КАРТЫ</span><b id="lobbySeed">#${map.label}</b></div>
@@ -272,6 +278,7 @@ export class UI {
       </div>
       <div class="lobby-panel">
         ${this.difficultyBlock()}
+        ${this.fogBlock()}
         ${this.seedBlock()}
       </div>
       <div class="overlay-actions">
@@ -323,6 +330,40 @@ export class UI {
         </div>
         <div class="difficulty-options">${buttons}</div>
       </div>`;
+  }
+
+  /** Туман войны: включён по умолчанию, выключение открывает всю карту. */
+  fogBlock() {
+    const enabled = this.game.fogEnabled !== false;
+    const options = [
+      { value: 'on', label: 'ВКЛ.', title: 'Карта открывается разведкой.' },
+      { value: 'off', label: 'ВЫКЛ.', title: 'Вся карта и противник видны сразу.' },
+    ];
+    const buttons = options.map((option) => {
+      const active = (option.value === 'on') === enabled;
+      return `<button type="button" class="graphics-opt${active ? ' is-active' : ''}"
+        data-fog="${option.value}" aria-pressed="${active}"
+        title="${option.title}">${option.label}</button>`;
+    }).join('');
+    return `
+      <div class="lobby-row">
+        <div class="lobby-row-head">
+          <span class="lobby-label">ТУМАН ВОЙНЫ</span>
+          <span class="lobby-status" id="fogStatus">${enabled ? 'Карта открывается разведкой.' : 'Вся карта видна сразу.'}</span>
+        </div>
+        <div class="difficulty-options">${buttons}</div>
+      </div>`;
+  }
+
+  refreshFogControls() {
+    const enabled = this.game.fogEnabled !== false;
+    this.el.overlay.querySelectorAll('[data-fog]').forEach((btn) => {
+      const active = (btn.dataset.fog === 'on') === enabled;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    const status = this.el.overlay.querySelector('#fogStatus');
+    if (status) status.textContent = enabled ? 'Карта открывается разведкой.' : 'Вся карта видна сразу.';
   }
 
   /** Сид карты: случайный (по умолчанию) или ручной. */
