@@ -1253,7 +1253,7 @@ export class AIController {
         // иначе рейд по дальней вышке уводит всю армию, а штаб стоит открытым.
         if (!near) {
           if (d > AI.structureCallRadius) continue;
-          if (homeSupply - supply < AI.garrisonSupply) continue;
+          if (homeSupply - supply < AI.structureHomeReserve) continue;
         }
         u.issueAttack(threats[sent % threats.length]);
         u.retaliateTimer = Math.max(u.retaliateTimer ?? 0, 6);

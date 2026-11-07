@@ -780,6 +780,9 @@ export const AI = {
   structureThreatRadius: 15,
   structureHitWindow: 10,
   structureCallRadius: 90,
+  // Сколько снабжения至少要 остаться у штаба, когда защитников снимают с
+  // базы: базу без единого бойца оставлять нельзя.
+  structureHomeReserve: 2,
   // Караул на вышках: месторождения вдали от базы турели не прикрывают,
   // поэтому на самой уязвимой вышке дежурит боец.
   oilPicketCount: 1,
