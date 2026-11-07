@@ -184,6 +184,7 @@ export class AIController {
     const candidates = fighters
       .filter((u) => (
         !u.aiGarrison
+        && !u.aiPicket
         && !(active && active.has(u.id))
         && (!u.order || u.order.type === 'move' || u.order.type === 'hold')
         && dist(u.position.x, u.position.z, hq.position.x, hq.position.z) <= AI.garrisonRadius
@@ -219,6 +220,85 @@ export class AIController {
     }
   }
 
+  /**
+   * Караул на вышках. Дальние месторождения турели не прикрывают, а гарнизон
+   * держится у штаба — рейд по такой вышке проходил без сопротивления.
+   * Теперь на самой уязвимой вышке дежурит боец: он встречает рейд первым и
+   * даёт время подойти остальным.
+   */
+  ensureOilPickets() {
+    const hq = this.enemyHq();
+    if (!hq) return;
+    const active = this.activeWave?.ids;
+    let posted = 0;
+    for (const u of this.game.units) {
+      if (!u.aiPicket) continue;
+      // Вышку потеряли или караул погиб — флаг снимается, дежурство ищет
+      // новое место само.
+      if (!u.alive || !u.picketDerrick?.alive) {
+        u.aiPicket = false;
+        u.picketDerrick = null;
+        continue;
+      }
+      posted++;
+    }
+    if (posted >= AI.oilPicketCount) return;
+
+    const derricks = this.game.buildings
+      .filter((b) => b.alive && b.faction === 'enemy' && b.type === 'derrick' && b.complete)
+      .sort((a, b) => (
+        dist(b.position.x, b.position.z, hq.position.x, hq.position.z)
+        - dist(a.position.x, a.position.z, hq.position.x, hq.position.z)
+      ));
+
+    for (const derrick of derricks) {
+      if (posted >= AI.oilPicketCount) break;
+      // Вышку в радиусе турели прикрывает сама турель.
+      const covered = this.game.buildings.some((b) => (
+        b.alive && b.faction === 'enemy' && b.type === 'turret'
+        && dist(b.position.x, b.position.z, derrick.position.x, derrick.position.z)
+          <= AI.derrickTurretRadius + 6
+      ));
+      if (covered) continue;
+      const nearby = this.game.units.some((u) => (
+        u.aiPicket
+        && dist(u.position.x, u.position.z, derrick.position.x, derrick.position.z)
+          <= AI.oilPicketRadius
+      ));
+      if (nearby) continue;
+
+      const picket = this.game.units
+        .filter((u) => (
+          u.alive
+          && u.faction === 'enemy'
+          && !u.def.builder
+          && !u.def.healer
+          && !u.def.vehicle
+          && !u.aiGarrison
+          && !u.aiPicket
+          && !(active && active.has(u.id))
+          && (!u.order || u.order.type === 'move' || u.order.type === 'hold')
+        ))
+        .sort((a, b) => (
+          dist(a.position.x, a.position.z, derrick.position.x, derrick.position.z)
+          - dist(b.position.x, b.position.z, derrick.position.x, derrick.position.z)
+        ))[0];
+      if (!picket) break;
+      // Караул стоит между вышкой и своей базой: он не лезет под огонь
+      // игрока, но успевает ответить нападающему.
+      const dx = hq.position.x - derrick.position.x;
+      const dz = hq.position.z - derrick.position.z;
+      const len = Math.hypot(dx, dz) || 1;
+      picket.aiPicket = true;
+      picket.picketDerrick = derrick;
+      picket.issueHold(
+        derrick.position.x + (dx / len) * 4,
+        derrick.position.z + (dz / len) * 4,
+      );
+      posted++;
+    }
+  }
+
   update(dt) {
     if (this.game.over) {
       this.debugEl?.remove();
@@ -250,6 +330,7 @@ export class AIController {
     if (this.garrisonTimer <= 0) {
       this.garrisonTimer = 2;
       this.ensureGarrison();
+      this.ensureOilPickets();
     }
 
     if (this.defenseTimer <= 0) {
@@ -618,6 +699,9 @@ export class AIController {
       && !u.def.builder
       && !u.def.healer
       && !u.aiGarrison
+      // Караул на вышке не уходит в разведку: иначе вышка снова останется
+      // без защиты.
+      && !u.aiPicket
       // Уже идущий разведчик не переназначается: иначе отряд дёргается на
       // месте, а каждые десять секунд получает новую цель.
       && !this.scoutTasks.has(u.id)
@@ -990,6 +1074,7 @@ export class AIController {
     const active = this.activeWave?.ids;
     for (const u of this.game.units) {
       if (!u.alive || u.faction !== 'enemy' || u.def.builder || u.def.healer) continue;
+      if (u.aiPicket) continue;
       if (active && active.has(u.id)) continue;
       if (u.order?.type === 'hold' || u.order?.type === 'escort') continue;
       // Уже дерётся с конкретной целью — не сбиваем приказ каждые 1.5 с.
@@ -1093,6 +1178,10 @@ export class AIController {
           && !u.def.builder
           && !u.def.healer
           && !(active && active.has(u.id))
+          // Караул отвечает только за свою вышку, а не бегает по всей карте.
+          && (!u.aiPicket
+            || dist(u.position.x, u.position.z, b.position.x, b.position.z)
+              <= AI.structureGuardRadius)
           // Уже дерётся с конкретной целью — не сбиваем приказ каждые 1.5 с.
           && !(u.order?.type === 'attack' && u.order.target?.alive)
         ))
@@ -1149,6 +1238,8 @@ export class AIController {
     let supply = 0;
     for (const u of this.game.units) {
       if (!u.alive || u.faction !== 'enemy' || u.def.builder || u.def.healer) continue;
+      // Караул на вышке не снимается на защиту штаба: он стережёт своё.
+      if (u.aiPicket) continue;
       if (active && active.has(u.id)) continue;
       const d = dist(u.position.x, u.position.z, hq.position.x, hq.position.z);
       if (d > AI.garrisonRadius) continue;
@@ -1656,7 +1747,7 @@ export class AIController {
     // гарнизон в волны не входит.
     const fighters = this.game.units.filter(
       (u) => u.alive && u.faction === 'enemy' && !u.def.builder && !u.def.healer
-        && !u.aiGarrison,
+        && !u.aiGarrison && !u.aiPicket,
     );
     if (fighters.length < 2) {
       this.waveTimer = 8 + Math.random() * 8;
