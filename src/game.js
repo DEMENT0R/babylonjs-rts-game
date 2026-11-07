@@ -874,10 +874,10 @@ export class Game {
       return { valid: false, reason: 'fog', x: px, z: pz, patch };
     }
 
-    // Фундамент не должен появляться под юнитами: иначе стройка телепортирует
-    // их в сторону, а чужие отряды можно безнаказанно расталкивать.
+    // Своих юнитов можно потеснить: после закладки стройка аккуратно
+    // расталкивает их. Чужой отряд сдвигать нельзя, поэтому он блокирует точку.
     for (const u of this.units) {
-      if (!u.alive) continue;
+      if (!u.alive || u.faction === faction) continue;
       if (dist(px, pz, u.position.x, u.position.z) < r + u.radius + 0.25) {
         return { valid: false, reason: 'unit', x: px, z: pz, patch };
       }
@@ -968,7 +968,7 @@ export class Game {
     return b;
   }
 
-  /** Страховка для своих юнитов: чужие отряды стройка не расталкивает. */
+  /** Стройка расталкивает только своих юнитов: чужие отряды не сдвигаются. */
   pushUnitsOut(building) {
     for (const u of this.units) {
       if (!u.alive || u.faction !== building.faction) continue;
