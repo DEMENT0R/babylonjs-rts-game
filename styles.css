@@ -68,6 +68,10 @@ body.mode-attack #scene {
   cursor: cell;
 }
 
+body.mode-patrol #scene {
+  cursor: crosshair;
+}
+
 .scanlines {
   position: absolute;
   inset: 0;
@@ -3020,7 +3024,8 @@ body.mode-place .tc-place {
 }
 
 body.mode-place .tc-cancel,
-body.mode-attack .tc-cancel {
+body.mode-attack .tc-cancel,
+body.mode-patrol .tc-cancel {
   display: block;
 }
 

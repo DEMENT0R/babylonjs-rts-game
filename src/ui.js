@@ -1203,6 +1203,7 @@ export class UI {
           <div><kbd>F</kbd><span>атака по площади</span></div>
           <div><kbd>H</kbd><span>стоп</span></div>
           <div><kbd>P</kbd><span>держать позицию</span></div>
+          <div><kbd>T</kbd><span>патруль</span></div>
           <div><kbd>R</kbd><span>ремонт здания</span></div>
           <div><kbd>Shift</kbd><span>добавить к выбору</span></div>
           <div><kbd>Пробел</kbd><span>на базу</span></div>
@@ -1405,6 +1406,17 @@ export class UI {
           desc: 'Двигаться к точке, атакуя всех врагов на пути.',
           action: () => {
             if (game.input) game.input.setAttackMove(true);
+          },
+        },
+        {
+          id: 'patrol',
+          label: 'Патруль',
+          short: 'ПАТРУЛЬ',
+          icon: 'move',
+          hotkey: 'T',
+          desc: 'Ходить между текущей позицией и указанной точкой, атакуя врагов на маршруте.',
+          action: () => {
+            if (game.input) game.input.setPatrol(true);
           },
         },
         {
@@ -1949,7 +1961,7 @@ export class UI {
           </div>
           ${this.sideStatus()}
         </div>
-        <div class="sel-foot"><span class="dot"></span> ЛКМ — уточнить · ПКМ — приказ · F — атака по площади</div>
+        <div class="sel-foot"><span class="dot"></span> ЛКМ — уточнить · ПКМ — приказ · F — атака · T — патруль</div>
       `;
       this.live = {
         kind: 'units',

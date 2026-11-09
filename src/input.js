@@ -40,6 +40,7 @@ export class Input {
     this.drag = null;
     this.middleDrag = null;
     this.attackMode = false;
+    this.patrolMode = false;
     this.placement = null;
     this.lastTap = { time: 0, type: null, x: 0, y: 0 };
     this.lastGroupTap = { index: 0, time: 0 };
@@ -124,6 +125,7 @@ export class Input {
       if (action === 'cancel') {
         if (this.placement) this.cancelPlacement();
         else if (this.attackMode) this.setAttackMove(false);
+        else if (this.patrolMode) this.setPatrol(false);
         return;
       }
       if (action === 'deselect') {
@@ -294,6 +296,15 @@ export class Input {
       return;
     }
 
+    if (this.patrolMode) {
+      const point = this.groundPoint(e.clientX, e.clientY);
+      if (point) {
+        this.game.commandPatrol(new Vector3(point.x, 0, point.z));
+        this.setPatrol(false);
+      }
+      return;
+    }
+
     this.drag = {
       x0: e.clientX,
       y0: e.clientY,
@@ -403,6 +414,14 @@ export class Input {
       if (point) {
         this.game.commandAttackMove(new Vector3(point.x, 0, point.z));
         this.setAttackMove(false);
+      }
+      return;
+    }
+    if (this.patrolMode) {
+      const point = this.groundPoint(e.clientX, e.clientY);
+      if (point) {
+        this.game.commandPatrol(new Vector3(point.x, 0, point.z));
+        this.setPatrol(false);
       }
       return;
     }
@@ -616,6 +635,14 @@ export class Input {
       }
       return;
     }
+    if (this.patrolMode) {
+      const point = this.groundPoint(clientX, clientY);
+      if (point) {
+        this.game.commandPatrol(new Vector3(point.x, 0, point.z));
+        this.setPatrol(false);
+      }
+      return;
+    }
 
     const picked = this.pick(clientX, clientY);
     const units = this.game.selectedUnits();
@@ -705,6 +732,10 @@ export class Input {
     }
     if (this.attackMode) {
       this.setAttackMove(false);
+      return;
+    }
+    if (this.patrolMode) {
+      this.setPatrol(false);
       return;
     }
     const units = this.game.selectedUnits();
@@ -801,6 +832,10 @@ export class Input {
         this.setAttackMove(false);
         return;
       }
+      if (this.patrolMode) {
+        this.setPatrol(false);
+        return;
+      }
       if (this.game.ui?.overlayOpen) {
         if (this.game.ui.overlayBack) this.game.ui.backFromOverlay();
         else if (this.game.started && !this.game.over) this.game.ui.resume();
@@ -873,6 +908,7 @@ export class Input {
     if (this.game.paused) {
       if (this.placement) this.cancelPlacement();
       if (this.attackMode) this.setAttackModeVisual(false);
+      if (this.patrolMode) this.setPatrolModeVisual(false);
       this.resetTouchControls?.();
       this.activePointers.clear();
       this.touchGesture = null;
@@ -944,6 +980,7 @@ export class Input {
   // ------------------------------------------------------------- commands
   setAttackMove(enabled) {
     if (enabled && !this.game.selectedUnits().length) return;
+    if (enabled && this.patrolMode) this.setPatrolModeVisual(false);
     this.setAttackModeVisual(enabled);
     if (enabled) {
       this.game.notify('Укажите точку атаки. ЛКМ — приказ, ПКМ — отмена.', 'hint', 'attack-mode', 0, 3);
@@ -953,6 +990,21 @@ export class Input {
   setAttackModeVisual(enabled) {
     this.attackMode = enabled;
     document.body.classList.toggle('mode-attack', enabled);
+  }
+
+  /** Режим выбора точки патруля: клик задаёт второй конец маршрута. */
+  setPatrol(enabled) {
+    if (enabled && !this.game.selectedUnits().length) return;
+    if (enabled && this.attackMode) this.setAttackModeVisual(false);
+    this.setPatrolModeVisual(enabled);
+    if (enabled) {
+      this.game.notify('Укажите точку патруля. ЛКМ — приказ, ПКМ — отмена.', 'hint', 'patrol-mode', 0, 3);
+    }
+  }
+
+  setPatrolModeVisual(enabled) {
+    this.patrolMode = enabled;
+    document.body.classList.toggle('mode-patrol', enabled);
   }
 
   cancelPlacement() {

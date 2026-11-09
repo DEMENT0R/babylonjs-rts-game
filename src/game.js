@@ -1012,6 +1012,7 @@ export class Game {
       tx = clamp(tx, -MAP.clamp + 1, MAP.clamp - 1);
       tz = clamp(tz, -MAP.clamp + 1, MAP.clamp - 1);
       if (mode === 'attackMove') unit.issueAttackMove(tx, tz);
+      else if (mode === 'patrol') unit.issuePatrol(tx, tz);
       else unit.issueMove(tx, tz);
     });
     this.fx.orderMarker(point, mode === 'attackMove' ? 'attack' : 'move');
@@ -1029,6 +1030,21 @@ export class Game {
     if (!units.length) return;
     this.issueFormationMove(units, point, 'attackMove');
     this.audio?.order('attack');
+  }
+
+  /** Патруль: отряд ходит между текущим местом и точкой. */
+  commandPatrol(point) {
+    const units = this.selectedUnits();
+    if (!units.length) return;
+    this.issueFormationMove(units, point, 'patrol');
+    this.notify(
+      'Патруль: отряд будет ходить между текущей позицией и указанной точкой.',
+      'info',
+      'patrol-order',
+      0,
+      3,
+    );
+    this.audio?.order('move');
   }
 
   commandAttack(target) {

@@ -494,6 +494,24 @@ export class Unit extends Entity {
   }
 
   /**
+   * Патруль: отряд ходит между текущей позицией и указанной точкой, атакуя
+   * встреченных врагов, но не уходя за ними с маршрута.
+   */
+  issuePatrol(x, z) {
+    this.order = {
+      type: 'patrol',
+      ax: this.position.x,
+      az: this.position.z,
+      bx: x,
+      bz: z,
+      leg: 'b',
+    };
+    this.target = null;
+    this.stuckTime = 0;
+    this.resetPath();
+  }
+
+  /**
    * Сопровождение отряда: идти к точке, лечить и чинить по пути, но не искать
    * бой самостоятельно. Огонь — только ответный или по врагу в своей
    * дистанции: догонять его поддержка не должна.
@@ -620,6 +638,26 @@ export class Unit extends Entity {
     } else if (order && order.type === 'move') {
       moveX = order.x;
       moveZ = order.z;
+    } else if (order && order.type === 'patrol') {
+      // Патруль идёт по своему маршруту и сворачивает в бой только на
+      // противника, который уже рядом. Догонять его нельзя: отряд уйдёт с
+      // маршрута и патруль превратится в обычную погоню.
+      moveX = order.leg === 'b' ? order.bx : order.ax;
+      moveZ = order.leg === 'b' ? order.bz : order.az;
+      if (this.canFight) {
+        const reach = Math.max(this.aggro, this.range) + this.radius;
+        if (!this.target || !this.target.alive) this.target = this.acquireTarget(reach);
+        if (this.target && this.target.alive) {
+          const d = dist(this.position.x, this.position.z, this.target.position.x, this.target.position.z);
+          if (d <= reach + 6) {
+            desired = this.target;
+            moveX = null;
+            moveZ = null;
+          } else {
+            this.target = null;
+          }
+        }
+      }
     } else if (holdPosition) {
       // Держать позицию: только огонь по цели, которая уже в радиусе.
       // Догонять убегающего врага нельзя, иначе приказ теряет смысл.
@@ -674,6 +712,9 @@ export class Unit extends Entity {
         if (order && (order.type === 'attackMove' || order.type === 'escort')) {
           moveX = order.x;
           moveZ = order.z;
+        } else if (order && order.type === 'patrol') {
+          moveX = order.leg === 'b' ? order.bx : order.ax;
+          moveZ = order.leg === 'b' ? order.bz : order.az;
         } else {
           this.order = null;
         }
@@ -711,9 +752,13 @@ export class Unit extends Entity {
       this.supportTarget = null;
       const arrived = this.navigateTo(moveX, moveZ, dt, 0.55 + this.radius * 0.35);
       if (arrived) {
-        // Дойдя до якоря, гарнизон остаётся на позиции, а не становится
-        // свободным юнитом: иначе он снова уйдёт в погоню за врагом.
-        if (this.order?.type === 'hold') {
+        if (this.order?.type === 'patrol') {
+          // Дошли до конца маршрута — разворачиваемся и идём обратно.
+          this.order.leg = this.order.leg === 'b' ? 'a' : 'b';
+          this.resetPath();
+        } else if (this.order?.type === 'hold') {
+          // Дойдя до якоря, гарнизон остаётся на позиции, а не становится
+          // свободным юнитом: иначе он снова уйдёт в погоню за врагом.
           this.order.x = null;
           this.order.z = null;
         } else {
