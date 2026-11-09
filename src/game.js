@@ -65,6 +65,8 @@ export class Game {
     this.elapsed = 0;
     this.paused = true;
     this.started = false;
+    // Витрина главного экрана: демонстрационный бой без игрока.
+    this.attract = false;
     this.over = null;
     // Скорость симуляции: 0.5×, 1× или 2×. На интерфейс и звук не влияет.
     this.speed = 1;
@@ -318,6 +320,42 @@ export class Game {
   /** Полоски HP поверх всех юнитов — настройка интерфейса, а не правило боя. */
   get alwaysShowBars() {
     return this.graphics?.get?.('hpBars') === 'always';
+  }
+
+  // ---------------------------------------------------------- attract
+  /**
+   * Витрина главного экрана. Туман выключается принудительно, иначе камера
+   * летала бы по чёрной карте, но настройка игрока не меняется: после начала
+   * партии он возвращается к прежнему значению.
+   */
+  startAttract() {
+    if (this.started || this.attract) return false;
+    this.attract = true;
+    this.fogBeforeAttract = this.fogEnabled;
+    this.fogEnabled = false;
+    this.fog?.setEnabled(false);
+    return true;
+  }
+
+  stopAttract() {
+    if (!this.attract) return;
+    this.attract = false;
+    this.fogEnabled = this.fogBeforeAttract ?? true;
+    this.fog?.setEnabled(this.fogEnabled);
+  }
+
+  /** Симуляция витрины: только войска и эффекты, без экономики и правил боя. */
+  updateAttract(dt) {
+    if (!this.attract) return;
+    dt = Math.min(dt, 0.1);
+    const units = this.units.slice();
+    for (const unit of units) {
+      if (unit.alive) unit.update(dt);
+    }
+    for (const unit of this.units) {
+      if (unit.alive && unit.hp < unit.maxHp * 0.52) this.fx.damageSmoke(unit, dt);
+    }
+    this.fx.update(dt);
   }
 
   update(dt) {
@@ -1570,6 +1608,8 @@ export class Game {
 
   onEntityDamaged(entity, source, dmg) {
     if (!entity || !source) return;
+    // Урон в демонстрационном бою не идёт ни в опыт, ни в статистику партии.
+    if (this.attract) return;
     // Опыт идёт только за урон по противнику: обстрел своих его не даёт.
     if (source.faction !== entity.faction && source instanceof Unit) {
       source.addXp?.(dmg * VETERANCY.xpPerDamage);
@@ -1600,7 +1640,16 @@ export class Game {
     pos.y = entity.isBuilding ? 1.6 : 0.9;
     this.fx.explode(pos, scale, { scorch: entity.isBuilding || entity.type === 'tank' });
     this.fx.buildDust(entity.position, entity.isBuilding ? 1.5 : 0.5);
-    this.audio?.explosion(pos, scale);
+    if (!this.attract) this.audio?.explosion(pos, scale);
+
+    // Демонстрационный бой на главном экране: взрыв нужен, а статистика,
+    // уведомления и победа — нет, партия ещё не началась.
+    if (this.attract) {
+      this.removeEntity(entity);
+      if (this.ui) this.ui.onSelectionChanged();
+      this.recomputePower();
+      return;
+    }
 
     // Убийство засчитывается только за урон игрока: если противник сгорел
     // от собственного залпа, это не наша заслуга.

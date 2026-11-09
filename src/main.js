@@ -17,6 +17,7 @@ import { Effects } from './effects.js';
 import { Game } from './game.js';
 import { UI } from './ui.js';
 import { Input } from './input.js';
+import { AttractMode } from './attract.js';
 import { GraphicsSettings, AudioSettings, DifficultySettings, FogSettings } from './settings.js';
 import { AudioEngine } from './audio.js';
 
@@ -168,6 +169,12 @@ function boot() {
   });
   const ui = new UI(game);
   const input = new Input(game);
+
+  // Пока партия не началась, за меню идёт демонстрационный бой: его ведёт
+  // отдельный режим, а обычная симуляция остаётся выключенной.
+  const attract = new AttractMode(game);
+  if (!mission && !autostart) attract.start();
+
   if (mission) ui.showBriefing(mission);
   else if (mode === 'campaign' || mode === 'trial') ui.showMissions(mode);
   else if (autostart) ui.startGame();
@@ -181,8 +188,11 @@ function boot() {
     const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
     last = now;
 
+    // Витрина сама останавливается, когда начинается настоящая партия.
+    attract.update(dt);
     if (game.started && !game.paused && !game.over) game.update(dt);
-    input.update(dt);
+    // Пока камера летает в витрине, игровое управление не должно её перебивать.
+    if (!attract.active) input.update(dt);
     audio.setPaused(!game.started || game.paused || Boolean(game.over));
     audio.update(dt);
     ui.tick(dt);
@@ -193,8 +203,9 @@ function boot() {
 
   // Отладочные инструменты доступны только с ?debug и не мешают обычной игре.
   if (new URLSearchParams(window.location.search).has('debug')) {
-    window.__GAME__ = { engine, scene, camera, game, ui, input, world, map, fx, factory, graphics, audio, audioSettings, difficultySettings, fogSettings };
+    window.__GAME__ = { engine, scene, camera, game, ui, input, world, map, fx, factory, graphics, audio, audioSettings, difficultySettings, fogSettings, attract };
     window.game = game;
+    window.__ATTRACT__ = attract;
     window.__MAP__ = map;
     window.__advance = (seconds = 1) => {
       const wasPaused = game.paused;
