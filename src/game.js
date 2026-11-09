@@ -65,7 +65,17 @@ export class Game {
     this.started = false;
     this.over = null;
 
-    this.stats = { kills: 0, losses: 0, gathered: 0, trained: 0, built: 0 };
+    this.stats = {
+      kills: 0,
+      losses: 0,
+      gathered: 0,
+      trained: 0,
+      built: 0,
+      // Разбивка по типам: кто уничтожал, что теряли и сколько урона нанесли.
+      killsByType: {},
+      lossesByType: {},
+      damageByType: {},
+    };
     // Счётчики целей миссии: что игрок уже сделал и что уничтожил.
     this.missionStats = { trained: {}, destroyed: {} };
     this.objectives = [];
@@ -1468,6 +1478,9 @@ export class Game {
 
   onEntityDamaged(entity, source, dmg) {
     if (!entity || !source) return;
+    if (source.faction === 'player' && entity.faction !== 'player') {
+      this.stats.damageByType[source.type] = (this.stats.damageByType[source.type] ?? 0) + dmg;
+    }
     if (entity.faction !== 'player') return;
     if (source.faction === 'enemy') {
       // ИИ копит статистику урона своей волны: по ней он решает,
@@ -1495,12 +1508,18 @@ export class Game {
 
     // Убийство засчитывается только за урон игрока: если противник сгорел
     // от собственного залпа, это не наша заслуга.
+    if (source && source.faction !== entity.faction) {
+      if (source.faction === 'player') {
+        this.stats.killsByType[source.type] = (this.stats.killsByType[source.type] ?? 0) + 1;
+      }
+    }
     if (entity.faction === 'enemy' && source?.faction === 'player') this.stats.kills++;
     if (entity.isBuilding && entity.faction === 'enemy' && source?.faction === 'player') {
       this.trackDestroyed(entity.type);
     }
     if (entity.faction === 'player') {
       this.stats.losses++;
+      this.stats.lossesByType[entity.type] = (this.stats.lossesByType[entity.type] ?? 0) + 1;
       this.ai?.onPlayerLoss?.(entity, source);
       if (source?.faction === 'player' && source.def?.friendlyFire) {
         this.notify(

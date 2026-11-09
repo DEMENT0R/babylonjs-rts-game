@@ -836,6 +836,39 @@ export class UI {
     if (tagNode) tagNode.textContent = tag;
   }
 
+  /** Разбивка боя по типам: кем уничтожали, что теряли, сколько урона. */
+  endDetailHtml() {
+    const s = this.game.stats;
+    const keys = new Set([
+      ...Object.keys(s.killsByType ?? {}),
+      ...Object.keys(s.lossesByType ?? {}),
+    ]);
+    const rows = [...keys].map((type) => ({
+      type,
+      kills: s.killsByType?.[type] ?? 0,
+      losses: s.lossesByType?.[type] ?? 0,
+      damage: s.damageByType?.[type] ?? 0,
+    }))
+      .filter((row) => row.kills || row.losses || row.damage >= 1)
+      .sort((a, b) => (b.kills + b.losses) - (a.kills + a.losses) || b.damage - a.damage);
+    if (!rows.length) return '';
+    const name = (type) => UNITS[type]?.name ?? BUILDINGS[type]?.name ?? type;
+    const body = rows.map((row) => `<tr>
+      <td>${esc(name(row.type))}</td>
+      <td>${row.kills}</td>
+      <td>${row.losses}</td>
+      <td>${Math.round(row.damage)}</td>
+    </tr>`).join('');
+    return `
+      <div class="end-detail">
+        <div class="end-detail-title">ПО ТИПАМ</div>
+        <table class="end-detail-table">
+          <thead><tr><th>ТИП</th><th>УНИЧТ.</th><th>ПОТЕРИ</th><th>УРОН</th></tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>`;
+  }
+
   showEnd(result) {
     if (this.game.mission) {
       this.showMissionEnd(result, this.game.mission);
@@ -860,6 +893,7 @@ export class UI {
         <div><b>${s.losses}</b><span>ПОТЕРЯНО</span></div>
         <div><b>${Math.floor(s.gathered)}</b><span>ДОБЫТО КРЕДИТОВ</span></div>
       </div>
+      ${this.endDetailHtml()}
       <div class="end-map">КАРТА <b>#${map.label}</b> · ${map.symmetry.name.toUpperCase()} ${map.symmetry.tag} · ${map.style.name}</div>
       <div class="end-note">${victory
         ? 'Связь с Землёй так и не восстановилась. Одна из двух колоний вычеркнута из реестра — и уже неважно, какая.'
@@ -920,6 +954,7 @@ export class UI {
         <div><b>${Math.floor(s.gathered)}</b><span>ДОБЫТО КРЕДИТОВ</span></div>
       </div>
       ${this.objectivesHtml(mission, true)}
+      ${this.endDetailHtml()}
       <div class="end-map">КАРТА <b>#${map.label}</b> · ${map.symmetry.name.toUpperCase()} ${map.symmetry.tag} · ${map.style.name}</div>
       <div class="overlay-actions">
         ${primary}

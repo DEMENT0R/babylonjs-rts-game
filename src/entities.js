@@ -172,12 +172,14 @@ export class Entity {
     if (!this.alive || this.game.over) return;
     const armor = Math.max(0, (this.armor ?? this.def.armor ?? 0) - (source?.pierce ?? 0));
     const dmg = Math.max(1, amount - armor);
+    // Опыт и статистика считают реально снятые HP, а не избыточный урон.
+    const applied = Math.min(dmg, Math.max(0, this.hp));
     this.hp -= dmg;
     this.lastHitAt = this.game.elapsed;
     // Своя РСЗО не становится «атакующим»: иначе юнит развернулся бы
     // против своих, а ИИ записал бы братоубийство на счёт игрока.
     if (source?.alive && source.faction !== this.faction) this.lastAttacker = source;
-    this.game.onEntityDamaged(this, source, dmg);
+    this.game.onEntityDamaged(this, source, applied);
     if (this.hp <= 0) {
       this.hp = 0;
       this.die(source);

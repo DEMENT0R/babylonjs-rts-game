@@ -2363,6 +2363,56 @@ body.mode-attack #scene {
   color: var(--dim);
 }
 
+.end-detail {
+  margin: 14px 0 4px;
+  padding: 10px 11px;
+  border: 1px solid var(--line-soft);
+  background: rgba(8, 20, 27, 0.45);
+}
+
+.end-detail-title {
+  margin-bottom: 6px;
+  font-size: 6.5px;
+  letter-spacing: 0.17em;
+  color: var(--dim);
+}
+
+.end-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--cyan-soft);
+}
+
+.end-detail-table th {
+  padding: 0 0 4px;
+  font-weight: 400;
+  font-size: 6.5px;
+  letter-spacing: 0.12em;
+  text-align: right;
+  color: var(--dim);
+}
+
+.end-detail-table th:first-child,
+.end-detail-table td:first-child {
+  text-align: left;
+}
+
+.end-detail-table td {
+  padding: 3px 0;
+  text-align: right;
+  border-top: 1px dashed rgba(82, 172, 202, 0.12);
+}
+
+.end-detail-table td:first-child {
+  color: #b7d4e0;
+}
+
+.pause-speed {
+  margin-top: 12px;
+}
+
 .end-head h1 {
   font-size: clamp(32px, 5vw, 48px);
   letter-spacing: 0.14em;
