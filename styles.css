@@ -2528,6 +2528,87 @@ body.mode-attack #scene {
   to { transform: rotate(360deg); }
 }
 
+/* ------------------------------------------------------------------ SQUAD RAIL */
+.squad-rail {
+  position: absolute;
+  top: 96px;
+  right: 14px;
+  bottom: 238px;
+  z-index: 22;
+  display: none;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(auto-fill, 54px);
+  grid-auto-columns: 54px;
+  gap: 6px;
+  justify-content: end;
+  align-content: end;
+  /* Первый столбец прижат к краю, дополнительные уходят влево. */
+  direction: rtl;
+  pointer-events: none;
+}
+
+body.has-groups .squad-rail {
+  display: grid;
+}
+
+body.overlay-open .squad-rail {
+  display: none;
+}
+
+.squad-slot {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(180deg, rgba(27, 57, 70, 0.82) 0%, rgba(8, 19, 26, 0.96) 100%);
+  border: 1px solid rgba(96, 190, 220, 0.36);
+  color: var(--cyan-soft);
+  cursor: pointer;
+  direction: ltr;
+  pointer-events: auto;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+  transition: border-color 0.13s, background 0.13s, box-shadow 0.13s;
+}
+
+.squad-slot svg {
+  width: 24px;
+  height: 24px;
+}
+
+.squad-slot:hover,
+.squad-slot.is-active {
+  border-color: var(--cyan);
+  box-shadow: 0 0 16px rgba(79, 210, 255, 0.2);
+}
+
+.squad-slot.is-active {
+  background:
+    linear-gradient(180deg, rgba(36, 78, 94, 0.9) 0%, rgba(10, 27, 36, 0.98) 100%);
+}
+
+.squad-slot .squad-key {
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1;
+  color: var(--cyan);
+}
+
+.squad-slot .squad-count {
+  position: absolute;
+  right: 4px;
+  bottom: 3px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  line-height: 1;
+  color: var(--text);
+}
+
 /* ------------------------------------------------------------------ RESPONSIVE */
 @media (max-width: 1180px) {
   #hud-bottom {
@@ -3044,6 +3125,30 @@ body.mode-attack .tc-cancel {
     right: 8px;
     transform: scale(0.92);
     transform-origin: bottom right;
+  }
+
+  .squad-rail {
+    top: 54px;
+    right: 8px;
+    bottom: calc(var(--hud-bottom-height) + 8px + env(safe-area-inset-bottom));
+    grid-template-rows: repeat(auto-fill, 46px);
+    grid-auto-columns: 46px;
+    gap: 5px;
+  }
+
+  .squad-slot {
+    width: 46px;
+    height: 46px;
+  }
+
+  .squad-slot svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* Отряды занимают правый край, поэтому сенсорные кнопки уходят левее. */
+  body.is-touch #touch-controls {
+    right: calc(8px + var(--squad-rail-width, 0px));
   }
 
   .overlay {

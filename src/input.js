@@ -42,6 +42,7 @@ export class Input {
     this.attackMode = false;
     this.placement = null;
     this.lastTap = { time: 0, type: null, x: 0, y: 0 };
+    this.lastGroupTap = { index: 0, time: 0 };
     this.groundY = 0;
     this.isTouch = Boolean(
       globalThis.matchMedia?.('(pointer: coarse)')?.matches
@@ -818,6 +819,25 @@ export class Input {
       return;
     }
     if (e.ctrlKey || e.metaKey) return;
+
+    // Отряды: Shift+1…9 запоминает выделение, 1…9 вызывает его.
+    // Ctrl+цифры заняты браузером (переключение вкладок), поэтому Shift.
+    const digit = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
+    if (digit && !e.repeat && !e.altKey) {
+      const index = Number(digit[1]);
+      e.preventDefault();
+      if (e.shiftKey) {
+        this.game.assignGroup(index);
+        return;
+      }
+      const now = performance.now();
+      const previous = this.lastGroupTap;
+      const isDouble = previous.index === index
+        && now - previous.time < DOUBLE_TAP_MS;
+      this.lastGroupTap = isDouble ? { index: 0, time: 0 } : { index, time: now };
+      if (this.game.recallGroup(index) && isDouble) this.game.focusGroup(index);
+      return;
+    }
 
     if (e.code === 'Space') {
       e.preventDefault();

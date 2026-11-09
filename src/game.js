@@ -15,7 +15,7 @@ import {
   AI_DIFFICULTY,
   REPAIR,
 } from './config.js';
-import { clamp, dist, formatTime } from './utils.js';
+import { clamp, dist, formatTime, plural } from './utils.js';
 import { Unit, Building } from './entities.js';
 import { NavGrid, segmentDistance } from './nav.js';
 import { AIController } from './ai.js';
@@ -50,6 +50,8 @@ export class Game {
     this.buildings = [];
     this.selected = new Set();
     this.primary = null;
+    // Отряды игрока: цифра 1…9 → набор юнитов. Живут только в текущей партии.
+    this.groups = new Map();
 
     this.credits = START.credits;
     this.armyCap = START.armyCap;
@@ -157,6 +159,8 @@ export class Game {
   // ------------------------------------------------------------- loop
   begin() {
     if (this.started) return;
+    this.groups.clear();
+    this.ui?.onGroupsChanged?.();
     this.started = true;
     this.paused = false;
     const hq = this.playerBuildings().find((b) => b.type === 'hq');
@@ -712,6 +716,70 @@ export class Game {
     this.selected.clear();
     this.primary = null;
     if (this.ui) this.ui.onSelectionChanged();
+  }
+
+  // ------------------------------------------------------------- control groups
+  /** Запомнить выделенных юнитов за цифрой 1…9. */
+  assignGroup(index) {
+    const units = this.selectedUnits();
+    if (!units.length) {
+      this.notify('Сначала выберите юнитов для отряда.', 'warn', 'group-empty', 0, 3);
+      return false;
+    }
+    this.groups.set(index, new Set(units));
+    this.notify(
+      `Отряд ${index}: ${units.length} ${plural(units.length, 'юнит', 'юнита', 'юнитов')}.`,
+      'info',
+      `group-set-${index}`,
+      0,
+      3,
+    );
+    this.ui?.onGroupsChanged?.();
+    return true;
+  }
+
+  /** Живые юниты отряда; погибшие вычищаются по пути. */
+  groupUnits(index) {
+    const group = this.groups.get(index);
+    if (!group) return [];
+    for (const unit of group) {
+      if (!unit.alive || unit.faction !== 'player') group.delete(unit);
+    }
+    if (!group.size) {
+      this.groups.delete(index);
+      this.ui?.onGroupsChanged?.();
+      return [];
+    }
+    return [...group];
+  }
+
+  /** Вызвать отряд: выделить всех его живых юнитов. */
+  recallGroup(index) {
+    const units = this.groupUnits(index);
+    if (!units.length) return false;
+    this.selectOnly(units);
+    return true;
+  }
+
+  /** Навести камеру на центр отряда. */
+  focusGroup(index) {
+    const units = this.groupUnits(index);
+    if (!units.length) return false;
+    const cx = units.reduce((sum, u) => sum + u.position.x, 0) / units.length;
+    const cz = units.reduce((sum, u) => sum + u.position.z, 0) / units.length;
+    this.input?.focusOn(cx, cz);
+    return true;
+  }
+
+  /** Убрать удалённого юнита из всех отрядов. */
+  pruneGroups(entity) {
+    let changed = false;
+    for (const [index, group] of this.groups) {
+      if (!group.delete(entity)) continue;
+      changed = true;
+      if (!group.size) this.groups.delete(index);
+    }
+    if (changed) this.ui?.onGroupsChanged?.();
   }
 
   selectedUnits() {
@@ -1343,6 +1411,7 @@ export class Game {
     if (this.selected.delete(entity)) {
       if (this.primary === entity) this.primary = [...this.selected].at(-1) ?? null;
     }
+    this.pruneGroups(entity);
     if (entity.isBuilding) this.refreshNav();
   }
 

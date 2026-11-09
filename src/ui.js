@@ -46,6 +46,7 @@ export class UI {
     this.tickAcc = 0;
     this.selectionAcc = 0;
     this.lastSignature = '';
+    this.lastGroupClick = null;
     this.tooltipVisible = false;
     this.overlayOpen = true;
     this.overlayBack = null;
@@ -103,6 +104,7 @@ export class UI {
       minimapFrame: document.querySelector('.minimap-frame'),
       tooltip: this.$('#tooltip'),
       selectBox: this.$('#selectBox'),
+      squadRail: this.$('#squad-rail'),
     };
     this.mmCtx = this.el.minimap.getContext('2d');
   }
@@ -217,6 +219,17 @@ export class UI {
         if (b) b.cancelConstruction(true);
       }
     });
+    this.el.squadRail?.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-group]');
+      if (!btn) return;
+      const index = Number(btn.dataset.group);
+      const now = performance.now();
+      const previous = this.lastGroupClick;
+      const isDouble = previous?.index === index && now - previous.time < 400;
+      this.lastGroupClick = isDouble ? null : { index, time: now };
+      if (this.game.recallGroup(index) && isDouble) this.game.focusGroup(index);
+    });
+    window.addEventListener('resize', () => this.renderGroups());
     this.bindMinimap();
   }
 
@@ -725,6 +738,7 @@ export class UI {
     this.overlayOpen = false;
     this.el.overlay.classList.remove('is-open');
     document.body.classList.remove('overlay-open');
+    this.renderGroups();
   }
 
   startGame() {
@@ -754,6 +768,7 @@ export class UI {
     this.game.begin();
     this.renderHeader();
     this.renderCommands();
+    this.renderGroups();
     this.drawMinimap();
   }
 
@@ -1471,7 +1486,53 @@ export class UI {
     this.renderSelection();
     this.renderCommands();
     this.renderHeader();
+    this.renderGroups();
     this.lastSignature = this.selectionSignature();
+  }
+
+  onGroupsChanged() {
+    this.renderGroups();
+  }
+
+  /** Иконки отрядов у правого края: цифра, тип и число живых бойцов. */
+  renderGroups() {
+    const rail = this.el.squadRail;
+    if (!rail) return;
+    const selected = new Set(this.game.selectedUnits());
+    const entries = [];
+    for (const [index, group] of this.game.groups) {
+      const units = [...group].filter((u) => u.alive);
+      if (!units.length) continue;
+      const counts = new Map();
+      for (const u of units) counts.set(u.type, (counts.get(u.type) ?? 0) + 1);
+      const dominant = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+      const types = [...counts.entries()]
+        .map(([type, n]) => `${UNITS[type].name} ×${n}`)
+        .join(', ');
+      entries.push({
+        index,
+        units,
+        dominant,
+        types,
+        active: units.every((u) => selected.has(u)),
+      });
+    }
+    entries.sort((a, b) => a.index - b.index);
+    rail.innerHTML = entries.map(({ index, units, dominant, types, active }) => `
+      <button type="button" class="squad-slot${active ? ' is-active' : ''}"
+        data-group="${index}"
+        title="Отряд ${index}: ${esc(types)}. Нажмите, чтобы выделить; двойное нажатие — камера."
+        aria-label="Отряд ${index}: ${esc(types)}">
+        <span class="squad-key">${index}</span>
+        ${icon(UNITS[dominant].icon)}
+        <span class="squad-count">×${units.length}</span>
+      </button>
+    `).join('');
+    document.body.classList.toggle('has-groups', entries.length > 0);
+    document.body.style.setProperty(
+      '--squad-rail-width',
+      rail.offsetWidth > 0 ? `${rail.offsetWidth}px` : '0px',
+    );
   }
 
   onQueueChanged(building) {
