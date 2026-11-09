@@ -90,6 +90,9 @@ export class AIController {
     };
     this.debug = typeof location !== 'undefined' && /[?&]debug=ai\b/.test(location.search);
     this.debugEl = null;
+    this.debugBody = null;
+    this.debugTabs = [];
+    this.debugTab = 'intel';
     this.debugTimer = 0;
     // Отложенные волны и сообщения о них: игрок должен понимать, что
     // противник не сломался, а копит силы.
@@ -1707,73 +1710,106 @@ export class AIController {
     document.getElementById('ai-debug')?.remove();
     const el = document.createElement('div');
     el.id = 'ai-debug';
-    Object.assign(el.style, {
-      position: 'fixed',
-      left: '8px',
-      top: '8px',
-      zIndex: '9999',
-      padding: '8px 10px',
-      borderRadius: '6px',
-      background: 'rgba(4, 10, 16, 0.78)',
-      color: '#9fe8ff',
-      font: '11px/1.45 ui-monospace, monospace',
-      whiteSpace: 'pre',
-      pointerEvents: 'none',
+    el.innerHTML = `
+      <div class="ai-debug-head"><span>ИИ / ОТЛАДКА</span><span>?debug=ai</span></div>
+      <div class="ai-debug-tabs">
+        <button type="button" data-tab="intel">РАЗВЕДКА</button>
+        <button type="button" data-tab="waves">ВОЛНЫ</button>
+        <button type="button" data-tab="economy">ЭКОНОМИКА</button>
+      </div>
+      <pre class="ai-debug-body"></pre>`;
+    el.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-tab]');
+      if (!btn) return;
+      this.debugTab = btn.dataset.tab;
+      this.debugTimer = 0;
+      this.updateDebugOverlay(0);
     });
     document.body.append(el);
     this.debugEl = el;
+    this.debugBody = el.querySelector('.ai-debug-body');
+    this.debugTabs = [...el.querySelectorAll('button[data-tab]')];
+    this.updateDebugOverlay(0);
   }
 
   updateDebugOverlay(dt) {
     if (!this.debugEl) return;
+    if (!this.game.started || this.game.over) {
+      this.debugEl.style.display = 'none';
+      return;
+    }
+    this.debugEl.style.display = '';
     this.debugTimer -= dt;
     if (this.debugTimer > 0) return;
     this.debugTimer = 0.5;
+    for (const btn of this.debugTabs) {
+      btn.classList.toggle('is-active', btn.dataset.tab === this.debugTab);
+    }
+    this.debugBody.textContent = this.debugReport().join('\n');
+  }
 
-    const s = this.stats;
-    const settled = Math.max(1, s.settled);
+  /** Строки активной вкладки отладочной панели. */
+  debugReport() {
     const game = this.game;
-    const playerHQ = game.entities.find(
-      (e) => e.alive && e.faction === 'player' && e.isBuilding && e.type === 'hq',
-    );
-    const combat = game.units.filter(
-      (u) => u.alive && u.faction === 'enemy' && !u.def.builder,
-    );
-    const active = this.activeWave;
-    const alive = active ? active.units.filter(({ unit }) => unit.alive).length : 0;
-    // Экономика и лимиты: по этим числам видно, копит ИИ или воюет.
-    const power = game.power.enemy;
-    const income = game.enemyIncome() * this.rules.income;
-    const armyUsed = game.getArmyUsed('enemy') + game.getQueuedSupply('enemy');
-    const armyCap = game.getArmyCap('enemy');
-    const depots = game.buildings.filter(
-      (b) => b.alive && b.faction === 'enemy' && b.type === 'depot',
-    ).length;
-    const plants = game.buildings.filter(
-      (b) => b.alive && b.faction === 'enemy' && b.type === 'power',
-    ).length;
-    const planShare = this.uptime > 0 ? (100 * this.planTime) / this.uptime : 0;
-    const lines = [
-      'ИИ: экономика и волны',
-      `кредиты ${Math.round(this.credits)}, доход ${income.toFixed(1)}/с`,
-      `энергия ${power.used}/${power.produced}${power.factor < 1 ? ' — дефицит' : ''}`
-        + `, станций ${plants}`,
-      `армия ${armyUsed}/${armyCap} (потолок ${this.rules.armyCap}), модулей ${depots}`,
-      `план: ${this.buildIntent ?? '—'}`
-        + `${this.buildIntent ? `, копит ${this.saveTime.toFixed(0)} с` : ''}`
-        + `, стройка ${Math.round(planShare)}% времени`,
-      `волн ${s.waves}, провалов ${s.failures} (${Math.round((100 * s.failures) / settled)}%)`,
-      `разгромов ${s.wiped}, зависших ${s.timeouts}, отходов ${s.retreats}`,
-      `потери ${Math.round(s.supplyLost / settled)} снабж./волна`,
-      `урон ${Math.round(s.damage)}, убито ${s.kills}`,
-      `ср. время ${(s.duration / settled).toFixed(0)} с`,
-      active ? `в поле ${alive}/${active.units.length} (${active.tactic})` : 'в поле: —',
-      playerHQ
-        ? `армия ${Math.round(this.squadPower(combat))} / оборона штаба ${Math.round(this.defenseAt(playerHQ.position))}`
-        : '',
-      `до волны ${Math.max(0, this.waveTimer).toFixed(0)} с`,
+    if (this.debugTab === 'economy') {
+      const power = game.power.enemy;
+      const income = game.enemyIncome() * this.rules.income;
+      const armyUsed = game.getArmyUsed('enemy') + game.getQueuedSupply('enemy');
+      const armyCap = game.getArmyCap('enemy');
+      const depots = game.buildings.filter(
+        (b) => b.alive && b.faction === 'enemy' && b.type === 'depot',
+      ).length;
+      const plants = game.buildings.filter(
+        (b) => b.alive && b.faction === 'enemy' && b.type === 'power',
+      ).length;
+      const planShare = this.uptime > 0 ? (100 * this.planTime) / this.uptime : 0;
+      return [
+        `кредиты ${Math.round(this.credits)}, доход ${income.toFixed(1)}/с`,
+        `энергия ${power.used}/${power.produced}${power.factor < 1 ? ' — дефицит' : ''}`
+          + `, станций ${plants}`,
+        `армия ${armyUsed}/${armyCap} (потолок ${this.rules.armyCap}), модулей ${depots}`,
+        `план: ${this.buildIntent ?? '—'}`
+          + `${this.buildIntent ? `, копит ${this.saveTime.toFixed(0)} с` : ''}`
+          + `, стройка ${Math.round(planShare)}% времени`,
+        `до волны ${Math.max(0, this.waveTimer).toFixed(0)} с`,
+      ];
+    }
+
+    if (this.debugTab === 'waves') {
+      const s = this.stats;
+      const settled = Math.max(1, s.settled);
+      const active = this.activeWave;
+      const alive = active ? active.units.filter(({ unit }) => unit.alive).length : 0;
+      return [
+        `волн ${s.waves}, провалов ${s.failures} (${Math.round((100 * s.failures) / settled)}%)`,
+        `разгромов ${s.wiped}, зависших ${s.timeouts}, отходов ${s.retreats}`,
+        `потери ${Math.round(s.supplyLost / settled)} снабж./волна`,
+        `урон ${Math.round(s.damage)}, убито ${s.kills}`,
+        `ср. время ${(s.duration / settled).toFixed(0)} с`,
+        active ? `в поле ${alive}/${active.units.length} (${active.tactic})` : 'в поле: —',
+        `до волны ${Math.max(0, this.waveTimer).toFixed(0)} с`,
+      ];
+    }
+
+    const intel = this.intelReport();
+    const age = intel.armyUnits
+      ? (intel.age < 2 ? 'только что' : `${Math.round(intel.age)} с назад`)
+      : 'нет данных';
+    const ratio = intel.armyPower > 0
+      ? `${Math.round((intel.ownPower / intel.armyPower) * 100)}% от разведанной армии`
+      : 'нет данных';
+    const verdict = intel.hold
+      ? `держит оборону, нужно ${Math.ceil(intel.threshold)}`
+      : intel.known ? 'перевес достаточен' : 'свежих данных нет';
+    return [
+      `разведка: ${age}`,
+      `армия игрока: ${Math.round(intel.armyPower)} (${intel.armyUnits} юнитов)`,
+      `оборона штаба: ${Math.round(intel.defense)}`,
+      `известно построек: ${intel.buildings} (турелей ${intel.turrets})`,
+      `сила ИИ: ${Math.round(intel.ownPower)}`,
+      `соотношение: ${ratio}`,
+      `решение: ${verdict}`,
     ];
-    this.debugEl.textContent = lines.filter(Boolean).join('\n');
   }
 
   // ------------------------------------------------------------- волны

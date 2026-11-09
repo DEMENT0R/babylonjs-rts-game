@@ -93,14 +93,6 @@ export class UI {
       selTitle: this.$('#selTitle'),
       selTag: this.$('#selTag'),
       feed: this.$('#feed'),
-      intelPanel: this.$('#intel-panel'),
-      intelTag: this.$('#intelTag'),
-      intelArmy: this.$('#intelArmy'),
-      intelDefense: this.$('#intelDefense'),
-      intelBuildings: this.$('#intelBuildings'),
-      intelOwn: this.$('#intelOwn'),
-      intelVerdict: this.$('#intelVerdict'),
-      intelNote: this.$('#intelNote'),
       overlay: this.$('#overlay'),
       overlayCard: this.$('#overlayCard'),
       pauseBtn: this.$('#btnPause'),
@@ -1783,59 +1775,12 @@ export class UI {
     this.el.resPower.title = `Энергия: произведено ${s.power.produced}, потреблено ${s.power.used}${deficit ? '. Производство замедлено.' : '.'}`;
   }
 
-  /**
-   * Панель разведки показывает, что противник знает о нас по своим
-   * наблюдениям: силу видимых войск, оборону штаба и известные постройки.
-   * Это не полная информация игрока — только данные вражеской разведки.
-   */
-  renderIntel() {
-    const el = this.el;
-    if (!el.intelPanel) return;
-    if (!this.game.started || this.game.over || !this.game.ai) {
-      el.intelPanel.hidden = true;
-      return;
-    }
-    el.intelPanel.hidden = false;
-    const intel = this.game.ai.intelReport();
-    const known = intel.known && intel.armyUnits > 0;
-    el.intelArmy.textContent = intel.armyUnits
-      ? `${Math.round(intel.armyPower)} · ${intel.armyUnits} ${plural(intel.armyUnits, 'юнит', 'юнита', 'юнитов')}`
-      : 'не обнаружены';
-    el.intelDefense.textContent = Math.round(intel.defense);
-    el.intelBuildings.textContent = intel.buildings
-      ? `${intel.buildings}${intel.turrets ? ` · турелей ${intel.turrets}` : ''}`
-      : 'не обнаружены';
-    el.intelOwn.textContent = Math.round(intel.ownPower);
-    el.intelTag.textContent = intel.armyUnits
-      ? (intel.age < 2 ? 'ТОЛЬКО ЧТО' : `${Math.round(intel.age)} С НАЗАД`)
-      : 'НЕТ ДАННЫХ';
-
-    if (intel.hold) {
-      el.intelVerdict.textContent = 'ДЕРЖИТ ОБОРОНУ: СИЛЫ НЕ РАВНЫ';
-      el.intelVerdict.dataset.state = 'hold';
-      el.intelNote.textContent = `Нужно ${Math.ceil(intel.threshold)}, сейчас ${Math.floor(intel.ownPower)}.`;
-    } else if (known) {
-      el.intelVerdict.textContent = 'ПЕРЕВЕС ДОСТАТОЧЕН';
-      el.intelVerdict.dataset.state = 'ready';
-      el.intelNote.textContent = 'Наступление по силам; остальное решают укрепления и экономика.';
-    } else if (intel.armyUnits > 0) {
-      el.intelVerdict.textContent = 'СВОДКА УСТАРЕЛА';
-      el.intelVerdict.dataset.state = 'search';
-      el.intelNote.textContent = 'Нужна новая разведка: данные о войсках слишком старые.';
-    } else {
-      el.intelVerdict.textContent = 'ИЩЕТ НАШИ ВОЙСКА';
-      el.intelVerdict.dataset.state = 'search';
-      el.intelNote.textContent = 'Свежих данных о нашей армии у противника нет.';
-    }
-  }
-
   // --------------------------------------------------------------- tick
   tick(dt) {
     this.tickAcc += dt;
     if (this.tickAcc < 0.16) return;
     this.tickAcc = 0;
     this.renderHeader();
-    this.renderIntel();
     this.drawMinimap();
 
     // Обновление живых значений выбранного объекта.
