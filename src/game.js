@@ -315,6 +315,11 @@ export class Game {
     return true;
   }
 
+  /** Полоски HP поверх всех юнитов — настройка интерфейса, а не правило боя. */
+  get alwaysShowBars() {
+    return this.graphics?.get?.('hpBars') === 'always';
+  }
+
   update(dt) {
     if (!this.started || this.paused || this.over) return;
     dt = Math.min(dt, 0.1) * this.speed;

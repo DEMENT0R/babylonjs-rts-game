@@ -234,7 +234,7 @@ export class Entity {
     if (!this.bar) return;
     // Полоска здоровья чужого юнита не должна висеть в тумане войны.
     const show = this.fogVisible !== false
-      && (this.selected || this.forceBar || this.hp < this.maxHp - 0.01);
+      && (this.game.alwaysShowBars || this.selected || this.forceBar || this.hp < this.maxHp - 0.01);
     this.barVisible = show;
     this.bar.group.setEnabled(show);
     if (!show) return;

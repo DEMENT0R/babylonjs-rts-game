@@ -11,12 +11,16 @@ export const GRAPHICS_DEFAULTS = Object.freeze({
   shadows: 'medium',
   glow: 'on',
   renderScale: '1',
+  // Полоски HP: «auto» — как раньше (только выбранные и раненые), «always» —
+  // над всеми юнитами и зданиями.
+  hpBars: 'auto',
 });
 
 export const GRAPHICS_LABELS = {
   shadows: 'ТЕНИ',
   glow: 'СВЕЧЕНИЕ',
   renderScale: 'РАЗРЕШЕНИЕ',
+  hpBars: 'ПОЛОСКИ HP',
 };
 
 export const GRAPHICS_OPTIONS = {
@@ -34,6 +38,10 @@ export const GRAPHICS_OPTIONS = {
     { value: '1', label: '100%' },
     { value: '0.85', label: '85%' },
     { value: '0.7', label: '70%' },
+  ],
+  hpBars: [
+    { value: 'auto', label: 'ПО УМОЛЧАНИЮ' },
+    { value: 'always', label: 'ВСЕГДА' },
   ],
 };
 
