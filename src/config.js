@@ -7,6 +7,128 @@ export const MAP = {
   ground: 480, // размер земли
 };
 
+// Компоновка стартовой базы и нейтральных объектов. Значения заданы в
+// единицах «эталонной» карты ±MAP_LAYOUT.referenceHalf и в mapgen.js
+// умножаются на масштаб S. Поэтому размер карты и габариты базы можно
+// настраивать независимо: числа здесь отвечают за игру, а не за геометрию поля.
+export const MAP_LAYOUT = {
+  referenceHalf: 60,
+
+  // Стартовые базы.
+  anchor: {
+    span: 48, // случайный разброс якоря вокруг центра
+    minDistance: 62, // минимальный зазор между базами
+    centerClear: 33, // ближе этого к центру карты база не ставится
+    fallback: {
+      rot180: { x: 40, z: 0 },
+      'axis-x': { x: 0, z: 40 },
+      'axis-z': { x: 40, z: 0 },
+      diagonal: { x: 40, z: -8 },
+      'anti-diagonal': { x: 40, z: 8 },
+    },
+  },
+
+  // Электростанция: позади и сбоку от штаба.
+  power: {
+    back: [9.5, 12.5],
+    lateral: [1.0, 3.8],
+    minDistance: 10.5,
+    fallbackBack: 11,
+  },
+
+  // Жилые модули — домашние месторождения.
+  homes: {
+    angle: [0.7, 1.55],
+    distance: [14.5, 18.5],
+    hqClear: 12.5,
+    powerClear: 10.5,
+    spacing: 9.5,
+    fallbackDistance: 16,
+  },
+
+  // Стартовая пехота у штаба.
+  marines: {
+    forward: [7.2, 10.2],
+    lateralStep: 3.1,
+    lateralJitter: 1.1,
+    hqClear: 7.0,
+    powerClear: 5.4,
+    patchClear: 7.0,
+    spacing: 2.2,
+    fallbackForward: 8,
+  },
+
+  // Казарма противника.
+  barracks: {
+    distance: [9.5, 14.5],
+    angle: [0.45, 2.55],
+    hqClear: 10,
+    powerClear: 8.5,
+    patchClear: 8.5,
+    fallbackDistance: 11,
+  },
+
+  patchRadius: 4.4,
+
+  // Нейтральные месторождения: отступы от баз, друг от друга и от края.
+  neutral: {
+    hqClear: 23,
+    powerClear: 15,
+    patchClear: 12,
+    selfClear: 18,
+    barracksClear: 10,
+    bound: 9,
+    centerBound: 12,
+  },
+
+  // Руины стен.
+  walls: {
+    avoidBase: 15,
+    avoidPower: 10,
+    avoidBarracks: 10,
+    avoidPatch: 7.5,
+    avoidMarine: 5,
+    minDistance: 12, // между зеркальными парами
+    pairDistance: 3, // между половинами одной пары
+    spacing: 6, // между отдельными сегментами
+    length: [8, 15],
+  },
+
+  // Минимальные отступы декора от объектов.
+  decor: {
+    rock: {
+      spacing: 8,
+      baseHq: 16,
+      basePower: 13,
+      patch: 9.5,
+      wall: 3.5,
+    },
+    crate: {
+      spacing: 7,
+      baseHq: 11,
+      basePower: 9.5,
+      patch: 8,
+      wall: 3,
+      rock: 5.5,
+    },
+    crystal: {
+      baseHq: 9.5,
+      basePower: 8,
+      patch: 7,
+      wall: 2.8,
+      rock: 4.5,
+      crate: 4,
+      spacing: 6,
+    },
+    pebble: {
+      baseHq: 7,
+      basePower: 6,
+      patch: 5.5,
+      wall: 2,
+    },
+  },
+};
+
 export const CAMERA = {
   minRadius: 28,
   maxRadius: 150,

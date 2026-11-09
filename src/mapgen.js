@@ -9,16 +9,17 @@
 // ящики и кристаллы строятся парами. Мы генерируем только «свою» половину,
 // а вторую получаем отражением или поворотом на 180°.
 
-import { MAP, START } from './config.js';
+import { MAP, MAP_LAYOUT, START } from './config.js';
 import { segmentDistance } from './nav.js';
 import { mulberry32 } from './utils.js';
 
 const TAU = Math.PI * 2;
 const FIELD = MAP.half - 8; // предел для декора и месторождений
 const BASE_FIELD = MAP.half - 12; // предел для стартовых баз
-// Все расстояния в генераторе заданы для карты ±60 и масштабируются вместе
-// с её размером, чтобы плотность объектов и компоновка баз не менялись.
-const S = MAP.half / 60;
+// Все расстояния компоновки заданы для эталонной карты и масштабируются
+// вместе с её размером. Сами числа живут в MAP_LAYOUT (config.js).
+const S = MAP.half / MAP_LAYOUT.referenceHalf;
+const LAYOUT = MAP_LAYOUT;
 const EPS = 0.75;
 
 const range = (rng, min, max) => min + (max - min) * rng();
@@ -264,41 +265,36 @@ function anchorValid(x, z, symmetry) {
   const [ex, ez] = symmetry.transform(x, z);
   if (!inside(ex, ez, BASE_FIELD + 8)) return false;
   // Стартовые точки не должны стоять слишком близко друг к другу.
-  return dist(x, z, ex, ez) >= 62 * S;
+  return dist(x, z, ex, ez) >= LAYOUT.anchor.minDistance * S;
 }
 
 function pickAnchor(rng, symmetry) {
   for (let attempt = 0; attempt < 700; attempt++) {
-    const x = range(rng, -48 * S, 48 * S);
-    const z = range(rng, -48 * S, 48 * S);
-    if (Math.hypot(x, z) < 33 * S) continue;
+    const x = range(rng, -LAYOUT.anchor.span * S, LAYOUT.anchor.span * S);
+    const z = range(rng, -LAYOUT.anchor.span * S, LAYOUT.anchor.span * S);
+    if (Math.hypot(x, z) < LAYOUT.anchor.centerClear * S) continue;
     if (anchorValid(x, z, symmetry)) return { x, z };
   }
   // Страховка: детерминированная точка, валидная для любой симметрии.
-  const fallback = {
-    rot180: { x: 40 * S, z: 0 },
-    'axis-x': { x: 0, z: 40 * S },
-    'axis-z': { x: 40 * S, z: 0 },
-    diagonal: { x: 40 * S, z: -8 * S },
-    'anti-diagonal': { x: 40 * S, z: 8 * S },
-  }[symmetry.key];
-  return { ...fallback };
+  const fallback = LAYOUT.anchor.fallback[symmetry.key];
+  return { x: fallback.x * S, z: fallback.z * S };
 }
 
 function pickPower(rng, hq, toEnemy, perp) {
   for (let attempt = 0; attempt < 240; attempt++) {
     const side = rng() < 0.5 ? -1 : 1;
-    const back = range(rng, 9.5, 12.5) * S;
-    const lateral = side * range(rng, 1.0, 3.8) * S;
+    const back = range(rng, LAYOUT.power.back[0], LAYOUT.power.back[1]) * S;
+    const lateral = side * range(rng, LAYOUT.power.lateral[0], LAYOUT.power.lateral[1]) * S;
     const x = hq.x - toEnemy.x * back + perp.x * lateral;
     const z = hq.z - toEnemy.z * back + perp.z * lateral;
     if (!inside(x, z, MAP.half - 4)) continue;
-    if (dist(x, z, hq.x, hq.z) < 10.5 * S) continue;
+    if (dist(x, z, hq.x, hq.z) < LAYOUT.power.minDistance * S) continue;
     return { x, z };
   }
+  const back = LAYOUT.power.fallbackBack;
   return {
-    x: Math.max(-MAP.half + 4, Math.min(MAP.half - 4, hq.x - toEnemy.x * 11 * S)),
-    z: Math.max(-MAP.half + 4, Math.min(MAP.half - 4, hq.z - toEnemy.z * 11 * S)),
+    x: Math.max(-MAP.half + 4, Math.min(MAP.half - 4, hq.x - toEnemy.x * back * S)),
+    z: Math.max(-MAP.half + 4, Math.min(MAP.half - 4, hq.z - toEnemy.z * back * S)),
   };
 }
 
@@ -308,15 +304,15 @@ function pickHomeSpots(rng, hq, toEnemy, power) {
     const sign = i === 0 ? 1 : -1;
     let found = null;
     for (let attempt = 0; attempt < 320; attempt++) {
-      const angle = sign * range(rng, 0.7, 1.55);
+      const angle = sign * range(rng, LAYOUT.homes.angle[0], LAYOUT.homes.angle[1]);
       const dir = rotate(toEnemy, angle);
-      const d = range(rng, 14.5, 18.5) * S;
+      const d = range(rng, LAYOUT.homes.distance[0], LAYOUT.homes.distance[1]) * S;
       const x = hq.x + dir.x * d;
       const z = hq.z + dir.z * d;
       if (!inside(x, z, MAP.half - 7)) continue;
-      if (dist(x, z, hq.x, hq.z) < 12.5 * S) continue;
-      if (dist(x, z, power.x, power.z) < 10.5 * S) continue;
-      if (spots.some((spot) => dist(x, z, spot.x, spot.z) < 9.5 * S)) continue;
+      if (dist(x, z, hq.x, hq.z) < LAYOUT.homes.hqClear * S) continue;
+      if (dist(x, z, power.x, power.z) < LAYOUT.homes.powerClear * S) continue;
+      if (spots.some((spot) => dist(x, z, spot.x, spot.z) < LAYOUT.homes.spacing * S)) continue;
       found = { x, z };
       break;
     }
@@ -324,11 +320,11 @@ function pickHomeSpots(rng, hq, toEnemy, power) {
       // Редкий случай у самой границы: ищем любое свободное направление.
       for (let step = 0; step < 48; step++) {
         const angle = (step / 48) * TAU;
-        const x = hq.x + Math.cos(angle) * 16 * S;
-        const z = hq.z + Math.sin(angle) * 16 * S;
+        const x = hq.x + Math.cos(angle) * LAYOUT.homes.fallbackDistance * S;
+        const z = hq.z + Math.sin(angle) * LAYOUT.homes.fallbackDistance * S;
         if (!inside(x, z, MAP.half - 7)) continue;
-        if (dist(x, z, power.x, power.z) < 10.5 * S) continue;
-        if (spots.some((spot) => dist(x, z, spot.x, spot.z) < 9.5 * S)) continue;
+        if (dist(x, z, power.x, power.z) < LAYOUT.homes.powerClear * S) continue;
+        if (spots.some((spot) => dist(x, z, spot.x, spot.z) < LAYOUT.homes.spacing * S)) continue;
         found = { x, z };
         break;
       }
@@ -336,8 +332,8 @@ function pickHomeSpots(rng, hq, toEnemy, power) {
     if (!found) {
       const dir = rotate(toEnemy, sign * Math.PI / 2);
       found = {
-        x: Math.max(-MAP.half + 7, Math.min(MAP.half - 7, hq.x + dir.x * 16 * S)),
-        z: Math.max(-MAP.half + 7, Math.min(MAP.half - 7, hq.z + dir.z * 16 * S)),
+        x: Math.max(-MAP.half + 7, Math.min(MAP.half - 7, hq.x + dir.x * LAYOUT.homes.fallbackDistance * S)),
+        z: Math.max(-MAP.half + 7, Math.min(MAP.half - 7, hq.z + dir.z * LAYOUT.homes.fallbackDistance * S)),
       };
     }
     spots.push(found);
@@ -352,23 +348,24 @@ function marineSpots(rng, hq, enemyHq, count, power, patches) {
   for (let i = 0; i < count; i++) {
     let found = null;
     for (let attempt = 0; attempt < 100; attempt++) {
-      const forward = range(rng, 7.2, 10.2) * S;
-      const lateral = ((i - (count - 1) / 2) * 3.1 * S) + range(rng, -1.1, 1.1) * S;
+      const forward = range(rng, LAYOUT.marines.forward[0], LAYOUT.marines.forward[1]) * S;
+      const lateral = ((i - (count - 1) / 2) * LAYOUT.marines.lateralStep * S)
+        + range(rng, -LAYOUT.marines.lateralJitter, LAYOUT.marines.lateralJitter) * S;
       const x = hq.x + toEnemy.x * forward + perp.x * lateral;
       const z = hq.z + toEnemy.z * forward + perp.z * lateral;
       if (!inside(x, z, MAP.half - 5)) continue;
-      if (dist(x, z, hq.x, hq.z) < 7.0 * S) continue;
-      if (dist(x, z, power.x, power.z) < 5.4 * S) continue;
-      if (patches.some((p) => dist(x, z, p.x, p.z) < 7.0 * S)) continue;
-      if (spots.some((s) => dist(x, z, s.x, s.z) < 2.2 * S)) continue;
+      if (dist(x, z, hq.x, hq.z) < LAYOUT.marines.hqClear * S) continue;
+      if (dist(x, z, power.x, power.z) < LAYOUT.marines.powerClear * S) continue;
+      if (patches.some((p) => dist(x, z, p.x, p.z) < LAYOUT.marines.patchClear * S)) continue;
+      if (spots.some((s) => dist(x, z, s.x, s.z) < LAYOUT.marines.spacing * S)) continue;
       found = { x, z };
       break;
     }
     if (!found) {
-      const lateral = (i - (count - 1) / 2) * 3.1 * S;
+      const lateral = (i - (count - 1) / 2) * LAYOUT.marines.lateralStep * S;
       found = {
-        x: Math.max(-MAP.half + 5, Math.min(MAP.half - 5, hq.x + toEnemy.x * 8 * S + perp.x * lateral)),
-        z: Math.max(-MAP.half + 5, Math.min(MAP.half - 5, hq.z + toEnemy.z * 8 * S + perp.z * lateral)),
+        x: Math.max(-MAP.half + 5, Math.min(MAP.half - 5, hq.x + toEnemy.x * LAYOUT.marines.fallbackForward * S + perp.x * lateral)),
+        z: Math.max(-MAP.half + 5, Math.min(MAP.half - 5, hq.z + toEnemy.z * LAYOUT.marines.fallbackForward * S + perp.z * lateral)),
       };
     }
     spots.push(found);
@@ -383,19 +380,19 @@ function pickBarracksSpot(rng, hq, enemyHq, power, patches) {
 
   const scoreAt = (x, z) => {
     let score = Math.min(
-      dist(x, z, hq.x, hq.z) - 10 * S,
-      dist(x, z, power.x, power.z) - 8.5 * S,
+      dist(x, z, hq.x, hq.z) - LAYOUT.barracks.hqClear * S,
+      dist(x, z, power.x, power.z) - LAYOUT.barracks.powerClear * S,
       MAP.half - 7 - Math.abs(x),
       MAP.half - 7 - Math.abs(z),
     );
-    for (const p of patches) score = Math.min(score, dist(x, z, p.x, p.z) - 8.5 * S);
+    for (const p of patches) score = Math.min(score, dist(x, z, p.x, p.z) - LAYOUT.barracks.patchClear * S);
     return score;
   };
 
   for (let attempt = 0; attempt < 260; attempt++) {
     const sign = attempt % 2 === 0 ? 1 : -1;
-    const dir = rotate(toEnemy, sign * range(rng, 0.45, 2.55));
-    const d = range(rng, 9.5, 14.5) * S;
+    const dir = rotate(toEnemy, sign * range(rng, LAYOUT.barracks.angle[0], LAYOUT.barracks.angle[1]));
+    const d = range(rng, LAYOUT.barracks.distance[0], LAYOUT.barracks.distance[1]) * S;
     const x = hq.x + dir.x * d;
     const z = hq.z + dir.z * d;
     if (!inside(x, z, MAP.half - 7)) continue;
@@ -422,15 +419,15 @@ function pickBarracksSpot(rng, hq, enemyHq, power, patches) {
   if (best) return best;
   const dir = rotate(toEnemy, Math.PI / 2);
   return {
-    x: Math.max(-MAP.half + 7, Math.min(MAP.half - 7, hq.x + dir.x * 11 * S)),
-    z: Math.max(-MAP.half + 7, Math.min(MAP.half - 7, hq.z + dir.z * 11 * S)),
+    x: Math.max(-MAP.half + 7, Math.min(MAP.half - 7, hq.x + dir.x * LAYOUT.barracks.fallbackDistance * S)),
+    z: Math.max(-MAP.half + 7, Math.min(MAP.half - 7, hq.z + dir.z * LAYOUT.barracks.fallbackDistance * S)),
   };
 }
 
 // ------------------------------------------------------------------ карта
 
 function makePatch(x, z, owner, role, rotation) {
-  return { x, z, owner, role, radius: 4.4, rotation, derrick: null, root: null };
+  return { x, z, owner, role, radius: LAYOUT.patchRadius, rotation, derrick: null, root: null };
 }
 
 function addPatchPair(patches, x, z, symmetry, rng, role = 'natural') {
@@ -452,7 +449,7 @@ function patchClear(x, z, symmetry, hq, enemyHq, power, enemyPower, barracks, pa
   if (dist(x, z, enemyHq.x, enemyHq.z) < opts.hqClear * S) return false;
   if (dist(x, z, power.x, power.z) < opts.powerClear * S) return false;
   if (dist(x, z, enemyPower.x, enemyPower.z) < opts.powerClear * S) return false;
-  if (barracks && dist(x, z, barracks.x, barracks.z) < (opts.barracksClear ?? 10) * S) return false;
+  if (barracks && dist(x, z, barracks.x, barracks.z) < (opts.barracksClear ?? LAYOUT.neutral.barracksClear) * S) return false;
   if (patches.some((p) => dist(x, z, p.x, p.z) < opts.patchClear * S)) return false;
   const [mx, mz] = symmetry.transform(x, z);
   if (dist(x, z, mx, mz) < (opts.selfClear ?? 0) * S) return false;
@@ -525,21 +522,21 @@ export function createMap(seedInput, options = {}) {
   // на оси симметрии (у центральной симметрии — ровно в центре карты).
   for (let i = 0; i < 2; i++) {
     const spot = pickPairSpot(rng, symmetry, (x, z) => patchTest(x, z, {
-      hqClear: 23,
-      powerClear: 15,
-      patchClear: 12,
-      bound: MAP.half - 9,
-      selfClear: 18,
+      hqClear: LAYOUT.neutral.hqClear,
+      powerClear: LAYOUT.neutral.powerClear,
+      patchClear: LAYOUT.neutral.patchClear,
+      bound: MAP.half - LAYOUT.neutral.bound,
+      selfClear: LAYOUT.neutral.selfClear,
     }));
     if (spot) addPatchPair(oilPatches, spot.x, spot.z, symmetry, rng, 'natural');
   }
 
   if (rng() < 0.62) {
     const spot = pickSelfSpot(rng, symmetry, (x, z) => patchTest(x, z, {
-      hqClear: 23,
-      powerClear: 15,
-      patchClear: 12,
-      bound: MAP.half - 12,
+      hqClear: LAYOUT.neutral.hqClear,
+      powerClear: LAYOUT.neutral.powerClear,
+      patchClear: LAYOUT.neutral.patchClear,
+      bound: MAP.half - LAYOUT.neutral.centerBound,
     }));
     if (spot) {
       oilPatches.push(makePatch(spot.x, spot.z, null, 'center', rng() * TAU));
@@ -590,14 +587,14 @@ export function createMap(seedInput, options = {}) {
   };
 
   const wallAvoidPoints = [
-    { point: playerHq, margin: 15 },
-    { point: enemyHq, margin: 15 },
-    { point: playerPower, margin: 10 },
-    { point: enemyPower, margin: 10 },
-    { point: enemyBarracks, margin: 10 },
-    ...oilPatches.map((patch) => ({ point: patch, margin: 7.5 })),
-    ...spawn.player.marines.map((marine) => ({ point: marine, margin: 5 })),
-    ...spawn.enemy.marines.map((marine) => ({ point: marine, margin: 5 })),
+    { point: playerHq, margin: LAYOUT.walls.avoidBase },
+    { point: enemyHq, margin: LAYOUT.walls.avoidBase },
+    { point: playerPower, margin: LAYOUT.walls.avoidPower },
+    { point: enemyPower, margin: LAYOUT.walls.avoidPower },
+    { point: enemyBarracks, margin: LAYOUT.walls.avoidBarracks },
+    ...oilPatches.map((patch) => ({ point: patch, margin: LAYOUT.walls.avoidPatch })),
+    ...spawn.player.marines.map((marine) => ({ point: marine, margin: LAYOUT.walls.avoidMarine })),
+    ...spawn.enemy.marines.map((marine) => ({ point: marine, margin: LAYOUT.walls.avoidMarine })),
   ];
 
   const wallSegmentValid = (segment) => {
@@ -611,8 +608,8 @@ export function createMap(seedInput, options = {}) {
       if (segmentDistance(point.x, point.z, segment).distance < margin * S) return false;
     }
     for (const other of walls) {
-      if (segmentDistance(other.x1, other.z1, segment).distance < 6 * S) return false;
-      if (segmentDistance(other.x2, other.z2, segment).distance < 6 * S) return false;
+      if (segmentDistance(other.x1, other.z1, segment).distance < LAYOUT.walls.spacing * S) return false;
+      if (segmentDistance(other.x2, other.z2, segment).distance < LAYOUT.walls.spacing * S) return false;
     }
     return true;
   };
@@ -623,15 +620,15 @@ export function createMap(seedInput, options = {}) {
       const x = range(rng, -FIELD, FIELD);
       const z = range(rng, -FIELD, FIELD);
       const [mx, mz] = symmetry.transform(x, z);
-      if (dist(x, z, mx, mz) < 12 * S) continue;
+      if (dist(x, z, mx, mz) < LAYOUT.walls.minDistance * S) continue;
       const angle = rng() * TAU;
-      const length = range(rng, 8, 15) * S;
+      const length = range(rng, LAYOUT.walls.length[0], LAYOUT.walls.length[1]) * S;
       const first = makeWall(x, z, angle, length);
       const [ax, az] = symmetry.transform(first.x1, first.z1);
       const [bx, bz] = symmetry.transform(first.x2, first.z2);
       const second = { x1: ax, z1: az, x2: bx, z2: bz, radius: wallRadius };
       if (!wallSegmentValid(first) || !wallSegmentValid(second)) continue;
-      if (segmentDistance(second.x1, second.z1, first).distance < 3 * S) continue;
+      if (segmentDistance(second.x1, second.z1, first).distance < LAYOUT.walls.pairDistance * S) continue;
       walls.push(first, second);
       placed = true;
     }
@@ -674,10 +671,10 @@ export function createMap(seedInput, options = {}) {
   const rockPairs = Math.round((10 + Math.floor(rng() * 5)) * 1.6);
   for (let i = 0; i < rockPairs; i++) {
     const spot = pickPairSpot(rng, symmetry, (x, z) => (
-      baseClear(x, z, 16, 13)
-      && oilClear(x, z, 9.5)
-      && wallClear(x, z, 3.5)
-      && rocks.every((r) => dist(x, z, r.x, r.z) > 8 * S)
+      baseClear(x, z, LAYOUT.decor.rock.baseHq, LAYOUT.decor.rock.basePower)
+      && oilClear(x, z, LAYOUT.decor.rock.patch)
+      && wallClear(x, z, LAYOUT.decor.rock.wall)
+      && rocks.every((r) => dist(x, z, r.x, r.z) > LAYOUT.decor.rock.spacing * S)
     ));
     if (!spot) continue;
     const props = {
@@ -693,11 +690,11 @@ export function createMap(seedInput, options = {}) {
   const cratePairs = Math.round((3 + Math.floor(rng() * 2)) * 1.6);
   for (let i = 0; i < cratePairs; i++) {
     const spot = pickPairSpot(rng, symmetry, (x, z) => (
-      baseClear(x, z, 11, 9.5)
-      && oilClear(x, z, 8)
-      && wallClear(x, z, 3)
-      && rocks.every((r) => dist(x, z, r.x, r.z) > 5.5 * S)
-      && crates.every((c) => dist(x, z, c.x, c.z) > 7 * S)
+      baseClear(x, z, LAYOUT.decor.crate.baseHq, LAYOUT.decor.crate.basePower)
+      && oilClear(x, z, LAYOUT.decor.crate.patch)
+      && wallClear(x, z, LAYOUT.decor.crate.wall)
+      && rocks.every((r) => dist(x, z, r.x, r.z) > LAYOUT.decor.crate.rock * S)
+      && crates.every((c) => dist(x, z, c.x, c.z) > LAYOUT.decor.crate.spacing * S)
     ));
     if (!spot) continue;
     pushPair(crates, spot.x, spot.z, {
@@ -710,12 +707,12 @@ export function createMap(seedInput, options = {}) {
   // разносим, чтобы зеркальные половинки не наезжали друг на друга.
   const crystalCenters = [];
   const crystalTest = (x, z) => (
-    baseClear(x, z, 9.5, 8)
-    && oilClear(x, z, 7)
-    && wallClear(x, z, 2.8)
-    && rocks.every((r) => dist(x, z, r.x, r.z) > 4.5 * S)
-    && crates.every((c) => dist(x, z, c.x, c.z) > 4 * S)
-    && crystalCenters.every((c) => dist(x, z, c.x, c.z) > 6 * S)
+    baseClear(x, z, LAYOUT.decor.crystal.baseHq, LAYOUT.decor.crystal.basePower)
+    && oilClear(x, z, LAYOUT.decor.crystal.patch)
+    && wallClear(x, z, LAYOUT.decor.crystal.wall)
+    && rocks.every((r) => dist(x, z, r.x, r.z) > LAYOUT.decor.crystal.rock * S)
+    && crates.every((c) => dist(x, z, c.x, c.z) > LAYOUT.decor.crystal.crate * S)
+    && crystalCenters.every((c) => dist(x, z, c.x, c.z) > LAYOUT.decor.crystal.spacing * S)
   );
   const crystalClusters = Math.round(4 * 1.6);
   for (let cluster = 0; cluster < crystalClusters; cluster++) {
@@ -755,9 +752,9 @@ export function createMap(seedInput, options = {}) {
   const pebblePairs = Math.round((60 + Math.floor(rng() * 26)) * 1.6);
   for (let i = 0; i < pebblePairs; i++) {
     const spot = pickPairSpot(rng, symmetry, (x, z) => (
-      baseClear(x, z, 7, 6)
-      && oilClear(x, z, 5.5)
-      && wallClear(x, z, 2)
+      baseClear(x, z, LAYOUT.decor.pebble.baseHq, LAYOUT.decor.pebble.basePower)
+      && oilClear(x, z, LAYOUT.decor.pebble.patch)
+      && wallClear(x, z, LAYOUT.decor.pebble.wall)
       && rocks.every((r) => dist(x, z, r.x, r.z) > 4.2)
       && pebbles.every((p) => dist(x, z, p.x, p.z) > 0.8)
     ));
