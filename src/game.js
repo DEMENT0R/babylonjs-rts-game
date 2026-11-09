@@ -64,6 +64,8 @@ export class Game {
     this.paused = true;
     this.started = false;
     this.over = null;
+    // Скорость симуляции: 0.5×, 1× или 2×. На интерфейс и звук не влияет.
+    this.speed = 1;
 
     this.stats = {
       kills: 0,
@@ -303,8 +305,19 @@ export class Game {
     this.paused = value;
   }
 
+  /** Скорость партии выбирается в паузе и действует до конца боя. */
+  setSpeed(value) {
+    const speed = Number(value);
+    if (![0.5, 1, 2].includes(speed) || this.speed === speed) return false;
+    this.speed = speed;
+    return true;
+  }
+
   update(dt) {
     if (!this.started || this.paused || this.over) return;
+    dt = Math.min(dt, 0.1) * this.speed;
+    // Ускорение не должно протаскивать юнитов сквозь препятствия: шаг
+    // навигации остаётся в тех же пределах, что и на обычной скорости.
     dt = Math.min(dt, 0.1);
     this.elapsed += dt;
 

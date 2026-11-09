@@ -163,6 +163,12 @@ export class UI {
         this.setSeedMode(seedMode.dataset.seedmode);
         return;
       }
+      const speed = e.target.closest('[data-speed]');
+      if (speed) {
+        this.game.setSpeed(Number(speed.dataset.speed));
+        this.refreshSpeedControls();
+        return;
+      }
       const action = e.target.closest('[data-action]')?.dataset.action;
       if (!action) return;
       if (action === 'start') this.startGame();
@@ -1000,6 +1006,12 @@ export class UI {
         <div><b>${formatTime(this.game.elapsed)}</b><span>ВРЕМЯ</span></div>
       </div>
       ${mission ? `<div class="pause-objectives">${this.objectivesHtml(mission, true)}</div>` : ''}
+      <div class="graphics-row pause-speed">
+        <span class="graphics-label">СКОРОСТЬ БОЯ</span>
+        <div class="graphics-options">
+          ${[0.5, 1, 2].map((v) => `<button type="button" class="graphics-opt${this.game.speed === v ? ' is-active' : ''}" data-speed="${v}" aria-pressed="${this.game.speed === v}">${v}×</button>`).join('')}
+        </div>
+      </div>
       <div class="overlay-actions">
         <button class="btn-primary" data-action="resume">ПРОДОЛЖИТЬ <span>→</span></button>
         <div class="menu-links">
@@ -1300,6 +1312,14 @@ export class UI {
       const active = values[btn.dataset.graphics] === btn.dataset.value;
       btn.classList.toggle('is-active', active);
       btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  refreshSpeedControls() {
+    this.el.overlay.querySelectorAll('[data-speed]').forEach((btn) => {
+      const active = Number(btn.dataset.speed) === this.game.speed;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', String(active));
     });
   }
 
