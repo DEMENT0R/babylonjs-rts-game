@@ -1568,6 +1568,49 @@ body.mode-attack #scene {
   margin-top: 22px;
 }
 
+.mode-grid--modes {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+
+.mode-grid--missions {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.mode-card.is-done {
+  border-color: rgba(92, 255, 196, 0.35);
+}
+
+.mode-card.is-done .mode-mark,
+.mode-card.is-done .mode-badge {
+  border-color: rgba(92, 255, 196, 0.35);
+  color: #5cffc4;
+}
+
+.mode-card.is-done .mode-badge {
+  background: rgba(92, 255, 196, 0.08);
+}
+
+.mission-num {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  color: var(--cyan);
+}
+
+.pause-objectives,
+.overlay--end .objectives {
+  margin-top: 14px;
+}
+
+.objective.is-done {
+  border-color: rgba(92, 255, 196, 0.28);
+  background: rgba(12, 36, 31, 0.55);
+}
+
+.objective.is-done > b {
+  color: #5cffc4;
+}
+
 .mode-card {
   display: flex;
   align-items: center;

@@ -20,6 +20,7 @@ import { Unit, Building } from './entities.js';
 import { NavGrid, segmentDistance } from './nav.js';
 import { AIController } from './ai.js';
 import { FogOfWar } from './fog.js';
+import { recordMissionResult } from './missions.js';
 
 let nextBuildingId = 1;
 
@@ -28,6 +29,7 @@ export class Game {
     scene, camera, factory, world, fx, graphics, audio, audioSettings,
     difficulty = 'normal', difficultySettings = null,
     fog = 'on', fogSettings = null,
+    mission = null,
   }) {
     this.scene = scene;
     this.camera = camera;
@@ -38,7 +40,10 @@ export class Game {
     this.graphics = graphics;
     this.audio = audio ?? null;
     this.audioSettings = audioSettings ?? null;
-    this.difficulty = AI_DIFFICULTY[difficulty] ? difficulty : 'normal';
+    this.mission = mission;
+    this.difficulty = mission?.difficulty && AI_DIFFICULTY[mission.difficulty]
+      ? mission.difficulty
+      : AI_DIFFICULTY[difficulty] ? difficulty : 'normal';
     this.difficultySettings = difficultySettings;
     this.fogEnabled = fog !== 'off';
     this.fogSettings = fogSettings;
@@ -61,6 +66,10 @@ export class Game {
     this.over = null;
 
     this.stats = { kills: 0, losses: 0, gathered: 0, trained: 0, built: 0 };
+    // Счётчики целей миссии: что игрок уже сделал и что уничтожил.
+    this.missionStats = { trained: {}, destroyed: {} };
+    this.objectives = [];
+    this.objectiveTimer = 0;
     // Изученные улучшения каждой фракции: набор ключей из UPGRADES.
     this.upgrades = { player: new Set(), enemy: new Set() };
     this.power = {
@@ -77,11 +86,12 @@ export class Game {
     this.nav = new NavGrid({ half: MAP.half, cell: 2, margin: 1.0 });
 
     this.setupBases();
+    this.setupMission();
     this.fog = new FogOfWar(this, { enabled: this.fogEnabled });
     this.refreshNav();
     this.recomputePower();
     this.refreshArmyCap();
-    this.ai = new AIController(this, this.difficulty);
+    this.ai = new AIController(this, this.difficulty, this.mission?.ai ?? null);
     this.ui = null;
   }
 
@@ -90,7 +100,7 @@ export class Game {
    * правилами, а выбор запоминается в браузере.
    */
   setDifficulty(key) {
-    if (!AI_DIFFICULTY[key] || this.started) return false;
+    if (this.mission || !AI_DIFFICULTY[key] || this.started) return false;
     this.difficulty = key;
     this.difficultySettings?.set(key);
     this.ai = new AIController(this, key);
@@ -156,6 +166,100 @@ export class Game {
     createBase('enemy', enemy, playerHq.x, playerHq.z);
   }
 
+  /**
+   * Стартовая расстановка миссии: предразмещённые турели и другие объекты.
+   * Цели создаются здесь же, чтобы HUD знал о них до первого кадра.
+   */
+  setupMission() {
+    if (!this.mission) return;
+    this.mission.setup?.(this);
+    this.objectives = (this.mission.objectives ?? []).map((def, index) => ({
+      ...def,
+      index,
+      done: false,
+      progress: 0,
+      progressText: '',
+    }));
+    this.updateObjectives(true);
+  }
+
+  /** Доступна ли постройка в текущей миссии. В свободной партии доступно всё. */
+  missionAllowsBuilding(type) {
+    return !this.mission?.buildings || this.mission.buildings.includes(type);
+  }
+
+  /** Доступен ли найм в текущей миссии. */
+  missionAllowsUnit(type) {
+    return !this.mission?.units || this.mission.units.includes(type);
+  }
+
+  trackTrained(type) {
+    this.missionStats.trained[type] = (this.missionStats.trained[type] ?? 0) + 1;
+  }
+
+  trackDestroyed(type) {
+    this.missionStats.destroyed[type] = (this.missionStats.destroyed[type] ?? 0) + 1;
+  }
+
+  /** Первая незавершённая цель — её показывает HUD. */
+  activeObjective() {
+    return this.objectives.find((objective) => !objective.done) ?? null;
+  }
+
+  /** Ход выполнения цели: доля 0…1 и короткая подпись для интерфейса. */
+  objectiveProgress(objective) {
+    const count = (value) => Math.min(1, value);
+    switch (objective.type) {
+      case 'destroyHQ': {
+        const alive = this.buildings.some(
+          (b) => b.alive && b.faction === 'enemy' && b.type === 'hq',
+        );
+        return { progress: alive ? 0 : 1, text: alive ? 'КП цел' : 'КП уничтожен' };
+      }
+      case 'survive': {
+        const seconds = Math.max(1, objective.seconds ?? 0);
+        return {
+          progress: count(this.elapsed / seconds),
+          text: `${formatTime(Math.max(0, seconds - this.elapsed))} осталось`,
+        };
+      }
+      case 'derricks': {
+        const have = this.buildings.filter(
+          (b) => b.alive && b.faction === 'player' && b.type === 'derrick',
+        ).length;
+        return { progress: count(have / (objective.count || 1)), text: `${have} / ${objective.count}` };
+      }
+      case 'destroyBuilding': {
+        const have = this.missionStats.destroyed[objective.building] ?? 0;
+        return { progress: count(have / (objective.count || 1)), text: `${have} / ${objective.count}` };
+      }
+      case 'train': {
+        const have = this.missionStats.trained[objective.unit] ?? 0;
+        return { progress: count(have / (objective.count || 1)), text: `${have} / ${objective.count}` };
+      }
+      default:
+        return { progress: 0, text: '' };
+    }
+  }
+
+  updateObjectives(silent = false) {
+    if (!this.mission || !this.objectives.length || this.over) return;
+    let allDone = true;
+    for (const objective of this.objectives) {
+      const state = this.objectiveProgress(objective);
+      objective.progress = state.progress;
+      objective.progressText = state.text;
+      if (!objective.done && state.progress >= 1) {
+        objective.done = true;
+        if (!silent) {
+          this.notify(`Задача выполнена: ${objective.title}.`, 'success', `objective-${objective.index}`, 0, 5);
+        }
+      }
+      if (!objective.done) allDone = false;
+    }
+    if (allDone) this.endGame('victory');
+  }
+
   // ------------------------------------------------------------- loop
   begin() {
     if (this.started) return;
@@ -165,6 +269,21 @@ export class Game {
     this.paused = false;
     const hq = this.playerBuildings().find((b) => b.type === 'hq');
     if (hq) this.selectOnly([hq]);
+    if (this.mission) {
+      const kind = this.mission.kind === 'campaign' ? 'Операция' : 'Испытание';
+      this.notify(
+        `${kind} «${this.mission.title}». ${this.mission.subtitle}`,
+        'info',
+        'mission-begin',
+        0,
+        8,
+      );
+      const first = this.activeObjective();
+      if (first) {
+        this.notify(`Задача: ${first.title}. ${first.desc}`, 'hint', 'mission-first', 0, 10);
+      }
+      return;
+    }
     this.notify('Связь установлена. Командование колонией за вами.', 'info', 'begin', 0);
     this.notify('Постройте казармы и держите инженеров под рукой: без них стройка стоит.', 'hint', 'hint-build', 0, 10);
   }
@@ -210,15 +329,23 @@ export class Game {
     }
 
     // подсказки
-    if (this.tutorialStep === 0 && this.elapsed > 18) {
-      this.tutorialStep = 1;
-      this.notify('Нефтяные вышки приносят кредиты. Захватывайте нейтральные месторождения.', 'hint', 'hint-oil', 0, 12);
-    } else if (this.tutorialStep === 1 && this.elapsed > 42) {
-      this.tutorialStep = 2;
-      this.notify('Здания строятся только рядом с инженерами. Чем их больше, тем быстрее.', 'hint', 'hint-engineer', 0, 12);
-    } else if (this.tutorialStep === 2 && this.elapsed > 70) {
-      this.tutorialStep = 3;
-      this.notify('Сенсоры фиксируют активность противника. Укрепляйте оборону.', 'warn', 'hint-enemy', 0, 14);
+    if (!this.mission) {
+      if (this.tutorialStep === 0 && this.elapsed > 18) {
+        this.tutorialStep = 1;
+        this.notify('Нефтяные вышки приносят кредиты. Захватывайте нейтральные месторождения.', 'hint', 'hint-oil', 0, 12);
+      } else if (this.tutorialStep === 1 && this.elapsed > 42) {
+        this.tutorialStep = 2;
+        this.notify('Здания строятся только рядом с инженерами. Чем их больше, тем быстрее.', 'hint', 'hint-engineer', 0, 12);
+      } else if (this.tutorialStep === 2 && this.elapsed > 70) {
+        this.tutorialStep = 3;
+        this.notify('Сенсоры фиксируют активность противника. Укрепляйте оборону.', 'warn', 'hint-enemy', 0, 14);
+      }
+    }
+
+    this.objectiveTimer -= dt;
+    if (this.objectiveTimer <= 0) {
+      this.objectiveTimer = 0.25;
+      this.updateObjectives();
     }
 
     this.checkVictory();
@@ -228,8 +355,11 @@ export class Game {
     if (this.over) return;
     const playerHQ = this.entities.find((e) => e.alive && e.isBuilding && e.type === 'hq' && e.faction === 'player');
     const enemyHQ = this.entities.find((e) => e.alive && e.isBuilding && e.type === 'hq' && e.faction === 'enemy');
-    if (!enemyHQ) this.endGame('victory');
-    else if (!playerHQ) this.endGame('defeat');
+    if (!playerHQ) {
+      this.endGame('defeat');
+    } else if (!this.mission && !enemyHQ) {
+      this.endGame('victory');
+    }
   }
 
   endGame(result) {
@@ -237,6 +367,7 @@ export class Game {
     this.over = result;
     this.paused = true;
     this.stats.time = this.elapsed;
+    if (this.mission) recordMissionResult(this.mission, result, this.stats);
     if (this.ui) this.ui.showEnd(result);
   }
 
@@ -1005,6 +1136,10 @@ export class Game {
     const wallet = opts.wallet ?? null;
     const credits = wallet ? wallet.credits : this.credits;
     if (!def || def.cost <= 0) return null;
+    if (faction === 'player' && !this.missionAllowsBuilding(type)) {
+      this.notify('В этой операции такая постройка недоступна.', 'warn', 'mission-build', 0, 3);
+      return null;
+    }
     if (credits < def.cost) {
       if (faction === 'player') this.notify(MESSAGES.noCredits, 'warn', 'no-credits', 0, 3);
       return null;
@@ -1091,6 +1226,7 @@ export class Game {
     }
     this.fx.buildDust(new Vector3(spot.x, 0, spot.z), 0.55);
     if (building.faction === 'player') this.stats.trained++;
+    if (building.faction === 'player') this.trackTrained(type);
     return unit;
   }
 
@@ -1272,6 +1408,10 @@ export class Game {
   trainUnit(type, building = this.primaryBarracks()) {
     const def = UNITS[type];
     if (!def) return false;
+    if (!this.missionAllowsUnit(type)) {
+      this.notify('В этой операции такой юнит недоступен.', 'warn', 'mission-train', 0, 3);
+      return false;
+    }
     if (!building || !building.alive) return false;
     if (!building.complete) {
       this.notify(MESSAGES.notReady, 'warn', 'not-ready', 0, 3);
@@ -1356,6 +1496,9 @@ export class Game {
     // Убийство засчитывается только за урон игрока: если противник сгорел
     // от собственного залпа, это не наша заслуга.
     if (entity.faction === 'enemy' && source?.faction === 'player') this.stats.kills++;
+    if (entity.isBuilding && entity.faction === 'enemy' && source?.faction === 'player') {
+      this.trackDestroyed(entity.type);
+    }
     if (entity.faction === 'player') {
       this.stats.losses++;
       this.ai?.onPlayerLoss?.(entity, source);
@@ -1390,8 +1533,9 @@ export class Game {
     this.recomputePower();
 
     if (wasHQ) {
-      if (entity.faction === 'enemy') this.endGame('victory');
-      else this.endGame('defeat');
+      if (entity.faction === 'player') this.endGame('defeat');
+      else if (!this.mission) this.endGame('victory');
+      else this.updateObjectives();
     }
   }
 
@@ -1430,6 +1574,10 @@ export class Game {
   }
 
   startPlacement(type) {
+    if (!this.missionAllowsBuilding(type)) {
+      this.notify('В этой операции такая постройка недоступна.', 'warn', 'mission-build', 0, 3);
+      return;
+    }
     if (this.input) this.input.startPlacement(type);
     else this.notify('Нет связи с системой строительства.', 'warn');
   }

@@ -5,14 +5,18 @@ import { AI, AI_DIFFICULTY, BUILDINGS, MAP, UNITS, UPGRADES } from './config.js'
 import { clamp, dist, distToSegment, shuffle, TAU } from './utils.js';
 
 export class AIController {
-  constructor(game, difficulty = 'normal') {
+  constructor(game, difficulty = 'normal', options = null) {
     this.game = game;
     // Сложность — это набор правил поверх одного и того же ИИ: флаги
     // включают «умные» привычки, множители меняют темп и экономику.
     this.difficulty = AI_DIFFICULTY[difficulty] ? difficulty : 'normal';
     this.rules = AI_DIFFICULTY[this.difficulty];
-    this.credits = AI.credits * (0.85 + Math.random() * 0.4);
-    this.waveTimer = AI.firstWave * this.rules.firstWave * (0.8 + Math.random() * 0.4);
+    // Миссия может задать темп наступления и экономику поверх сложности.
+    this.missionOptions = options;
+    this.credits = AI.credits * (options?.credits ?? 1) * (0.85 + Math.random() * 0.4);
+    this.waveTimer = options?.firstWave != null
+      ? options.firstWave * (0.92 + Math.random() * 0.16)
+      : AI.firstWave * this.rules.firstWave * (0.8 + Math.random() * 0.4);
     this.waveIndex = 0;
     this.rally = this.baseRally();
     this.defenseTimer = 0;
@@ -341,7 +345,7 @@ export class AIController {
       this.debugEl = null;
       return;
     }
-    this.credits += this.game.enemyIncome() * this.rules.income * dt;
+    this.credits += this.game.enemyIncome() * this.rules.income * (this.missionOptions?.income ?? 1) * dt;
     this.trainTimer -= dt;
     this.defenseTimer -= dt;
     this.buildTimer -= dt;
@@ -2438,7 +2442,8 @@ export class AIController {
     this.postponedRuns = 0;
 
     this.waveIndex++;
-    this.waveTimer = AI.waveInterval * this.rules.waveInterval * (0.8 + Math.random() * 0.45);
+    const interval = this.missionOptions?.waveInterval ?? AI.waveInterval * this.rules.waveInterval;
+    this.waveTimer = interval * (0.8 + Math.random() * 0.45);
     this.lastWaveAt = this.game.elapsed;
 
     const messages = {

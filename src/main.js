@@ -10,6 +10,7 @@ import {
 } from './babylon.js';
 import { CAMERA } from './config.js';
 import { createMap, formatSeed, randomSeed, seedFromLocation } from './mapgen.js';
+import { findMission } from './missions.js';
 import { ModelFactory } from './models.js';
 import { World } from './world.js';
 import { Effects } from './effects.js';
@@ -44,17 +45,31 @@ function boot() {
   // сид применяется без второго клика «Начать операцию».
   const autostart = params.get('start') === '1';
   const requestedSeed = seedFromLocation(window.location.search);
-  const seed = requestedSeed ?? randomSeed();
-  const map = createMap(seed);
+  // Миссия задаёт карту и правила партии; её сид имеет приоритет над адресом.
+  const mission = findMission(params.get('mission'));
+  if (!mission) params.delete('mission');
+  const mode = params.get('mode');
+  const seed = mission ? mission.seed : (requestedSeed ?? randomSeed());
+  const map = createMap(seed, mission?.map ?? {});
 
   // Сид попадает в адрес: ссылкой можно поделиться, а F5 сохранит ту же карту.
   // Служебный ?start=1 убираем, чтобы обновление страницы снова открыло лобби.
   let urlChanged = false;
-  if (!params.has('seed')) {
+  if (mission) {
+    const code = formatSeed(seed);
+    if (params.get('seed') !== code) {
+      params.set('seed', code);
+      urlChanged = true;
+    }
+  } else if (!params.has('seed')) {
     params.set('seed', formatSeed(seed));
     urlChanged = true;
   }
-  if (params.has('start')) {
+  if (mission && params.has('mode')) {
+    params.delete('mode');
+    urlChanged = true;
+  }
+  if (params.has('start') && (mission || autostart)) {
     params.delete('start');
     urlChanged = true;
   }
@@ -149,10 +164,13 @@ function boot() {
     difficultySettings,
     fog: fogSettings.get(),
     fogSettings,
+    mission,
   });
   const ui = new UI(game);
   const input = new Input(game);
-  if (autostart) ui.startGame();
+  if (mission) ui.showBriefing(mission);
+  else if (mode === 'campaign' || mode === 'trial') ui.showMissions(mode);
+  else if (autostart) ui.startGame();
 
   const resize = () => engine.resize();
   window.addEventListener('resize', resize);

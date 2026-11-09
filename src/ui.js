@@ -30,6 +30,16 @@ import {
   seedUrl,
 } from './mapgen.js';
 import { CHANGELOG, GAME_VERSION } from './changelog.js';
+import {
+  CAMPAIGN,
+  TRIALS,
+  campaignDoneCount,
+  campaignState,
+  findMission,
+  nextCampaignMission,
+  trialBest,
+  trialDoneCount,
+} from './missions.js';
 import { GRAPHICS_LABELS, GRAPHICS_OPTIONS, AUDIO_LABELS } from './settings.js';
 import { clamp, formatTime, plural, mulberry32, esc } from './utils.js';
 
@@ -53,6 +63,10 @@ export class UI {
     // Главное меню и лобби — разные экраны: параметры матча живут только
     // в лобби, а из него можно вернуться в меню.
     this.inLobby = false;
+    // Активная миссия: страница открыта по адресу ?mission=...
+    this.activeMission = this.game.mission ?? null;
+    // Открытый список миссий: нужен, чтобы «Назад» из настроек вернул в него.
+    this.missionsScreen = null;
     this.settingsTab = 'graphics';
     // Страница исследований техцентра: 0 — войска, 1 — база.
     this.researchPage = 0;
@@ -105,6 +119,9 @@ export class UI {
       tooltip: this.$('#tooltip'),
       selectBox: this.$('#selectBox'),
       squadRail: this.$('#squad-rail'),
+      missionCard: document.querySelector('.mission'),
+      missionLabel: document.querySelector('.mission span'),
+      missionText: document.querySelector('.mission b'),
     };
     this.mmCtx = this.el.minimap.getContext('2d');
   }
@@ -150,6 +167,12 @@ export class UI {
       if (!action) return;
       if (action === 'start') this.startGame();
       else if (action === 'lobby') this.showLobby();
+      else if (action === 'campaign') this.showMissions('campaign');
+      else if (action === 'trials') this.showMissions('trial');
+      else if (action === 'beginmission') this.beginMission();
+      else if (action === 'missionlist') this.leaveMission(this.activeMission?.kind ?? 'campaign');
+      else if (action === 'mainmenu') this.leaveMission(null);
+      else if (action.startsWith('mission:')) this.openMission(action.slice('mission:'.length));
       else if (action === 'reroll') this.rerollSeed();
       else if (action === 'resume') this.resume();
       else if (action === 'restart') window.location.reload();
@@ -237,6 +260,12 @@ export class UI {
   showStart() {
     this.overlayBack = null;
     this.inLobby = false;
+    this.missionsScreen = null;
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('mode')) {
+      url.searchParams.delete('mode');
+      window.history.replaceState(null, '', url.toString());
+    }
     const map = this.game.map;
     const html = `
       <div class="overlay-top">
@@ -244,12 +273,16 @@ export class UI {
         <h1>ГЕЛИОС<span>-7</span></h1>
         <p class="tagline">Две колонии-близнеца. Один сектор. Контракт достанется одному.</p>
       </div>
-      <div class="mode-grid">
-        <button type="button" class="mode-card mode-card--locked" disabled aria-disabled="true"
-          title="Кампания появится в следующих обновлениях">
+      <div class="mode-grid mode-grid--modes">
+        <button type="button" class="mode-card mode-card--active" data-action="campaign">
           <span class="mode-mark">${icon('flag')}</span>
-          <span class="mode-copy"><b>КАМПАНИЯ</b><small>Сюжетные операции за колонию «Гелиос-7».</small></span>
-          <span class="mode-badge">СКОРО</span>
+          <span class="mode-copy"><b>КАМПАНИЯ</b><small>Пять сюжетных операций за колонию «Гелиос-7»: брифинги, задания и постепенное открытие техники.</small></span>
+          <span class="mode-badge">${campaignDoneCount()} / ${CAMPAIGN.length}</span>
+        </button>
+        <button type="button" class="mode-card mode-card--active" data-action="trials">
+          <span class="mode-mark">${icon('target')}</span>
+          <span class="mode-copy"><b>ИСПЫТАНИЯ</b><small>Шесть фиксированных сценариев без сюжета: сложные партии на время и тактику.</small></span>
+          <span class="mode-badge">${trialDoneCount()} / ${TRIALS.length}</span>
         </button>
         <button type="button" class="mode-card mode-card--active" data-action="lobby">
           <span class="mode-mark">${icon('hq')}</span>
@@ -264,7 +297,7 @@ export class UI {
           <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
         </div>
       </div>
-      <p class="overlay-note start-note">Параметры партии собраны в лобби. Кампания и другие режимы появятся позже.</p>
+      <p class="overlay-note start-note">Кампания открывает технику за победы, испытания не связаны с сюжетом. Свободная партия настраивается в лобби.</p>
       <div class="overlay-footer">
         <span>ГЕЛИОС-7 // ГЛАВНОЕ МЕНЮ // ВЕРСИЯ ${GAME_VERSION}</span>
         <span>СЕКТОР ${map.label} · ${map.symmetry.name.toUpperCase()} · ${map.style.name}</span>
@@ -273,9 +306,165 @@ export class UI {
     this.setOverlay(html, 'overlay--start');
   }
 
+  /** Список операций кампании или испытаний. */
+  showMissions(kind) {
+    const isCampaign = kind !== 'trial';
+    const list = isCampaign ? CAMPAIGN : TRIALS;
+    this.inLobby = false;
+    this.missionsScreen = kind;
+    // На странице миссии игра уже собрана с её правилами: возврат в меню
+    // должен перезагрузить страницу, иначе ограничения миссии останутся.
+    this.overlayBack = () => (this.game.mission ? this.leaveMission(null) : this.showStart());
+    const url = new URL(window.location.href);
+    if (this.game.mission) url.searchParams.delete('mode');
+    else url.searchParams.set('mode', kind);
+    window.history.replaceState(null, '', url.toString());
+    const cards = list.map((mission) => {
+      const state = isCampaign ? campaignState(mission) : 'open';
+      const locked = state === 'locked';
+      const best = isCampaign ? null : trialBest(mission);
+      const badge = isCampaign
+        ? (state === 'done' ? 'ПРОЙДЕНО' : state === 'open' ? 'ДОСТУПНО' : 'ЗАКРЫТО')
+        : (best != null ? `РЕКОРД ${formatTime(best)}` : 'НЕ ПРОЙДЕНО');
+      const classes = `mode-card ${locked ? 'mode-card--locked' : 'mode-card--active'}${state === 'done' || best != null ? ' is-done' : ''}`;
+      return `
+        <button type="button" class="${classes}" data-action="mission:${mission.id}"
+          ${locked ? 'disabled aria-disabled="true"' : ''}
+          title="${locked ? 'Сначала пройдите предыдущую операцию' : esc(mission.subtitle)}">
+          <span class="mode-mark mission-num">${String(mission.index).padStart(2, '0')}</span>
+          <span class="mode-copy"><b>${esc(mission.title.toUpperCase())}</b><small>${esc(mission.subtitle)}</small></span>
+          <span class="mode-badge">${badge}</span>
+        </button>`;
+    }).join('');
+    const done = isCampaign ? campaignDoneCount() : trialDoneCount();
+    const label = isCampaign ? 'КАМПАНИЯ' : 'ИСПЫТАНИЯ';
+    const html = `
+      <div class="overlay-top">
+        <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // ${label}</div>
+        <h1>${isCampaign ? 'ОПЕРАЦИИ' : 'ИСПЫТАНИЯ'}</h1>
+        <p class="tagline">${isCampaign
+          ? 'Пять операций за колонию «Гелиос-7». Победа открывает следующую миссию и новую технику.'
+          : 'Шесть фиксированных сценариев. Сюжет не нужен: только карта, противник и условие победы.'}</p>
+      </div>
+      <div class="mode-grid mode-grid--missions">${cards}</div>
+      <div class="overlay-actions">
+        <button class="btn-primary" data-action="back">← В ГЛАВНОЕ МЕНЮ</button>
+        <div class="menu-links">
+          <button class="btn-ghost" data-action="help">КАК ИГРАТЬ</button>
+          <button class="btn-ghost" data-action="settings">НАСТРОЙКИ</button>
+          <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
+        </div>
+      </div>
+      <p class="overlay-note start-note">${isCampaign
+        ? `Пройдено операций: ${done} из ${CAMPAIGN.length}. Прогресс сохраняется в браузере.`
+        : `Пройдено испытаний: ${done} из ${TRIALS.length}. Лучшее время сохраняется отдельно для каждого сценария.`}</p>
+      <div class="overlay-footer">
+        <span>ГЕЛИОС-7 // ${label} // ВЕРСИЯ ${GAME_VERSION}</span>
+        <span>${isCampaign ? 'СЮЖЕТНЫЙ РЕЖИМ' : 'СВОБОДНЫЕ СЦЕНАРИИ'}</span>
+      </div>
+    `;
+    this.setOverlay(html, 'overlay--missions');
+  }
+
+  /** Брифинг перед стартом миссии. */
+  showBriefing(mission) {
+    this.activeMission = mission ?? this.activeMission;
+    const current = this.activeMission;
+    if (!current) {
+      this.showStart();
+      return;
+    }
+    this.inLobby = false;
+    this.missionsScreen = null;
+    this.overlayBack = () => this.showMissions(current.kind);
+    const map = this.game.map;
+    const isCampaign = current.kind === 'campaign';
+    const kindLabel = isCampaign ? 'КАМПАНИЯ' : 'ИСПЫТАНИЯ';
+    const buildings = (current.buildings ?? []).map((type) => BUILDINGS[type]?.name).filter(Boolean);
+    const units = (current.units ?? []).map((type) => UNITS[type]?.name).filter(Boolean);
+    const brief = (current.briefing ?? []).map((text) => `<p>${esc(text)}</p>`).join('');
+    const html = `
+      <div class="overlay-top">
+        <div class="eyebrow"><i></i> ${kindLabel} // ${isCampaign ? 'ОПЕРАЦИЯ' : 'СЦЕНАРИЙ'} ${String(current.index).padStart(2, '0')}</div>
+        <h1>${esc(current.title.toUpperCase())}</h1>
+        <p class="tagline">${esc(current.subtitle)}</p>
+      </div>
+      <div class="map-strip">
+        <div class="map-strip-item"><span>СИД КАРТЫ</span><b>#${map.label}</b></div>
+        <div class="map-strip-item"><span>СИММЕТРИЯ</span><b>${map.symmetry.name} · ${map.symmetry.tag}</b></div>
+        <div class="map-strip-item"><span>ЛАНДШАФТ</span><b>${map.style.name}</b></div>
+      </div>
+      <div class="brief-grid">
+        <div class="brief-copy">
+          ${brief}
+          <p class="accent-copy">Доступно: ${buildings.join(', ')}. Войска: ${units.join(', ')}.</p>
+        </div>
+        ${this.objectivesHtml(current, false)}
+      </div>
+      <div class="overlay-actions">
+        <button class="btn-primary" data-action="beginmission">НАЧАТЬ ${isCampaign ? 'ОПЕРАЦИЮ' : 'ИСПЫТАНИЕ'} <span>→</span></button>
+        <button class="btn-ghost" data-action="back">← НАЗАД</button>
+      </div>
+      <div class="overlay-footer">
+        <span>ГЕЛИОС-7 // ${kindLabel} · ${esc(current.title.toUpperCase())}</span>
+        <span>ПРОТИВНИК: ${AI_DIFFICULTY[current.difficulty]?.name ?? 'ОБЫЧНЫЙ'}</span>
+      </div>
+    `;
+    this.setOverlay(html, 'overlay--briefing');
+  }
+
+  /** HTML списка целей; с live=true показывает текущий прогресс партии. */
+  objectivesHtml(mission, live = false) {
+    const states = live ? this.game.objectives : [];
+    const items = (mission.objectives ?? []).map((objective, index) => {
+      const state = states[index];
+      const done = Boolean(state?.done);
+      const progress = state?.progressText ? ` · ${state.progressText}` : '';
+      return `
+        <div class="objective${done ? ' is-done' : ''}">
+          <b>${done ? '✓' : String(index + 1).padStart(2, '0')}</b>
+          <span><strong>${esc(objective.title)}${esc(progress)}</strong><small>${esc(objective.desc)}</small></span>
+        </div>`;
+    }).join('');
+    return `<div class="objectives">${items}</div>`;
+  }
+
+  beginMission() {
+    if (!this.activeMission) return;
+    this.beginGame();
+  }
+
+  /** Переносит браузер на страницу миссии: карта и правила собираются заново. */
+  openMission(id) {
+    const mission = findMission(id);
+    if (!mission) return;
+    if (mission.kind === 'campaign' && campaignState(mission) === 'locked') return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('mission', mission.id);
+    url.searchParams.set('seed', formatSeed(mission.seed));
+    url.searchParams.delete('start');
+    url.searchParams.delete('seedmode');
+    url.searchParams.delete('mode');
+    document.activeElement?.blur?.();
+    window.location.assign(url.toString());
+  }
+
+  /** Выход из миссии: в список операций или в чистое главное меню. */
+  leaveMission(kind) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('mission');
+    url.searchParams.delete('start');
+    url.searchParams.delete('seedmode');
+    if (kind) url.searchParams.set('mode', kind);
+    else url.searchParams.delete('mode');
+    document.activeElement?.blur?.();
+    window.location.assign(url.toString());
+  }
+
   /** Лобби: параметры матча и запуск операции. */
   showLobby() {
     this.inLobby = true;
+    this.missionsScreen = null;
     this.overlayBack = () => this.showStart();
     const map = this.game.map;
     const html = `
@@ -648,6 +837,10 @@ export class UI {
   }
 
   showEnd(result) {
+    if (this.game.mission) {
+      this.showMissionEnd(result, this.game.mission);
+      return;
+    }
     this.overlayBack = null;
     this.inLobby = false;
     const victory = result === 'victory';
@@ -684,6 +877,64 @@ export class UI {
     this.setOverlay(html, `overlay--end ${victory ? 'is-win' : 'is-lose'}`);
   }
 
+  showMissionEnd(result, mission) {
+    this.overlayBack = null;
+    this.inLobby = false;
+    const victory = result === 'victory';
+    const s = this.game.stats;
+    const map = this.game.map;
+    const isCampaign = mission.kind === 'campaign';
+    const next = isCampaign && victory ? nextCampaignMission(mission) : null;
+    const best = isCampaign ? null : trialBest(mission);
+    const kindLabel = isCampaign ? 'КАМПАНИЯ' : 'ИСПЫТАНИЯ';
+    const title = victory
+      ? isCampaign
+        ? (next ? 'ОПЕРАЦИЯ ВЫПОЛНЕНА' : 'КОНТРАКТ ЗАКРЫТ')
+        : 'ИСПЫТАНИЕ ПРОЙДЕНО'
+      : isCampaign ? 'СИГНАЛ ПОТЕРЯН' : 'ИСПЫТАНИЕ ПРОВАЛЕНО';
+    const tagline = victory
+      ? (mission.outro ?? mission.subtitle)
+      : 'Командный центр потерян. Попробуйте другую тактику или вернитесь к списку.';
+    let primary;
+    let showRepeat = true;
+    let showList = true;
+    if (victory && next) {
+      primary = `<button class="btn-primary" data-action="mission:${next.id}">СЛЕДУЮЩАЯ ОПЕРАЦИЯ <span>→</span></button>`;
+    } else if (victory) {
+      primary = `<button class="btn-primary" data-action="missionlist">К СПИСКУ ${isCampaign ? 'ОПЕРАЦИЙ' : 'ИСПЫТАНИЙ'} <span>→</span></button>`;
+      showList = false;
+    } else {
+      primary = '<button class="btn-primary" data-action="restart">ПОВТОРИТЬ <span>↻</span></button>';
+      showRepeat = false;
+    }
+    const html = `
+      <div class="end-head ${victory ? 'win' : 'lose'}">
+        <div class="eyebrow"><i></i> ${kindLabel} // ${String(mission.index).padStart(2, '0')} · ${esc(mission.title.toUpperCase())}</div>
+        <h1>${title}</h1>
+        <p class="tagline">${esc(tagline)}</p>
+      </div>
+      <div class="end-stats">
+        <div><b>${formatTime(s.time ?? this.game.elapsed)}</b><span>ВРЕМЯ</span></div>
+        <div><b>${s.kills}</b><span>УНИЧТОЖЕНО</span></div>
+        <div><b>${s.losses}</b><span>ПОТЕРЯНО</span></div>
+        <div><b>${Math.floor(s.gathered)}</b><span>ДОБЫТО КРЕДИТОВ</span></div>
+      </div>
+      ${this.objectivesHtml(mission, true)}
+      <div class="end-map">КАРТА <b>#${map.label}</b> · ${map.symmetry.name.toUpperCase()} ${map.symmetry.tag} · ${map.style.name}</div>
+      <div class="overlay-actions">
+        ${primary}
+        ${showRepeat ? '<button class="btn-ghost" data-action="restart">ПОВТОРИТЬ</button>' : ''}
+        ${showList ? '<button class="btn-ghost" data-action="missionlist">К СПИСКУ</button>' : ''}
+        <button class="btn-ghost" data-action="mainmenu">В ГЛАВНОЕ МЕНЮ</button>
+      </div>
+      <div class="overlay-footer">
+        <span>ГЕЛИОС-7 // ${kindLabel} · ${esc(mission.title.toUpperCase())}</span>
+        <span>${best != null ? `ЛУЧШЕЕ ВРЕМЯ: ${formatTime(best)}` : victory ? 'СТАТУС: ЗАДАЧИ ВЫПОЛНЕНЫ' : 'СТАТУС: ЗАДАЧИ ПРОВАЛЕНЫ'}</span>
+      </div>
+    `;
+    this.setOverlay(html, `overlay--end ${victory ? 'is-win' : 'is-lose'}`);
+  }
+
   togglePause() {
     if (!this.game.started || this.game.over) return;
     if (this.overlayOpen) {
@@ -700,17 +951,20 @@ export class UI {
     this.inLobby = false;
     this.game.setPaused(true);
     const map = this.game.map;
+    const mission = this.game.mission;
+    const isCampaign = mission?.kind === 'campaign';
     const html = `
       <div class="overlay-top">
-        <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // ПАУЗА</div>
-        <h1 class="pause-title">ОПЕРАЦИЯ<br><span>ПРИОСТАНОВЛЕНА</span></h1>
-        <p class="tagline">Камера и интерфейс остаются доступны. Продолжите, когда будете готовы.</p>
+        <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // ПАУЗА${mission ? ` // ${isCampaign ? 'КАМПАНИЯ' : 'ИСПЫТАНИЕ'}` : ''}</div>
+        <h1 class="pause-title">${mission ? esc(mission.title.toUpperCase()) : 'ОПЕРАЦИЯ'}<br><span>ПРИОСТАНОВЛЕНА</span></h1>
+        <p class="tagline">${mission ? esc(mission.subtitle) : 'Камера и интерфейс остаются доступны. Продолжите, когда будете готовы.'}</p>
       </div>
       <div class="pause-stats">
         <div><b>${Math.floor(this.game.credits)}</b><span>КРЕДИТЫ</span></div>
         <div><b>${this.game.getArmyUsed('player')} / ${this.game.getArmyCap('player')}</b><span>ЛИМИТ АРМИИ</span></div>
         <div><b>${formatTime(this.game.elapsed)}</b><span>ВРЕМЯ</span></div>
       </div>
+      ${mission ? `<div class="pause-objectives">${this.objectivesHtml(mission, true)}</div>` : ''}
       <div class="overlay-actions">
         <button class="btn-primary" data-action="resume">ПРОДОЛЖИТЬ <span>→</span></button>
         <div class="menu-links">
@@ -721,10 +975,13 @@ export class UI {
       </div>
       <div class="overlay-actions overlay-actions--minor">
         <button class="btn-ghost" data-action="restart">ЗАНОВО</button>
-        <button class="btn-ghost" data-action="newmap">НОВАЯ КАРТА</button>
+        ${mission
+          ? `<button class="btn-ghost" data-action="missionlist">К СПИСКУ</button>
+             <button class="btn-ghost" data-action="mainmenu">В ГЛАВНОЕ МЕНЮ</button>`
+          : '<button class="btn-ghost" data-action="newmap">НОВАЯ КАРТА</button>'}
       </div>
       <div class="overlay-footer">
-        <span>ГЕЛИОС-7 // ПАУЗА · КАРТА #${map.label}</span>
+        <span>ГЕЛИОС-7 // ПАУЗА · КАРТА #${map.label}${mission ? ` · ${esc(mission.title.toUpperCase())}` : ''}</span>
         <span>СИМУЛЯЦИЯ ОСТАНОВЛЕНА</span>
       </div>
     `;
@@ -762,6 +1019,7 @@ export class UI {
     document.activeElement?.blur?.();
     this.overlayBack = null;
     this.inLobby = false;
+    this.missionsScreen = null;
     this.overlayOpen = false;
     this.el.overlay.classList.remove('is-open');
     document.body.classList.remove('overlay-open');
@@ -810,6 +1068,8 @@ export class UI {
   backTarget() {
     if (this.game.over) return () => this.showEnd(this.game.over);
     if (this.game.started) return () => this.openPause();
+    if (this.missionsScreen) return () => this.showMissions(this.missionsScreen);
+    if (this.activeMission) return () => this.showBriefing(this.activeMission);
     if (this.inLobby) return () => this.showLobby();
     return () => this.showStart();
   }
@@ -1110,7 +1370,9 @@ export class UI {
         },
       ];
       if (hasEngineer) {
-        BUILD_ORDER.forEach((type, i) => commands.push(this.buildCommand(type, BUILD_HOTKEYS[i])));
+        BUILD_ORDER.forEach((type, i) => {
+          if (game.missionAllowsBuilding(type)) commands.push(this.buildCommand(type, BUILD_HOTKEYS[i]));
+        });
       }
       return commands;
     }
@@ -1135,8 +1397,11 @@ export class UI {
     const repair = this.repairCommand(buildings);
 
     if (b.type === 'hq') {
-      const commands = BUILD_ORDER.map((type, i) => this.buildCommand(type, BUILD_HOTKEYS[i]));
+      const commands = BUILD_ORDER
+        .map((type, i) => (game.missionAllowsBuilding(type) ? this.buildCommand(type, BUILD_HOTKEYS[i]) : null))
+        .filter(Boolean);
       HQ_TRAIN_ORDER.forEach((type, i) => {
+        if (!game.missionAllowsUnit(type)) return;
         commands.push(this.trainCommand(type, b, HQ_TRAIN_HOTKEYS[i]));
       });
       if (repair) commands.push(repair);
@@ -1146,7 +1411,9 @@ export class UI {
     if (b.type === 'barracks') {
       // Найм идёт во все выбранные казармы, а не только в первую.
       const barracks = buildings.filter((item) => item.type === 'barracks');
-      const commands = TRAIN_ORDER.map((type, i) => this.trainCommand(type, barracks, TRAIN_HOTKEYS[i]));
+      const commands = TRAIN_ORDER
+        .map((type, i) => (game.missionAllowsUnit(type) ? this.trainCommand(type, barracks, TRAIN_HOTKEYS[i]) : null))
+        .filter(Boolean);
       if (repair) commands.push(repair);
       return commands;
     }
@@ -1773,6 +2040,26 @@ export class UI {
     this.el.gridStatus.textContent = deficit ? 'ДЕФИЦИТ ЭНЕРГИИ' : 'СЕТЬ В НОРМЕ';
     this.el.gridStatus.classList.toggle('is-deficit', deficit);
     this.el.resPower.title = `Энергия: произведено ${s.power.produced}, потреблено ${s.power.used}${deficit ? '. Производство замедлено.' : '.'}`;
+
+    const mission = this.game.mission;
+    if (mission && this.el.missionText) {
+      const total = this.game.objectives.length;
+      const done = this.game.objectives.filter((objective) => objective.done).length;
+      const active = this.game.activeObjective();
+      this.el.missionLabel.textContent = mission.kind === 'campaign'
+        ? `ЗАДАЧА ${Math.min(done + 1, total)}/${total}`
+        : `ИСПЫТАНИЕ ${done}/${total}`;
+      this.el.missionText.textContent = active
+        ? `${active.title}${active.progressText ? ` · ${active.progressText}` : ''}`
+        : 'Все задачи выполнены';
+      this.el.missionCard.title = this.game.objectives
+        .map((objective) => `${objective.done ? '✓' : '—'} ${objective.title}${objective.progressText ? ` (${objective.progressText})` : ''}`)
+        .join('\n');
+    } else if (this.el.missionText) {
+      this.el.missionLabel.textContent = 'ЗАДАЧА';
+      this.el.missionText.textContent = 'Уничтожить командный центр противника';
+      this.el.missionCard.title = '';
+    }
   }
 
   // --------------------------------------------------------------- tick
