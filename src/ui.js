@@ -21,6 +21,7 @@ import {
   DIFFICULTY_ORDER,
   VETERANCY,
   veteranRank,
+  SELL,
 } from './config.js';
 import { icon } from './icons.js';
 import {
@@ -1204,6 +1205,7 @@ export class UI {
           <div><kbd>H</kbd><span>стоп</span></div>
           <div><kbd>P</kbd><span>держать позицию</span></div>
           <div><kbd>T</kbd><span>патруль</span></div>
+          <div><kbd>K</kbd><span>продать здание</span></div>
           <div><kbd>R</kbd><span>ремонт здания</span></div>
           <div><kbd>Shift</kbd><span>добавить к выбору</span></div>
           <div><kbd>Пробел</kbd><span>на базу</span></div>
@@ -1464,6 +1466,9 @@ export class UI {
     if (b.faction !== 'player') return [];
 
     const repair = this.repairCommand(buildings);
+    // Продажа неоднозначна для группы зданий, поэтому доступна только одной
+    // выбранной постройке.
+    const sell = buildings.length === 1 ? this.sellCommand(b) : null;
 
     if (b.type === 'hq') {
       const commands = BUILD_ORDER
@@ -1484,6 +1489,7 @@ export class UI {
         .map((type, i) => (game.missionAllowsUnit(type) ? this.trainCommand(type, barracks, TRAIN_HOTKEYS[i]) : null))
         .filter(Boolean);
       if (repair) commands.push(repair);
+      if (sell) commands.push(sell);
       return commands;
     }
 
@@ -1494,10 +1500,29 @@ export class UI {
       const commands = lines.map((lineKey, i) => this.upgradeCommand(lineKey, b, BUILD_HOTKEYS[i]));
       commands.push(this.researchPageCommand());
       if (repair) commands.push(repair);
+      if (sell) commands.push(sell);
       return commands;
     }
 
-    return repair ? [repair] : [];
+    return [repair, sell].filter(Boolean);
+  }
+
+  /**
+   * Продажа достроенного здания. Командный центр не продаётся: его потеря
+   * означает поражение, а не освобождение места.
+   */
+  sellCommand(building) {
+    if (!building || !building.complete || building.type === 'hq') return null;
+    const refund = Math.floor((building.def.cost ?? 0) * SELL.refund);
+    return {
+      id: 'sell',
+      label: 'Продать здание',
+      short: 'ПРОДАТЬ',
+      icon: 'close',
+      hotkey: 'K',
+      desc: `${building.def.name}: вернуть ${refund} кредитов и освободить место.`,
+      action: () => this.game.sellBuilding(building),
+    };
   }
 
   buildCommand(type, hotkey) {

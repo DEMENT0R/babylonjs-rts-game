@@ -1122,6 +1122,11 @@ export function veteranRank(xp = 0) {
   return rank;
 }
 
+export const SELL = {
+  // Доля стоимости здания, возвращаемая при продаже.
+  refund: 0.5,
+};
+
 export const MESSAGES = {
   lowPower: 'Недостаток энергии! Постройте электростанцию.',
   noCredits: 'Недостаточно кредитов.',

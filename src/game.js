@@ -15,6 +15,7 @@ import {
   AI_DIFFICULTY,
   REPAIR,
   VETERANCY,
+  SELL,
 } from './config.js';
 import { clamp, dist, formatTime, plural } from './utils.js';
 import { Unit, Building } from './entities.js';
@@ -1243,6 +1244,36 @@ export class Game {
     this.recomputePower();
     this.notify('Строительство отменено. Возвращено 60% стоимости.', 'info', `cancel_${building.id}`, 0, 2);
     if (this.ui) this.ui.onSelectionChanged();
+  }
+
+  /**
+   * Продажа достроенного здания. Командный центр не продаётся: это мгновенное
+   * поражение, а не хозяйственное решение. Очередь производства не возвращает
+   * кредиты — её элементы просто исчезают вместе со зданием.
+   */
+  sellBuilding(building) {
+    if (!building || !building.alive || !building.complete) return false;
+    if (building.faction !== 'player' || building.type === 'hq') return false;
+    const refund = Math.floor((building.def.cost ?? 0) * SELL.refund);
+    this.credits += refund;
+    if (building.oilPatch) {
+      building.oilPatch.derrick = null;
+      building.oilPatch = null;
+    }
+    this.removeEntity(building);
+    building.alive = false;
+    building.disposeVisual();
+    this.recomputePower();
+    this.refreshArmyCap();
+    this.notify(
+      `${building.def.name}: продано. Возвращено ${refund} кредитов.`,
+      'info',
+      `sell_${building.id}`,
+      0,
+      3,
+    );
+    if (this.ui) this.ui.onSelectionChanged();
+    return true;
   }
 
   // ------------------------------------------------------------- production
