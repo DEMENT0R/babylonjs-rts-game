@@ -129,6 +129,20 @@ export const MAP_LAYOUT = {
   },
 };
 
+// Плотность нейтральных объектов. Числа заданы для эталонной карты, а
+// referenceScale переводит их в текущий масштаб. Одно значение на вид объекта,
+// чтобы плотность правилась в одном месте, а не в арифметике генератора.
+export const MAP_DENSITY = {
+  referenceScale: 1.6,
+  rocks: [10, 14], // пар
+  crates: [3, 4], // пар
+  crystals: 4, // кластеров
+  crystalBurst: [3, 6], // кристаллов в кластере
+  pebbles: [60, 85], // пар
+  walls: [2, 3], // пар, вторая пара с шансом wallExtraChance
+  wallExtraChance: 0.35,
+};
+
 export const CAMERA = {
   minRadius: 28,
   maxRadius: 150,

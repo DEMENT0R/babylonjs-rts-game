@@ -9,7 +9,7 @@
 // ящики и кристаллы строятся парами. Мы генерируем только «свою» половину,
 // а вторую получаем отражением или поворотом на 180°.
 
-import { MAP, MAP_LAYOUT, START } from './config.js';
+import { MAP, MAP_DENSITY, MAP_LAYOUT, START } from './config.js';
 import { segmentDistance } from './nav.js';
 import { mulberry32 } from './utils.js';
 
@@ -20,9 +20,11 @@ const BASE_FIELD = MAP.half - 12; // предел для стартовых ба
 // вместе с её размером. Сами числа живут в MAP_LAYOUT (config.js).
 const S = MAP.half / MAP_LAYOUT.referenceHalf;
 const LAYOUT = MAP_LAYOUT;
+const DENSITY = MAP_DENSITY;
 const EPS = 0.75;
 
 const range = (rng, min, max) => min + (max - min) * rng();
+const intInRange = (rng, [min, max]) => min + Math.floor(rng() * (max - min + 1));
 const dist = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
 const inside = (x, z, limit = FIELD) => Math.abs(x) <= limit && Math.abs(z) <= limit;
 const unit = (x, z) => {
@@ -572,7 +574,7 @@ export function createMap(seedInput, options = {}) {
   // зеркальными парами, поэтому не дают преимущества ни одной стороне.
   const walls = [];
   const wallRadius = 0.65;
-  const wallPairs = 2 + (rng() < 0.35 ? 1 : 0);
+  const wallPairs = DENSITY.walls[0] + (rng() < DENSITY.wallExtraChance ? 1 : 0);
 
   const makeWall = (x, z, angle, length) => {
     const hx = Math.cos(angle) * length * 0.5;
@@ -667,8 +669,8 @@ export function createMap(seedInput, options = {}) {
     }
   };
 
-  // Камни: 16–21 зеркальных пар на исходную карту, масштабируется вместе с ней.
-  const rockPairs = Math.round((10 + Math.floor(rng() * 5)) * 1.6);
+  // Камни: зеркальные пары, плотность — MAP_DENSITY.rocks.
+  const rockPairs = Math.round(intInRange(rng, DENSITY.rocks) * DENSITY.referenceScale);
   for (let i = 0; i < rockPairs; i++) {
     const spot = pickPairSpot(rng, symmetry, (x, z) => (
       baseClear(x, z, LAYOUT.decor.rock.baseHq, LAYOUT.decor.rock.basePower)
@@ -686,8 +688,8 @@ export function createMap(seedInput, options = {}) {
     pushPair(rocks, spot.x, spot.z, props);
   }
 
-  // Ящики: 3–4 пары на исходную карту.
-  const cratePairs = Math.round((3 + Math.floor(rng() * 2)) * 1.6);
+  // Ящики: зеркальные пары, плотность — MAP_DENSITY.crates.
+  const cratePairs = Math.round(intInRange(rng, DENSITY.crates) * DENSITY.referenceScale);
   for (let i = 0; i < cratePairs; i++) {
     const spot = pickPairSpot(rng, symmetry, (x, z) => (
       baseClear(x, z, LAYOUT.decor.crate.baseHq, LAYOUT.decor.crate.basePower)
@@ -703,7 +705,7 @@ export function createMap(seedInput, options = {}) {
     });
   }
 
-  // Кристаллы: 4 кластера, каждый кристалл тоже отражается. Кластеры
+  // Кристаллы: кластеры, каждый кристалл тоже отражается. Кластеры
   // разносим, чтобы зеркальные половинки не наезжали друг на друга.
   const crystalCenters = [];
   const crystalTest = (x, z) => (
@@ -714,7 +716,7 @@ export function createMap(seedInput, options = {}) {
     && crates.every((c) => dist(x, z, c.x, c.z) > LAYOUT.decor.crystal.crate * S)
     && crystalCenters.every((c) => dist(x, z, c.x, c.z) > LAYOUT.decor.crystal.spacing * S)
   );
-  const crystalClusters = Math.round(4 * 1.6);
+  const crystalClusters = Math.round(DENSITY.crystals * DENSITY.referenceScale);
   for (let cluster = 0; cluster < crystalClusters; cluster++) {
     const center = pickPairSpot(rng, symmetry, crystalTest);
     if (!center) continue;
@@ -722,7 +724,7 @@ export function createMap(seedInput, options = {}) {
     if (dist(center.x, center.z, center.mx, center.mz) > EPS) {
       crystalCenters.push({ x: center.mx, z: center.mz });
     }
-    const count = 3 + Math.floor(rng() * 4);
+    const count = intInRange(rng, DENSITY.crystalBurst);
     for (let i = 0; i < count; i++) {
       const angle = rng() * TAU;
       const radius = rng() * 1.15;
@@ -748,8 +750,8 @@ export function createMap(seedInput, options = {}) {
     }
   }
 
-  // Галька: 60–85 пар на исходную карту, чисто визуальный слой.
-  const pebblePairs = Math.round((60 + Math.floor(rng() * 26)) * 1.6);
+  // Галька: чисто визуальный слой, плотность — MAP_DENSITY.pebbles.
+  const pebblePairs = Math.round(intInRange(rng, DENSITY.pebbles) * DENSITY.referenceScale);
   for (let i = 0; i < pebblePairs; i++) {
     const spot = pickPairSpot(rng, symmetry, (x, z) => (
       baseClear(x, z, LAYOUT.decor.pebble.baseHq, LAYOUT.decor.pebble.basePower)
