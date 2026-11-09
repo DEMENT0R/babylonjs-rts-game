@@ -507,7 +507,7 @@ export class Unit extends Entity {
       if (!this.game.isEntityVisibleTo(this.faction, e)) continue;
       const d = dist(this.position.x, this.position.z, e.position.x, e.position.z);
       if (d - e.radius > range) continue;
-      if (Math.abs(e.position.x) > MAP.half + 8 || Math.abs(e.position.z) > MAP.half + 8) continue;
+      if (Math.abs(e.position.x) > MAP.half + MAP.edge || Math.abs(e.position.z) > MAP.half + MAP.edge) continue;
       const score = d + (e.isBuilding ? 9 : 0) - (e.type === 'derrick' ? 3 : 0);
       if (score < bestScore) {
         bestScore = score;

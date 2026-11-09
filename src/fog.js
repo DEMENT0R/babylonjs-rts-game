@@ -325,7 +325,7 @@ export class FogOfWar {
         const wx = (cx + 0.5) * CELL - MAP.half;
         const wz = (cz + 0.5) * CELL - MAP.half;
         // Края поля интересны меньше: там только декор.
-        if (Math.abs(wx) > MAP.half - 8 || Math.abs(wz) > MAP.half - 8) continue;
+        if (Math.abs(wx) > MAP.half - MAP.edge || Math.abs(wz) > MAP.half - MAP.edge) continue;
         const dx = wx - x;
         const dz = wz - z;
         const d = Math.sqrt(dx * dx + dz * dz) + (penalty ? penalty(wx, wz) : 0);

@@ -14,8 +14,9 @@ import { segmentDistance } from './nav.js';
 import { mulberry32 } from './utils.js';
 
 const TAU = Math.PI * 2;
-const FIELD = MAP.half - 8; // предел для декора и месторождений
-const BASE_FIELD = MAP.half - 12; // предел для стартовых баз
+const FIELD = MAP.half - MAP.edge; // предел для декора и месторождений
+const BASE_FIELD = MAP.half - MAP.baseMargin; // предел для стартовых баз
+const ANCHOR_LIMIT = MAP.half - MAP.placement.anchor; // предел для якоря базы
 // Все расстояния компоновки заданы для эталонной карты и масштабируются
 // вместе с её размером. Сами числа живут в MAP_LAYOUT (config.js).
 const S = MAP.half / MAP_LAYOUT.referenceHalf;
@@ -263,9 +264,9 @@ function resolveStyle(value, rng) {
 }
 
 function anchorValid(x, z, symmetry) {
-  if (!inside(x, z, BASE_FIELD + 8)) return false;
+  if (!inside(x, z, ANCHOR_LIMIT)) return false;
   const [ex, ez] = symmetry.transform(x, z);
-  if (!inside(ex, ez, BASE_FIELD + 8)) return false;
+  if (!inside(ex, ez, ANCHOR_LIMIT)) return false;
   // Стартовые точки не должны стоять слишком близко друг к другу.
   return dist(x, z, ex, ez) >= LAYOUT.anchor.minDistance * S;
 }
@@ -289,14 +290,14 @@ function pickPower(rng, hq, toEnemy, perp) {
     const lateral = side * range(rng, LAYOUT.power.lateral[0], LAYOUT.power.lateral[1]) * S;
     const x = hq.x - toEnemy.x * back + perp.x * lateral;
     const z = hq.z - toEnemy.z * back + perp.z * lateral;
-    if (!inside(x, z, MAP.half - 4)) continue;
+    if (!inside(x, z, MAP.half - MAP.placement.power)) continue;
     if (dist(x, z, hq.x, hq.z) < LAYOUT.power.minDistance * S) continue;
     return { x, z };
   }
   const back = LAYOUT.power.fallbackBack;
   return {
-    x: Math.max(-MAP.half + 4, Math.min(MAP.half - 4, hq.x - toEnemy.x * back * S)),
-    z: Math.max(-MAP.half + 4, Math.min(MAP.half - 4, hq.z - toEnemy.z * back * S)),
+    x: Math.max(-MAP.half + MAP.placement.power, Math.min(MAP.half - MAP.placement.power, hq.x - toEnemy.x * back * S)),
+    z: Math.max(-MAP.half + MAP.placement.power, Math.min(MAP.half - MAP.placement.power, hq.z - toEnemy.z * back * S)),
   };
 }
 
@@ -311,7 +312,7 @@ function pickHomeSpots(rng, hq, toEnemy, power) {
       const d = range(rng, LAYOUT.homes.distance[0], LAYOUT.homes.distance[1]) * S;
       const x = hq.x + dir.x * d;
       const z = hq.z + dir.z * d;
-      if (!inside(x, z, MAP.half - 7)) continue;
+      if (!inside(x, z, MAP.half - MAP.placement.home)) continue;
       if (dist(x, z, hq.x, hq.z) < LAYOUT.homes.hqClear * S) continue;
       if (dist(x, z, power.x, power.z) < LAYOUT.homes.powerClear * S) continue;
       if (spots.some((spot) => dist(x, z, spot.x, spot.z) < LAYOUT.homes.spacing * S)) continue;
@@ -324,7 +325,7 @@ function pickHomeSpots(rng, hq, toEnemy, power) {
         const angle = (step / 48) * TAU;
         const x = hq.x + Math.cos(angle) * LAYOUT.homes.fallbackDistance * S;
         const z = hq.z + Math.sin(angle) * LAYOUT.homes.fallbackDistance * S;
-        if (!inside(x, z, MAP.half - 7)) continue;
+        if (!inside(x, z, MAP.half - MAP.placement.home)) continue;
         if (dist(x, z, power.x, power.z) < LAYOUT.homes.powerClear * S) continue;
         if (spots.some((spot) => dist(x, z, spot.x, spot.z) < LAYOUT.homes.spacing * S)) continue;
         found = { x, z };
@@ -334,8 +335,8 @@ function pickHomeSpots(rng, hq, toEnemy, power) {
     if (!found) {
       const dir = rotate(toEnemy, sign * Math.PI / 2);
       found = {
-        x: Math.max(-MAP.half + 7, Math.min(MAP.half - 7, hq.x + dir.x * LAYOUT.homes.fallbackDistance * S)),
-        z: Math.max(-MAP.half + 7, Math.min(MAP.half - 7, hq.z + dir.z * LAYOUT.homes.fallbackDistance * S)),
+        x: Math.max(-MAP.half + MAP.placement.home, Math.min(MAP.half - MAP.placement.home, hq.x + dir.x * LAYOUT.homes.fallbackDistance * S)),
+        z: Math.max(-MAP.half + MAP.placement.home, Math.min(MAP.half - MAP.placement.home, hq.z + dir.z * LAYOUT.homes.fallbackDistance * S)),
       };
     }
     spots.push(found);
@@ -355,7 +356,7 @@ function marineSpots(rng, hq, enemyHq, count, power, patches) {
         + range(rng, -LAYOUT.marines.lateralJitter, LAYOUT.marines.lateralJitter) * S;
       const x = hq.x + toEnemy.x * forward + perp.x * lateral;
       const z = hq.z + toEnemy.z * forward + perp.z * lateral;
-      if (!inside(x, z, MAP.half - 5)) continue;
+      if (!inside(x, z, MAP.half - MAP.placement.marine)) continue;
       if (dist(x, z, hq.x, hq.z) < LAYOUT.marines.hqClear * S) continue;
       if (dist(x, z, power.x, power.z) < LAYOUT.marines.powerClear * S) continue;
       if (patches.some((p) => dist(x, z, p.x, p.z) < LAYOUT.marines.patchClear * S)) continue;
@@ -366,8 +367,8 @@ function marineSpots(rng, hq, enemyHq, count, power, patches) {
     if (!found) {
       const lateral = (i - (count - 1) / 2) * LAYOUT.marines.lateralStep * S;
       found = {
-        x: Math.max(-MAP.half + 5, Math.min(MAP.half - 5, hq.x + toEnemy.x * LAYOUT.marines.fallbackForward * S + perp.x * lateral)),
-        z: Math.max(-MAP.half + 5, Math.min(MAP.half - 5, hq.z + toEnemy.z * LAYOUT.marines.fallbackForward * S + perp.z * lateral)),
+        x: Math.max(-MAP.half + MAP.placement.marine, Math.min(MAP.half - MAP.placement.marine, hq.x + toEnemy.x * LAYOUT.marines.fallbackForward * S + perp.x * lateral)),
+        z: Math.max(-MAP.half + MAP.placement.marine, Math.min(MAP.half - MAP.placement.marine, hq.z + toEnemy.z * LAYOUT.marines.fallbackForward * S + perp.z * lateral)),
       };
     }
     spots.push(found);
@@ -384,8 +385,8 @@ function pickBarracksSpot(rng, hq, enemyHq, power, patches) {
     let score = Math.min(
       dist(x, z, hq.x, hq.z) - LAYOUT.barracks.hqClear * S,
       dist(x, z, power.x, power.z) - LAYOUT.barracks.powerClear * S,
-      MAP.half - 7 - Math.abs(x),
-      MAP.half - 7 - Math.abs(z),
+      MAP.half - MAP.placement.barracks - Math.abs(x),
+      MAP.half - MAP.placement.barracks - Math.abs(z),
     );
     for (const p of patches) score = Math.min(score, dist(x, z, p.x, p.z) - LAYOUT.barracks.patchClear * S);
     return score;
@@ -397,7 +398,7 @@ function pickBarracksSpot(rng, hq, enemyHq, power, patches) {
     const d = range(rng, LAYOUT.barracks.distance[0], LAYOUT.barracks.distance[1]) * S;
     const x = hq.x + dir.x * d;
     const z = hq.z + dir.z * d;
-    if (!inside(x, z, MAP.half - 7)) continue;
+    if (!inside(x, z, MAP.half - MAP.placement.barracks)) continue;
     const score = scoreAt(x, z);
     if (score > 0.4) return { x, z };
     if (score > bestScore) {
@@ -413,7 +414,7 @@ function pickBarracksSpot(rng, hq, enemyHq, power, patches) {
       const angle = (step / 48) * TAU;
       const x = hq.x + Math.cos(angle) * radius * S;
       const z = hq.z + Math.sin(angle) * radius * S;
-      if (!inside(x, z, MAP.half - 7)) continue;
+      if (!inside(x, z, MAP.half - MAP.placement.barracks)) continue;
       if (scoreAt(x, z) > 0.4) return { x, z };
     }
   }
@@ -421,8 +422,8 @@ function pickBarracksSpot(rng, hq, enemyHq, power, patches) {
   if (best) return best;
   const dir = rotate(toEnemy, Math.PI / 2);
   return {
-    x: Math.max(-MAP.half + 7, Math.min(MAP.half - 7, hq.x + dir.x * LAYOUT.barracks.fallbackDistance * S)),
-    z: Math.max(-MAP.half + 7, Math.min(MAP.half - 7, hq.z + dir.z * LAYOUT.barracks.fallbackDistance * S)),
+    x: Math.max(-MAP.half + MAP.placement.barracks, Math.min(MAP.half - MAP.placement.barracks, hq.x + dir.x * LAYOUT.barracks.fallbackDistance * S)),
+    z: Math.max(-MAP.half + MAP.placement.barracks, Math.min(MAP.half - MAP.placement.barracks, hq.z + dir.z * LAYOUT.barracks.fallbackDistance * S)),
   };
 }
 
@@ -446,7 +447,7 @@ function addPatchPair(patches, x, z, symmetry, rng, role = 'natural') {
 }
 
 function patchClear(x, z, symmetry, hq, enemyHq, power, enemyPower, barracks, patches, opts) {
-  if (!inside(x, z, opts.bound ?? MAP.half - 9)) return false;
+  if (!inside(x, z, opts.bound ?? MAP.half - MAP.placement.neutral)) return false;
   if (dist(x, z, hq.x, hq.z) < opts.hqClear * S) return false;
   if (dist(x, z, enemyHq.x, enemyHq.z) < opts.hqClear * S) return false;
   if (dist(x, z, power.x, power.z) < opts.powerClear * S) return false;
@@ -474,11 +475,11 @@ function pickPairSpot(rng, symmetry, test) {
 
 function pickSelfSpot(rng, symmetry, test) {
   const point = symmetry.selfPoint(rng);
-  if (inside(point.x, point.z, MAP.half - 10) && test(point.x, point.z)) return point;
+  if (inside(point.x, point.z, MAP.half - MAP.placement.selfPoint) && test(point.x, point.z)) return point;
   // Для центральной симметрии самосимметрична только точка (0, 0).
   for (let attempt = 0; attempt < 120; attempt++) {
     const p = symmetry.selfPoint(rng);
-    if (inside(p.x, p.z, MAP.half - 10) && test(p.x, p.z)) return p;
+    if (inside(p.x, p.z, MAP.half - MAP.placement.selfPoint) && test(p.x, p.z)) return p;
   }
   return null;
 }
@@ -527,7 +528,7 @@ export function createMap(seedInput, options = {}) {
       hqClear: LAYOUT.neutral.hqClear,
       powerClear: LAYOUT.neutral.powerClear,
       patchClear: LAYOUT.neutral.patchClear,
-      bound: MAP.half - LAYOUT.neutral.bound,
+      bound: MAP.half - MAP.placement.neutral,
       selfClear: LAYOUT.neutral.selfClear,
     }));
     if (spot) addPatchPair(oilPatches, spot.x, spot.z, symmetry, rng, 'natural');
@@ -538,7 +539,7 @@ export function createMap(seedInput, options = {}) {
       hqClear: LAYOUT.neutral.hqClear,
       powerClear: LAYOUT.neutral.powerClear,
       patchClear: LAYOUT.neutral.patchClear,
-      bound: MAP.half - LAYOUT.neutral.centerBound,
+      bound: MAP.half - MAP.placement.center,
     }));
     if (spot) {
       oilPatches.push(makePatch(spot.x, spot.z, null, 'center', rng() * TAU));
