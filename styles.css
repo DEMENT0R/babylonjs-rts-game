@@ -842,13 +842,6 @@ body.mode-attack #scene {
   background: rgba(79, 210, 255, 0.07);
 }
 
-.queue-tile--empty {
-  border-style: dashed;
-  background: transparent;
-  cursor: default;
-  opacity: 0.45;
-}
-
 .q-icon {
   width: 18px;
   height: 18px;

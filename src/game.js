@@ -1210,10 +1210,6 @@ export class Game {
       }
       return false;
     }
-    if (building.queue.length >= building.maxQueue) {
-      if (faction === 'player') this.notify(MESSAGES.queueFull, 'warn', 'queue-full', 0, 3);
-      return false;
-    }
     if (this.walletFor(faction) < def.cost) {
       if (faction === 'player') this.notify(MESSAGES.noCredits, 'warn', 'no-credits', 0, 3);
       return false;
@@ -1279,10 +1275,6 @@ export class Game {
     if (!building || !building.alive) return false;
     if (!building.complete) {
       this.notify(MESSAGES.notReady, 'warn', 'not-ready', 0, 3);
-      return false;
-    }
-    if (building.queue.length >= building.maxQueue) {
-      this.notify(MESSAGES.queueFull, 'warn', 'queue-full', 0, 3);
       return false;
     }
     if (this.credits < def.cost) {

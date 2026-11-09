@@ -194,7 +194,7 @@ export class UI {
         this.game.notify(cmd.reason || 'Недоступно.', 'warn', `cmd-${cmd.id}`, 0, 3);
         return;
       }
-      cmd.action();
+      cmd.action(e.shiftKey ? 5 : 1);
       this.renderCommands();
     });
     this.el.commands.addEventListener('mouseover', (e) => {
@@ -1194,14 +1194,11 @@ export class UI {
     const supply = def.supply ?? 1;
     const capReached = game.getArmyUsed('player') + game.getQueuedSupply('player') + supply
       > game.getArmyCap('player');
-    const ready = list.filter((b) => b.complete && b.queue.length < b.maxQueue);
-    const queueFull = list.length > 0 && list.every((b) => b.complete && b.queue.length >= b.maxQueue);
+    const ready = list.filter((b) => b.complete);
     const disabled = ready.length === 0 || capReached || game.credits < def.cost;
-    const reason = list.length === 0 ? MESSAGES.notReady
-      : ready.length === 0
-        ? (queueFull ? MESSAGES.queueFull : MESSAGES.notReady)
-        : capReached ? MESSAGES.capReached
-          : `Недостаточно кредитов. Нужно ${def.cost}.`;
+    const reason = list.length === 0 || ready.length === 0 ? MESSAGES.notReady
+      : capReached ? MESSAGES.capReached
+        : `Недостаточно кредитов. Нужно ${def.cost}.`;
     return {
       id: `train:${type}`,
       label: def.name,
@@ -1214,29 +1211,37 @@ export class UI {
       kind: 'train',
       disabled,
       reason,
-      action: () => {
+      // batch = 5 при Shift+клике: пятёрка раскладывается по выбранным
+      // казармам по кругу, поэтому очередь одной постройки не разрастается.
+      action: (batch = 1) => {
         let queued = 0;
-        for (const b of list) {
-          if (!b.complete || b.queue.length >= b.maxQueue) continue;
-          if (game.credits < def.cost) break;
-          const used = game.getArmyUsed('player') + game.getQueuedSupply('player');
-          if (used + supply > game.getArmyCap('player')) break;
-          if (game.trainUnit(type, b)) queued++;
+        for (let round = 0; round < batch; round++) {
+          let placed = false;
+          for (const b of ready) {
+            if (game.credits < def.cost) break;
+            const used = game.getArmyUsed('player') + game.getQueuedSupply('player');
+            if (used + supply > game.getArmyCap('player')) break;
+            if (game.trainUnit(type, b)) {
+              queued++;
+              placed = true;
+            }
+          }
+          if (!placed) break;
         }
         if (queued) {
           this.renderSelection();
           this.renderCommands();
         }
-        if (queued > 0 && queued < list.length) {
+        if (!queued) {
+          game.notify(reason, 'warn', `train-${type}`, 0, 3);
+        } else if (queued < batch) {
           game.notify(
-            `Заказ ушёл в ${queued} из ${list.length} казарм: часть занята или не хватает ресурсов.`,
+            `Заказано ${queued} из ${batch}: не хватает кредитов или лимита армии.`,
             'info',
             `train-partial-${type}`,
             0,
             3,
           );
-        } else if (!queued) {
-          game.notify(reason, 'warn', `train-${type}`, 0, 3);
         }
       },
       tip: this.unitTip(def),
@@ -1270,13 +1275,11 @@ export class UI {
     const def = UPGRADES[nextKey ?? lineKeys[lineKeys.length - 1]];
     const done = !nextKey;
     const queued = nextKey ? game.hasPendingUpgrade('player', nextKey) : false;
-    const queueFull = building.queue.length >= building.maxQueue;
-    const disabled = !building.complete || done || queued || queueFull || game.credits < def.cost;
+    const disabled = !building.complete || done || queued || game.credits < def.cost;
     const reason = !building.complete ? MESSAGES.notReady
       : done ? 'Улучшение уже изучено.'
         : queued ? 'Улучшение уже исследуется.'
-          : queueFull ? MESSAGES.queueFull
-            : `Недостаточно кредитов. Нужно ${def.cost}.`;
+          : `Недостаточно кредитов. Нужно ${def.cost}.`;
     return {
       id: `research:${nextKey ?? lineKey}`,
       label: def.name,
@@ -1397,7 +1400,7 @@ export class UI {
         ${def.builder ? '<span><i>СТРОЙКА</i>до ×4</span>' : ''}
         ${support}
       </div>
-      <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.buildTime} с · ${def.from === 'barracks' ? 'казармы' : 'штаб'}</span></div>
+      <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.buildTime} с · ${def.from === 'barracks' ? 'казармы' : 'штаб'} · Shift+клик — ×5</span></div>
     `;
   }
 
@@ -1735,12 +1738,8 @@ export class UI {
       return `<div class="queue queue--empty"><span>Очередь производства пуста</span><span>${b.complete ? emptyLabel : 'ИДЁТ СТРОЙКА'}</span></div>`;
     }
     const slots = [];
-    for (let i = 0; i < b.maxQueue; i++) {
+    for (let i = 0; i < b.queue.length; i++) {
       const item = b.queue[i];
-      if (!item) {
-        slots.push('<div class="queue-tile queue-tile--empty" aria-hidden="true"></div>');
-        continue;
-      }
       const def = item.upgrade ? UPGRADES[item.upgrade] : UNITS[item.type];
       const progress = i === 0 ? (1 - item.remaining / item.total) * 100 : 0;
       const time = i === 0 ? item.remaining : item.total;
@@ -1756,7 +1755,7 @@ export class UI {
     }
     return `
       <div class="queue">
-        <div class="queue-head"><span>ОЧЕРЕДЬ ПРОИЗВОДСТВА</span><span>${b.queue.length} / ${b.maxQueue}</span></div>
+        <div class="queue-head"><span>ОЧЕРЕДЬ ПРОИЗВОДСТВА</span><span>В ОЧЕРЕДИ: ${b.queue.length}</span></div>
         <div class="queue-list">${slots.join('')}</div>
       </div>`;
   }

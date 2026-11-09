@@ -1152,7 +1152,6 @@ export class Building extends Entity {
       this.hp = this.hpCap;
     }
     this.queue = [];
-    this.maxQueue = 5;
     this.rally = null;
     this.rotation = opts.rotation ?? yawTo(-x, -z);
     this.door = 0;
@@ -1472,7 +1471,6 @@ export class Building extends Entity {
   }
 
   enqueue(type) {
-    if (this.queue.length >= this.maxQueue) return false;
     const def = UNITS[type];
     const time = def.buildTime * (this.game.trainTimeMultiplier?.(this.faction) ?? 1);
     this.queue.push({ type, remaining: time, total: time });
@@ -1482,7 +1480,6 @@ export class Building extends Entity {
 
   /** Ставит в очередь исследование техцентра. */
   enqueueUpgrade(key) {
-    if (this.queue.length >= this.maxQueue) return false;
     const def = UPGRADES[key];
     if (!def) return false;
     this.queue.push({ upgrade: key, remaining: def.time, total: def.time });
