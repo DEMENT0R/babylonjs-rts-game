@@ -19,6 +19,8 @@ import {
   FIELD_SUPPORT,
   AI_DIFFICULTY,
   DIFFICULTY_ORDER,
+  VETERANCY,
+  veteranRank,
 } from './config.js';
 import { icon } from './icons.js';
 import {
@@ -1871,7 +1873,7 @@ export class UI {
     const game = this.game;
     const sel = [...game.selected];
     if (!sel.length) return 'empty';
-    return sel.map((e) => `${e.id}:${e.complete ? 1 : 0}:${e.queue?.length ?? 0}:${Math.round((e.hp / e.maxHp) * 20)}`).join('|');
+    return sel.map((e) => `${e.id}:${e.complete ? 1 : 0}:${e.queue?.length ?? 0}:${Math.round((e.hp / e.maxHp) * 20)}:${e.rank ?? 0}:${e.kills ?? 0}`).join('|');
   }
 
   renderSelection() {
@@ -1900,6 +1902,7 @@ export class UI {
       const def = primary.def;
       const totalHp = units.reduce((s, u) => s + u.hp, 0);
       const totalMax = units.reduce((s, u) => s + u.maxHp, 0);
+      const totalKills = units.reduce((s, u) => s + (u.kills ?? 0), 0);
       const same = types.length === 1;
       const name = same ? def.name : 'Смешанная группа';
       const count = units.length;
@@ -1929,6 +1932,7 @@ export class UI {
             <div class="sel-role">${same ? def.role : 'СМЕШАННЫЙ ОТРЯД'} · <span class="sel-owner">ИГРОК</span></div>
             <div class="sel-name">${name}${same && count > 1 ? ` <em>×${count}</em>` : ''}</div>
             <div class="hpbar"><i style="width:${pct}%"></i><b>${Math.ceil(totalHp)} / ${totalMax}</b></div>
+            ${same ? this.vetBlock(primary) : ''}
             ${same ? `<div class="sel-stats">
               ${def.healer
                 ? `<span>ЛЕЧЕНИЕ <b>${(primary.healRate ?? FIELD_SUPPORT.medicRate).toFixed(1)}/с</b></span>
@@ -1937,6 +1941,7 @@ export class UI {
                    <span>ДАЛЬНОСТЬ <b>${Math.round(primary.range ?? def.range)}</b></span>`}
               <span>СКОРОСТЬ <b>${(primary.speed ?? def.speed).toFixed(1)}</b></span>
               <span>ЛИМИТ <b>${def.supply ?? 1}</b></span>
+              <span>УБИЙСТВ <b>${totalKills}</b></span>
               ${def.repairer ? `<span>РЕМОНТ ТЕХНИКИ <b>${(primary.repairRate ?? FIELD_SUPPORT.engineerRate).toFixed(1)}/с</b></span>` : ''}
             </div>` : `<div class="sel-note">В отряде несколько типов юнитов. Наведите на карточку найма для характеристик.</div>`}
             ${chips}
@@ -1946,7 +1951,15 @@ export class UI {
         </div>
         <div class="sel-foot"><span class="dot"></span> ЛКМ — уточнить · ПКМ — приказ · F — атака по площади</div>
       `;
-      this.live = { kind: 'units', units, hpFill: body.querySelector('.hpbar i'), hpText: body.querySelector('.hpbar b') };
+      this.live = {
+        kind: 'units',
+        units,
+        hpFill: body.querySelector('.hpbar i'),
+        hpText: body.querySelector('.hpbar b'),
+        xpFill: body.querySelector('.xpbar i'),
+        xpText: body.querySelector('.xpbar b'),
+        unit: same && count === 1 ? primary : null,
+      };
       this.lastSignature = this.selectionSignature();
       return;
     }
@@ -2042,6 +2055,34 @@ export class UI {
     this.lastSignature = this.selectionSignature();
   }
 
+  /** Ранг и шкала опыта под полосой HP. */
+  vetBlock(unit) {
+    const rank = clamp(unit.rank ?? 0, 0, VETERANCY.names.length - 1);
+    const prev = VETERANCY.thresholds[rank] ?? 0;
+    const next = VETERANCY.thresholds[rank + 1];
+    const pct = next ? clamp(((unit.xp - prev) / (next - prev)) * 100, 0, 100) : 100;
+    const text = next
+      ? `${Math.round(unit.xp)} / ${next} XP`
+      : 'МАКСИМАЛЬНЫЙ РАНГ';
+    return `
+      <div class="vet-block">
+        <span class="chip chip--rank">${icon('flag')} ${VETERANCY.names[rank]}</span>
+        <div class="xpbar"><i style="width:${pct}%"></i><b>${text}</b></div>
+      </div>`;
+  }
+
+  /** Опыт и порог следующего ранга для живого обновления шкалы. */
+  xpView(unit) {
+    const rank = clamp(unit.rank ?? 0, 0, VETERANCY.names.length - 1);
+    const prev = VETERANCY.thresholds[rank] ?? 0;
+    const next = VETERANCY.thresholds[rank + 1];
+    return {
+      rank,
+      pct: next ? clamp(((unit.xp - prev) / (next - prev)) * 100, 0, 100) : 100,
+      text: next ? `${Math.round(unit.xp)} / ${next} XP` : 'МАКСИМАЛЬНЫЙ РАНГ',
+    };
+  }
+
   sideStatus() {
     const s = this.game.getStatus();
     const income = this.game.playerIncome();
@@ -2134,6 +2175,11 @@ export class UI {
           const max = units.reduce((a, u) => a + u.maxHp, 0);
           if (this.live.hpFill) this.live.hpFill.style.width = `${clamp((hp / max) * 100, 0, 100)}%`;
           if (this.live.hpText) this.live.hpText.textContent = `${Math.ceil(hp)} / ${max}`;
+          if (this.live.unit?.alive) {
+            const view = this.xpView(this.live.unit);
+            if (this.live.xpFill) this.live.xpFill.style.width = `${view.pct}%`;
+            if (this.live.xpText) this.live.xpText.textContent = view.text;
+          }
         }
       } else if (this.live.kind === 'building') {
         const b = this.live.building;

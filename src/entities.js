@@ -8,7 +8,10 @@ import {
   Vector3,
   Color3,
 } from './babylon.js';
-import { UNITS, BUILDINGS, UPGRADES, FACTIONS, MAP, MESSAGES, FIELD_SUPPORT, CONSTRUCTION, VISION } from './config.js';
+import {
+  UNITS, BUILDINGS, UPGRADES, FACTIONS, MAP, MESSAGES, FIELD_SUPPORT, CONSTRUCTION, VISION,
+  VETERANCY, veteranRank,
+} from './config.js';
 import { clamp, dist, turnTowards, damp, angleDiff } from './utils.js';
 import { segmentDistance } from './nav.js';
 
@@ -256,6 +259,10 @@ export class Unit extends Entity {
     this.range = def.range;
     this.damage = def.damage;
     this.aggro = def.aggro;
+    // Ветеранство: опыт живёт отдельно от HP и не сбрасывается лечением.
+    this.kills = 0;
+    this.xp = 0;
+    this.rank = 0;
     this.order = null;
     this.target = null;
     this.attackCd = 0.25 + Math.random() * 0.3;
@@ -379,7 +386,10 @@ export class Unit extends Entity {
         this.supportFx = 0.35 + Math.random() * 0.2;
         this.game.fx.healSparks(target.position, 0.9);
       }
-      if (target.hp !== before) target.updateBar?.();
+      if (target.hp !== before) {
+        target.updateBar?.();
+        this.addXp((target.hp - before) * VETERANCY.supportXp);
+      }
     } else if (this.def.repairer) {
       const before = target.hp;
       target.hp = Math.min(target.maxHp, target.hp + this.repairRate * dt);
@@ -387,7 +397,32 @@ export class Unit extends Entity {
         this.supportFx = 0.22 + Math.random() * 0.16;
         this.game.fx.repairSparks(target.position, Math.min(1.5, 0.55 + target.radius * 0.25));
       }
-      if (target.hp !== before) target.updateBar?.();
+      if (target.hp !== before) {
+        target.updateBar?.();
+        this.addXp((target.hp - before) * VETERANCY.supportXp);
+      }
+    }
+  }
+
+  /** Начисляет опыт; при новом ранге пересчитывает характеристики. */
+  addXp(amount) {
+    if (!(amount > 0) || !this.alive || this.game.over) return;
+    this.xp += amount;
+    const rank = veteranRank(this.xp);
+    if (rank <= this.rank) return;
+    this.rank = rank;
+    // Повышение добавляет запас прочности: разницу отдаём юниту сразу,
+    // иначе ранг выглядел бы как ослабление на фоне текущих HP.
+    this.applyUpgrades(true);
+    this.updateBar?.();
+    if (this.faction === 'player') {
+      this.game.notify(
+        `${this.def.name}: ранг «${VETERANCY.names[rank]}».`,
+        'success',
+        `rank-${this.id}`,
+        0,
+        3.5,
+      );
     }
   }
 
@@ -395,13 +430,15 @@ export class Unit extends Entity {
   applyUpgrades(heal = false) {
     const mods = this.game.unitModifiers?.(this.faction, this.type);
     if (!mods) return;
+    const vetHp = VETERANCY.hp[this.rank] ?? 1;
+    const vetDamage = VETERANCY.damage[this.rank] ?? 1;
     const previousMax = this.maxHp;
-    this.maxHp = Math.max(1, Math.round(this.def.hp * mods.hp));
+    this.maxHp = Math.max(1, Math.round(this.def.hp * mods.hp * vetHp));
     this.hp = heal
       ? Math.min(this.maxHp, this.hp + Math.max(0, this.maxHp - previousMax))
       : this.maxHp;
     this.armor = (this.def.armor ?? 0) + mods.armor;
-    this.damage = this.def.damage * mods.damage;
+    this.damage = this.def.damage * mods.damage * vetDamage;
     this.range = this.def.range * mods.range;
     // Обзор растёт вместе с дальностью: иначе юнит не замечает цель
     // на новой дистанции и улучшение дальности почти бесполезно.

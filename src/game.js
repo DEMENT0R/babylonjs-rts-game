@@ -14,6 +14,7 @@ import {
   AI,
   AI_DIFFICULTY,
   REPAIR,
+  VETERANCY,
 } from './config.js';
 import { clamp, dist, formatTime, plural } from './utils.js';
 import { Unit, Building } from './entities.js';
@@ -1491,6 +1492,10 @@ export class Game {
 
   onEntityDamaged(entity, source, dmg) {
     if (!entity || !source) return;
+    // Опыт идёт только за урон по противнику: обстрел своих его не даёт.
+    if (source.faction !== entity.faction && source instanceof Unit) {
+      source.addXp?.(dmg * VETERANCY.xpPerDamage);
+    }
     if (source.faction === 'player' && entity.faction !== 'player') {
       this.stats.damageByType[source.type] = (this.stats.damageByType[source.type] ?? 0) + dmg;
     }
@@ -1522,6 +1527,10 @@ export class Game {
     // Убийство засчитывается только за урон игрока: если противник сгорел
     // от собственного залпа, это не наша заслуга.
     if (source && source.faction !== entity.faction) {
+      if (source instanceof Unit) {
+        source.kills++;
+        source.addXp?.(VETERANCY.killXp);
+      }
       if (source.faction === 'player') {
         this.stats.killsByType[source.type] = (this.stats.killsByType[source.type] ?? 0) + 1;
       }

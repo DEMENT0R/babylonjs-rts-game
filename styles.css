@@ -730,6 +730,49 @@ body.mode-attack #scene {
   letter-spacing: 0.04em;
 }
 
+.vet-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 6px;
+}
+
+.chip--rank {
+  color: var(--amber);
+  border-color: rgba(255, 176, 46, 0.35);
+  background: rgba(255, 176, 46, 0.06);
+}
+
+.xpbar {
+  position: relative;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 176, 46, 0.22);
+  overflow: hidden;
+}
+
+.xpbar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #7a5512, var(--amber));
+  box-shadow: 0 0 8px rgba(255, 176, 46, 0.3);
+  transition: width 0.16s linear;
+}
+
+.xpbar b {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-size: 6px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  color: #ffe9c4;
+  text-shadow: 0 1px 2px #000;
+}
+
 .sel-stats {
   display: flex;
   gap: 12px;
