@@ -19,7 +19,7 @@ const BASE_FIELD = MAP.half - MAP.baseMargin; // предел для старт�
 const ANCHOR_LIMIT = MAP.half - MAP.placement.anchor; // предел для якоря базы
 // Все расстояния компоновки заданы для эталонной карты и масштабируются
 // вместе с её размером. Сами числа живут в MAP_LAYOUT (config.js).
-const S = MAP.half / MAP_LAYOUT.referenceHalf;
+const S = Math.min(MAP.half / MAP_LAYOUT.referenceHalf, MAP_LAYOUT.maxScale);
 const LAYOUT = MAP_LAYOUT;
 const DENSITY = MAP_DENSITY;
 const EPS = 0.75;
@@ -272,9 +272,11 @@ function anchorValid(x, z, symmetry) {
 }
 
 function pickAnchor(rng, symmetry) {
+  // Якорь тянется к краю карты: центр остаётся свободным для манёвра.
+  const span = MAP.half - LAYOUT.anchor.edgeClear;
   for (let attempt = 0; attempt < 700; attempt++) {
-    const x = range(rng, -LAYOUT.anchor.span * S, LAYOUT.anchor.span * S);
-    const z = range(rng, -LAYOUT.anchor.span * S, LAYOUT.anchor.span * S);
+    const x = range(rng, -span, span);
+    const z = range(rng, -span, span);
     if (Math.hypot(x, z) < LAYOUT.anchor.centerClear * S) continue;
     if (anchorValid(x, z, symmetry)) return { x, z };
   }
