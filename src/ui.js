@@ -35,9 +35,12 @@ import {
 import { CHANGELOG, GAME_VERSION } from './changelog.js';
 import {
   CAMPAIGN,
+  ENDLESS,
   TRIALS,
   campaignDoneCount,
   campaignState,
+  endlessBest,
+  endlessUnlocked,
   findMission,
   nextCampaignMission,
   trialBest,
@@ -179,7 +182,9 @@ export class UI {
       else if (action === 'campaign') this.showMissions('campaign');
       else if (action === 'trials') this.showMissions('trial');
       else if (action === 'beginmission') this.beginMission();
-      else if (action === 'missionlist') this.leaveMission(this.activeMission?.kind ?? 'campaign');
+      else if (action === 'missionlist') this.leaveMission(
+        this.activeMission?.kind === 'endless' ? 'campaign' : this.activeMission?.kind ?? 'campaign',
+      );
       else if (action === 'mainmenu') this.leaveMission(null);
       else if (action.startsWith('mission:')) this.openMission(action.slice('mission:'.length));
       else if (action === 'reroll') this.rerollSeed();
@@ -345,6 +350,29 @@ export class UI {
           <span class="mode-badge">${badge}</span>
         </button>`;
     }).join('');
+    // Секретная операция: карточка всегда на месте, но до прохождения
+    // кампании показывает только «???» и не открывается.
+    let secret = '';
+    if (isCampaign) {
+      const unlocked = endlessUnlocked();
+      const mission = ENDLESS[0];
+      const best = mission ? endlessBest(mission) : null;
+      const title = unlocked && mission ? mission.title.toUpperCase() : '??? ??? ???';
+      const note = unlocked && mission
+        ? mission.subtitle
+        : 'Секретная операция. Пройдите все пять операций кампании, чтобы открыть её.';
+      const badge = unlocked
+        ? (best ? `РЕКОРД ${formatTime(best.time)}` : 'БЕЗ КОНЦА')
+        : 'СЕКРЕТ';
+      secret = `
+        <button type="button" class="mode-card ${unlocked ? 'mode-card--active' : 'mode-card--locked'}"
+          ${unlocked ? `data-action="mission:${mission.id}"` : 'disabled aria-disabled="true"'}
+          title="${esc(note)}">
+          <span class="mode-mark mission-num">${unlocked ? '06' : '??'}</span>
+          <span class="mode-copy"><b>${esc(title)}</b><small>${esc(note)}</small></span>
+          <span class="mode-badge">${badge}</span>
+        </button>`;
+    }
     const done = isCampaign ? campaignDoneCount() : trialDoneCount();
     const label = isCampaign ? 'КАМПАНИЯ' : 'ИСПЫТАНИЯ';
     const html = `
@@ -352,10 +380,10 @@ export class UI {
         <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // ${label}</div>
         <h1>${isCampaign ? 'ОПЕРАЦИИ' : 'ИСПЫТАНИЯ'}</h1>
         <p class="tagline">${isCampaign
-          ? 'Пять операций за колонию «Гелиос-7». Победа открывает следующую миссию и новую технику.'
+          ? 'Пять операций за колонию «Гелиос-7». Победа открывает следующую миссию и новую технику. После пятой операции открывается секретный протокол без конца.'
           : 'Шесть фиксированных сценариев. Сюжет не нужен: только карта, противник и условие победы.'}</p>
       </div>
-      <div class="mode-grid mode-grid--missions">${cards}</div>
+      <div class="mode-grid mode-grid--missions">${cards}${secret}</div>
       <div class="overlay-actions">
         <button class="btn-primary" data-action="back">← В ГЛАВНОЕ МЕНЮ</button>
         <div class="menu-links">
@@ -385,16 +413,20 @@ export class UI {
     }
     this.inLobby = false;
     this.missionsScreen = null;
-    this.overlayBack = () => this.showMissions(current.kind);
+    this.overlayBack = () => this.showMissions(
+      current.kind === 'endless' ? 'campaign' : current.kind,
+    );
     const map = this.game.map;
     const isCampaign = current.kind === 'campaign';
-    const kindLabel = isCampaign ? 'КАМПАНИЯ' : 'ИСПЫТАНИЯ';
+    const isEndless = current.kind === 'endless';
+    const kindLabel = isEndless ? 'ПРОТОКОЛ' : isCampaign ? 'КАМПАНИЯ' : 'ИСПЫТАНИЯ';
+    const kindWord = isEndless ? 'ПРОТОКОЛ' : isCampaign ? 'ОПЕРАЦИЯ' : 'СЦЕНАРИЙ';
     const buildings = (current.buildings ?? []).map((type) => BUILDINGS[type]?.name).filter(Boolean);
     const units = (current.units ?? []).map((type) => UNITS[type]?.name).filter(Boolean);
     const brief = (current.briefing ?? []).map((text) => `<p>${esc(text)}</p>`).join('');
     const html = `
       <div class="overlay-top">
-        <div class="eyebrow"><i></i> ${kindLabel} // ${isCampaign ? 'ОПЕРАЦИЯ' : 'СЦЕНАРИЙ'} ${String(current.index).padStart(2, '0')}</div>
+        <div class="eyebrow"><i></i> ${kindLabel} // ${kindWord} ${String(current.index).padStart(2, '0')}</div>
         <h1>${esc(current.title.toUpperCase())}</h1>
         <p class="tagline">${esc(current.subtitle)}</p>
       </div>
@@ -411,7 +443,7 @@ export class UI {
         ${this.objectivesHtml(current, false)}
       </div>
       <div class="overlay-actions">
-        <button class="btn-primary" data-action="beginmission">НАЧАТЬ ${isCampaign ? 'ОПЕРАЦИЮ' : 'ИСПЫТАНИЕ'} <span>→</span></button>
+        <button class="btn-primary" data-action="beginmission">НАЧАТЬ ${isEndless ? 'ПРОТОКОЛ' : isCampaign ? 'ОПЕРАЦИЮ' : 'ИСПЫТАНИЕ'} <span>→</span></button>
         <button class="btn-ghost" data-action="back">← НАЗАД</button>
       </div>
       <div class="overlay-footer">
@@ -435,7 +467,10 @@ export class UI {
           <span><strong>${esc(objective.title)}${esc(progress)}</strong><small>${esc(objective.desc)}</small></span>
         </div>`;
     }).join('');
-    return `<div class="objectives">${items}</div>`;
+    const body = items || (mission.endless
+      ? `<div class="objective"><b>∞</b><span><strong>Продержаться как можно дольше</strong><small>Волны идут без конца, победы нет. Поражение — потеря командного центра.</small></span></div>`
+      : '');
+    return `<div class="objectives">${body}</div>`;
   }
 
   beginMission() {
@@ -448,6 +483,7 @@ export class UI {
     const mission = findMission(id);
     if (!mission) return;
     if (mission.kind === 'campaign' && campaignState(mission) === 'locked') return;
+    if (mission.kind === 'endless' && !endlessUnlocked()) return;
     const url = new URL(window.location.href);
     url.searchParams.set('mission', mission.id);
     url.searchParams.set('seed', formatSeed(mission.seed));
@@ -927,21 +963,30 @@ export class UI {
     const s = this.game.stats;
     const map = this.game.map;
     const isCampaign = mission.kind === 'campaign';
+    const isEndless = mission.kind === 'endless';
     const next = isCampaign && victory ? nextCampaignMission(mission) : null;
-    const best = isCampaign ? null : trialBest(mission);
-    const kindLabel = isCampaign ? 'КАМПАНИЯ' : 'ИСПЫТАНИЯ';
-    const title = victory
-      ? isCampaign
-        ? (next ? 'ОПЕРАЦИЯ ВЫПОЛНЕНА' : 'КОНТРАКТ ЗАКРЫТ')
-        : 'ИСПЫТАНИЕ ПРОЙДЕНО'
-      : isCampaign ? 'СИГНАЛ ПОТЕРЯН' : 'ИСПЫТАНИЕ ПРОВАЛЕНО';
-    const tagline = victory
-      ? (mission.outro ?? mission.subtitle)
-      : 'Командный центр потерян. Попробуйте другую тактику или вернитесь к списку.';
+    const best = isEndless ? endlessBest(mission) : isCampaign ? null : trialBest(mission);
+    const record = isEndless ? this.game.record : null;
+    const kindLabel = isEndless ? 'ПРОТОКОЛ' : isCampaign ? 'КАМПАНИЯ' : 'ИСПЫТАНИЯ';
+    const title = isEndless
+      ? 'ПРОТОКОЛ ОСТАНОВЛЕН'
+      : victory
+        ? isCampaign
+          ? (next ? 'ОПЕРАЦИЯ ВЫПОЛНЕНА' : 'КОНТРАКТ ЗАКРЫТ')
+          : 'ИСПЫТАНИЕ ПРОЙДЕНО'
+        : isCampaign ? 'СИГНАЛ ПОТЕРЯН' : 'ИСПЫТАНИЕ ПРОВАЛЕНО';
+    const tagline = isEndless
+      ? 'Командный центр потерян. Автозаводы «Беты» продолжают работу — попробуйте продержаться дольше.'
+      : victory
+        ? (mission.outro ?? mission.subtitle)
+        : 'Командный центр потерян. Попробуйте другую тактику или вернитесь к списку.';
     let primary;
     let showRepeat = true;
     let showList = true;
-    if (victory && next) {
+    if (isEndless) {
+      primary = '<button class="btn-primary" data-action="restart">ЕЩЁ ОДНА ПОПЫТКА <span>↻</span></button>';
+      showRepeat = false;
+    } else if (victory && next) {
       primary = `<button class="btn-primary" data-action="mission:${next.id}">СЛЕДУЮЩАЯ ОПЕРАЦИЯ <span>→</span></button>`;
     } else if (victory) {
       primary = `<button class="btn-primary" data-action="missionlist">К СПИСКУ ${isCampaign ? 'ОПЕРАЦИЙ' : 'ИСПЫТАНИЙ'} <span>→</span></button>`;
@@ -961,6 +1006,7 @@ export class UI {
         <div><b>${s.kills}</b><span>УНИЧТОЖЕНО</span></div>
         <div><b>${s.losses}</b><span>ПОТЕРЯНО</span></div>
         <div><b>${Math.floor(s.gathered)}</b><span>ДОБЫТО КРЕДИТОВ</span></div>
+        ${isEndless ? `<div><b>${s.waves ?? 0}</b><span>ВОЛН ОТБИТО</span></div>` : ''}
       </div>
       ${this.objectivesHtml(mission, true)}
       ${this.endDetailHtml()}
@@ -973,7 +1019,11 @@ export class UI {
       </div>
       <div class="overlay-footer">
         <span>ГЕЛИОС-7 // ${kindLabel} · ${esc(mission.title.toUpperCase())}</span>
-        <span>${best != null ? `ЛУЧШЕЕ ВРЕМЯ: ${formatTime(best)}` : victory ? 'СТАТУС: ЗАДАЧИ ВЫПОЛНЕНЫ' : 'СТАТУС: ЗАДАЧИ ПРОВАЛЕНЫ'}</span>
+        <span>${isEndless
+          ? (best
+            ? `${record?.isRecord ? 'НОВЫЙ РЕКОРД' : 'РЕКОРД'}: ${formatTime(best.time)} · ${best.waves} ВОЛН`
+            : 'СТАТУС: ПРОТОКОЛ АКТИВЕН')
+          : best != null ? `ЛУЧШЕЕ ВРЕМЯ: ${formatTime(best)}` : victory ? 'СТАТУС: ЗАДАЧИ ВЫПОЛНЕНЫ' : 'СТАТУС: ЗАДАЧИ ПРОВАЛЕНЫ'}</span>
       </div>
     `;
     this.setOverlay(html, `overlay--end ${victory ? 'is-win' : 'is-lose'}`);
@@ -997,9 +1047,11 @@ export class UI {
     const map = this.game.map;
     const mission = this.game.mission;
     const isCampaign = mission?.kind === 'campaign';
+    const isEndless = mission?.kind === 'endless';
+    const kindLabel = isEndless ? 'ПРОТОКОЛ' : isCampaign ? 'КАМПАНИЯ' : 'ИСПЫТАНИЕ';
     const html = `
       <div class="overlay-top">
-        <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // ПАУЗА${mission ? ` // ${isCampaign ? 'КАМПАНИЯ' : 'ИСПЫТАНИЕ'}` : ''}</div>
+        <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // ПАУЗА${mission ? ` // ${kindLabel}` : ''}</div>
         <h1 class="pause-title">${mission ? esc(mission.title.toUpperCase()) : 'ОПЕРАЦИЯ'}<br><span>ПРИОСТАНОВЛЕНА</span></h1>
         <p class="tagline">${mission ? esc(mission.subtitle) : 'Камера и интерфейс остаются доступны. Продолжите, когда будете готовы.'}</p>
       </div>
@@ -2189,7 +2241,16 @@ export class UI {
     this.el.resPower.title = `Энергия: произведено ${s.power.produced}, потреблено ${s.power.used}${deficit ? '. Производство замедлено.' : '.'}`;
 
     const mission = this.game.mission;
-    if (mission && this.el.missionText) {
+    if (mission?.kind === 'endless' && this.game.endless) {
+      const endless = this.game.endless;
+      const best = endlessBest(mission);
+      this.el.missionLabel.textContent = `ПРОТОКОЛ · ВОЛНА ${endless.waveIndex}`;
+      this.el.missionText.textContent =
+        `Следующая через ${formatTime(Math.ceil(endless.nextWaveIn))} · в секторе ${formatTime(this.game.elapsed)}`;
+      this.el.missionCard.title = best
+        ? `Рекорд: ${formatTime(best.time)}, ${best.waves} волн`
+        : 'Продержитесь как можно дольше';
+    } else if (mission && this.el.missionText) {
       const total = this.game.objectives.length;
       const done = this.game.objectives.filter((objective) => objective.done).length;
       const active = this.game.activeObjective();

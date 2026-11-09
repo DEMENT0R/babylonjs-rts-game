@@ -21,6 +21,7 @@ import { clamp, dist, formatTime, plural } from './utils.js';
 import { Unit, Building } from './entities.js';
 import { NavGrid, segmentDistance } from './nav.js';
 import { AIController } from './ai.js';
+import { WaveDirector } from './endless.js';
 import { FogOfWar } from './fog.js';
 import { recordMissionResult } from './missions.js';
 
@@ -68,6 +69,8 @@ export class Game {
     // Витрина главного экрана: демонстрационный бой без игрока.
     this.attract = false;
     this.over = null;
+    // Итог записи рекорда для экрана поражения (только бесконечная операция).
+    this.record = null;
     // Скорость симуляции: 0.5×, 1× или 2×. На интерфейс и звук не влияет.
     this.speed = 1;
 
@@ -77,6 +80,8 @@ export class Game {
       gathered: 0,
       trained: 0,
       built: 0,
+      // Сколько волн отправил директор бесконечной операции.
+      waves: 0,
       // Разбивка по типам: кто уничтожал, что теряли и сколько урона нанесли.
       killsByType: {},
       lossesByType: {},
@@ -108,6 +113,7 @@ export class Game {
     this.recomputePower();
     this.refreshArmyCap();
     this.ai = new AIController(this, this.difficulty, this.mission?.ai ?? null);
+    this.endless = this.mission?.endless ? new WaveDirector(this, this.mission.endless) : null;
     this.ui = null;
   }
 
@@ -286,7 +292,9 @@ export class Game {
     const hq = this.playerBuildings().find((b) => b.type === 'hq');
     if (hq) this.selectOnly([hq]);
     if (this.mission) {
-      const kind = this.mission.kind === 'campaign' ? 'Операция' : 'Испытание';
+      const kind = this.mission.kind === 'campaign'
+        ? 'Операция'
+        : this.mission.kind === 'endless' ? 'Протокол' : 'Испытание';
       this.notify(
         `${kind} «${this.mission.title}». ${this.mission.subtitle}`,
         'info',
@@ -388,6 +396,7 @@ export class Game {
     this.fx.update(dt);
     this.fog.update(dt);
     this.ai.update(dt);
+    this.endless?.update(dt);
 
     // проверка атаки на базу
     this.baseAlertCd -= dt;
@@ -435,7 +444,9 @@ export class Game {
     this.over = result;
     this.paused = true;
     this.stats.time = this.elapsed;
-    if (this.mission) recordMissionResult(this.mission, result, this.stats);
+    if (this.mission) {
+      this.record = recordMissionResult(this.mission, result, this.stats);
+    }
     if (this.ui) this.ui.showEnd(result);
   }
 

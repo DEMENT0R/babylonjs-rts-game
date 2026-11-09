@@ -323,7 +323,33 @@ export const TRIALS = [
   },
 ];
 
-const ALL_MISSIONS = [...CAMPAIGN, ...TRIALS];
+// --------------------------------------------------------------- бесконечная
+
+// Секретная операция после кампании. Победы нет: цель — продержаться.
+// Волны приходят от «автозаводов» за периметром (см. endless.js), поэтому
+// обычные настройки ИИ фактически отключены и не дублируют директора.
+export const ENDLESS = [
+  {
+    id: 'endless-1',
+    kind: 'endless',
+    index: 6,
+    title: 'Протокол «Дублёр»',
+    subtitle: 'Держать оборону под бесконечными волнами автозаводов «Беты». Победить нельзя.',
+    seed: 0x5EC7E7D0,
+    map: mapOf('rot180', 'ash'),
+    difficulty: 'hard',
+    ai: { firstWave: 1e9, waveInterval: 1e9, income: 1 },
+    endless: { firstWave: 45, interval: 45, decay: 0.93, minInterval: 15 },
+    buildings: BUILDINGS_ALL,
+    units: UNITS_ALL,
+    briefing: [
+      '«Бета» уничтожена, но её последний приказ всё ещё исполняется: автозаводы за периметром сектора продолжают выпускать подразделения. Уничтожить их отсюда невозможно.',
+      'Победить в этой операции нельзя. Держите периметр, отбивайте волны и продержитесь как можно дольше — с каждой волной противник приходит чаще и тяжелее. Уничтожение базы «Беты» в секторе даёт лишь короткую передышку.',
+    ],
+  },
+];
+
+const ALL_MISSIONS = [...CAMPAIGN, ...TRIALS, ...ENDLESS];
 
 export function findMission(id) {
   if (!id) return null;
@@ -338,7 +364,7 @@ export function nextCampaignMission(mission) {
 // ------------------------------------------------------------------ прогресс
 
 function emptyProgress() {
-  return { campaign: {}, trials: {} };
+  return { campaign: {}, trials: {}, endless: {} };
 }
 
 export function loadProgress() {
@@ -348,7 +374,8 @@ export function loadProgress() {
     const saved = JSON.parse(raw);
     const campaign = saved && typeof saved.campaign === 'object' ? saved.campaign : {};
     const trials = saved && typeof saved.trials === 'object' ? saved.trials : {};
-    return { campaign: { ...campaign }, trials: { ...trials } };
+    const endless = saved && typeof saved.endless === 'object' ? saved.endless : {};
+    return { campaign: { ...campaign }, trials: { ...trials }, endless: { ...endless } };
   } catch {
     // Приватный режим или повреждённые данные не должны ломать меню.
     return emptyProgress();
@@ -385,12 +412,46 @@ export function trialDoneCount() {
   return TRIALS.filter((mission) => trialBest(mission) != null).length;
 }
 
+/** Секретная операция открывается только после всех пяти операций кампании. */
+export function endlessUnlocked() {
+  return campaignDoneCount() >= CAMPAIGN.length;
+}
+
+/** Лучшее время и число волн бесконечной операции. */
+export function endlessBest(mission) {
+  const best = loadProgress().endless[mission.id];
+  if (!best || !Number.isFinite(best.time)) return null;
+  return {
+    time: best.time,
+    waves: Number.isFinite(best.waves) ? best.waves : 0,
+  };
+}
+
 /**
  * Победа в кампании открывает следующую операцию; в испытании сохраняется
- * лучшее время. Поражение ничего не меняет.
+ * лучшее время. Поражение ничего не меняет, кроме бесконечной операции:
+ * там любой итог — это новый результат по времени и волнам.
+ * Возвращает запись рекорда (для экрана итога) или null.
  */
 export function recordMissionResult(mission, result, stats) {
-  if (!mission || result !== 'victory') return;
+  if (!mission) return null;
+  if (mission.kind === 'endless') {
+    const time = Math.max(0, Math.round(stats?.time ?? 0));
+    const waves = Math.max(0, Math.round(stats?.waves ?? 0));
+    const progress = loadProgress();
+    const prev = progress.endless[mission.id] ?? null;
+    const best = {
+      time: Math.max(prev?.time ?? 0, time),
+      waves: Math.max(prev?.waves ?? 0, waves),
+    };
+    progress.endless[mission.id] = best;
+    saveProgress(progress);
+    return {
+      ...best,
+      isRecord: best.time > (prev?.time ?? 0) || best.waves > (prev?.waves ?? 0),
+    };
+  }
+  if (result !== 'victory') return null;
   const progress = loadProgress();
   if (mission.kind === 'campaign') {
     progress.campaign[mission.id] = true;
@@ -400,6 +461,7 @@ export function recordMissionResult(mission, result, stats) {
     if (!Number.isFinite(best) || time < best) progress.trials[mission.id] = time;
   }
   saveProgress(progress);
+  return null;
 }
 
 // ------------------------------------------------------------- расстановка
