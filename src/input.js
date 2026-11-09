@@ -855,6 +855,14 @@ export class Input {
     }
     if (e.ctrlKey || e.metaKey) return;
 
+    // Свободные инженеры ищутся и при активном выделении, поэтому клавиша
+    // обрабатывается напрямую, а не через командную панель.
+    if (e.code === 'KeyI' && !e.repeat) {
+      e.preventDefault();
+      this.game.selectIdleEngineers();
+      return;
+    }
+
     // Отряды: Shift+1…9 запоминает выделение, 1…9 вызывает его.
     // Ctrl+цифры заняты браузером (переключение вкладок), поэтому Shift.
     const digit = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);

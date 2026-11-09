@@ -954,6 +954,32 @@ export class Game {
     return this.units.filter((u) => u.faction === 'player' && u.alive);
   }
 
+  /**
+   * Выделяет инженеров без текущего задания: их обычно и ищут после стройки,
+   * чтобы отправить на следующую площадку или в ремонт.
+   */
+  selectIdleEngineers() {
+    const list = this.playerUnits().filter((u) => {
+      if (!u.def.builder || u.order || u.target) return false;
+      // Ссылка на достроенную площадку не делает инженера занятым.
+      const site = u.assistBuilding;
+      return !(site && site.alive && !site.complete);
+    });
+    if (!list.length) {
+      this.notify('Свободных инженеров нет.', 'warn', 'idle-engineers', 0, 3);
+      return false;
+    }
+    this.selectOnly(list);
+    this.notify(
+      `Свободные инженеры: ${list.length} ${plural(list.length, 'юнит', 'юнита', 'юнитов')}.`,
+      'info',
+      'idle-engineers',
+      0,
+      3,
+    );
+    return true;
+  }
+
   /** Видно ли точку этой стороне: так туман войны влияет на наведение. */
   isVisibleTo(faction, x, z) {
     return this.fog ? this.fog.isVisible(faction, x, z) : true;

@@ -1205,6 +1205,7 @@ export class UI {
           <div><kbd>H</kbd><span>стоп</span></div>
           <div><kbd>P</kbd><span>держать позицию</span></div>
           <div><kbd>T</kbd><span>патруль</span></div>
+          <div><kbd>I</kbd><span>свободные инженеры</span></div>
           <div><kbd>K</kbd><span>продать здание</span></div>
           <div><kbd>R</kbd><span>ремонт здания</span></div>
           <div><kbd>Shift</kbd><span>добавить к выбору</span></div>
@@ -1448,7 +1449,7 @@ export class UI {
       return commands;
     }
 
-    if (!buildings.length) return [];
+    if (!buildings.length) return [this.idleEngineersCommand()];
     const b = buildings[0];
 
     if (!b.complete && b.faction === 'player') {
@@ -1505,6 +1506,19 @@ export class UI {
     }
 
     return [repair, sell].filter(Boolean);
+  }
+
+  /** Глобальная команда: выделить свободных инженеров без текущего задания. */
+  idleEngineersCommand() {
+    return {
+      id: 'idleengineers',
+      label: 'Свободные инженеры',
+      short: 'ИНЖЕНЕРЫ',
+      icon: 'engineer',
+      hotkey: 'I',
+      desc: 'Выделить всех инженеров, у которых нет текущего задания.',
+      action: () => this.game.selectIdleEngineers(),
+    };
   }
 
   /**
