@@ -55,6 +55,33 @@
 
     <div id="feed" aria-live="polite"></div>
 
+    <section id="intel-panel" class="panel intel-panel" aria-label="Разведданные противника" hidden>
+      <div class="panel-head">
+        <span>РАЗВЕДКА ПРОТИВНИКА</span>
+        <span class="panel-tag" id="intelTag">—</span>
+      </div>
+      <div class="intel-body">
+        <div class="intel-row">
+          <span>Наши войска</span>
+          <b id="intelArmy">—</b>
+        </div>
+        <div class="intel-row">
+          <span>Оборона штаба</span>
+          <b id="intelDefense">—</b>
+        </div>
+        <div class="intel-row">
+          <span>Постройки</span>
+          <b id="intelBuildings">—</b>
+        </div>
+        <div class="intel-row">
+          <span>Силы ИИ</span>
+          <b id="intelOwn">—</b>
+        </div>
+        <div class="intel-verdict" id="intelVerdict">—</div>
+        <div class="intel-note" id="intelNote"></div>
+      </div>
+    </section>
+
     <div id="squad-rail" class="squad-rail" aria-label="Отряды"></div>
 
     <main id="hud-bottom">

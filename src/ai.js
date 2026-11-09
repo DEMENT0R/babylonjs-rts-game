@@ -58,6 +58,20 @@ export class AIController {
     // Итог последней разведки боем: если оборона штаба слабая, следующая
     // волна не ждёт обычного интервала.
     this.probeIntel = null;
+    // Разведсводка о противнике. Живые войска видны только в обзоре, поэтому
+    // здесь хранится последнее наблюдение, а не реальная армия игрока.
+    this.scouting = {
+      armyPower: 0,
+      armyUnits: 0,
+      at: -999,
+      defense: 0,
+      buildings: 0,
+      turrets: 0,
+    };
+    this.intelTimer = 0;
+    // Чтобы отказ от атаки не выглядел молчанием, игрок получает редкое
+    // сообщение о том, что противник оценил его войска и копит силы.
+    this.lastAttackHoldNoticeAt = -999;
     // Цели, на которых волна уже провалилась: их не трогаем, пока не истечёт
     // кулдаун, иначе ИИ раз за разом бьётся в одно и то же место.
     this.targetCooldowns = new Map();
@@ -391,6 +405,12 @@ export class AIController {
     if (this.scoutCheckTimer <= 0) {
       this.scoutCheckTimer = 1;
       this.updateScouts();
+    }
+
+    this.intelTimer -= dt;
+    if (this.intelTimer <= 0) {
+      this.intelTimer = 1;
+      this.updateIntel();
     }
 
     if (this.trainTimer <= 0) {
@@ -1357,6 +1377,94 @@ export class AIController {
       * (artilleryBonus > 1 && u.type === 'artillery' ? artilleryBonus : 1), 0);
   }
 
+  /** Боевая мощь всей армии противника: гарнизон и караулы тоже считаются. */
+  armyPower() {
+    let power = 0;
+    for (const u of this.game.units) {
+      if (!u.alive || u.faction !== 'enemy' || u.def.builder) continue;
+      power += this.combatValue(u);
+    }
+    return power;
+  }
+
+  /**
+   * Обновляет разведсводку об игроке. Живые войска видны только в текущем
+   * обзоре, поэтому запоминается последнее наблюдение — по нему противник и
+   * судит о силах, а не подглядывает сквозь туман. Постройки помнятся дольше:
+   * их видно в уже разведанной зоне.
+   */
+  updateIntel() {
+    const game = this.game;
+    let armyPower = 0;
+    let armyUnits = 0;
+    for (const u of game.units) {
+      if (!u.alive || u.faction !== 'player') continue;
+      if (!game.isEntityVisibleTo('enemy', u)) continue;
+      armyPower += this.combatValue(u);
+      armyUnits++;
+    }
+    if (armyUnits) {
+      this.scouting.armyPower = armyPower;
+      this.scouting.armyUnits = armyUnits;
+      this.scouting.at = game.elapsed;
+    }
+
+    const hq = game.entities.find(
+      (e) => e.alive && e.faction === 'player' && e.isBuilding && e.type === 'hq',
+    );
+    this.scouting.defense = hq ? this.defenseAt(hq.position) : 0;
+    let buildings = 0;
+    let turrets = 0;
+    for (const b of game.buildings) {
+      if (!b.alive || b.faction !== 'player') continue;
+      if (!game.isBuildingKnownTo('enemy', b)) continue;
+      buildings++;
+      if (b.type === 'turret' && b.complete) turrets++;
+    }
+    this.scouting.buildings = buildings;
+    this.scouting.turrets = turrets;
+  }
+
+  /**
+   * Стоит ли наступать: пока разведанная армия игрока заметно сильнее,
+   * противник держит оборону и копит силы. Старая сводка не считается
+   * приговором — без свежих данных ИИ не запирает себя навсегда.
+   */
+  attackAssessment() {
+    const intel = this.scouting;
+    const own = this.armyPower();
+    const age = this.game.elapsed - intel.at;
+    const threshold = intel.armyPower * AI.attackPowerRatio;
+    const known = intel.armyUnits > 0 && age <= AI.intelMemory;
+    return {
+      hold: known && own < threshold,
+      known,
+      own,
+      player: intel.armyPower,
+      threshold: known ? threshold : 0,
+      units: intel.armyUnits,
+      age,
+    };
+  }
+
+  /** Снимок разведданных и текущего соотношения сил для интерфейса. */
+  intelReport() {
+    const intel = this.scouting;
+    const assessment = this.attackAssessment();
+    return {
+      armyPower: intel.armyPower,
+      armyUnits: intel.armyUnits,
+      age: this.game.elapsed - intel.at,
+      defense: intel.defense,
+      buildings: intel.buildings,
+      turrets: intel.turrets,
+      ownPower: assessment.own,
+      threshold: assessment.threshold,
+      hold: assessment.hold,
+      known: assessment.known,
+    };
+  }
+
   /**
    * Что ИИ знает об обороне вокруг точки: постройки — по разведке (они не
    * двигаются, их помнят), войска — только по текущему обзору. В тумане
@@ -2042,6 +2150,29 @@ export class AIController {
         5,
       );
       this.debugLog(`волна отложена: экономика голодает (${Math.round(this.credits)} кр.)`);
+      return;
+    }
+
+    // Если разведка показала, что армия игрока заметно сильнее, наступление
+    // откладывается: противник копит силы у базы, а не отправляет войска на
+    // верную гибель. Оценка — только по разведанным войскам.
+    const strength = this.attackAssessment();
+    if (strength.hold) {
+      this.waveTimer = AI.regroupDelay * (0.8 + Math.random() * 0.6);
+      if (this.game.elapsed - this.lastAttackHoldNoticeAt > 120) {
+        this.lastAttackHoldNoticeAt = this.game.elapsed;
+        this.game.notify(
+          'Противник оценил наши войска как более сильные и не решается наступать.',
+          'success',
+          'ai-hold',
+          120,
+          5,
+        );
+      }
+      this.debugLog(
+        `волна отложена: армия ${Math.round(strength.own)}`
+        + ` < ${Math.round(strength.threshold)} (войска игрока ${Math.round(strength.player)})`,
+      );
       return;
     }
 

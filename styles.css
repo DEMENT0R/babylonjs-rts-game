@@ -371,6 +371,79 @@ body.mode-attack #scene {
   opacity: 0.85;
 }
 
+/* Разведсводка противника: над тактической картой, ширина как у неё. */
+#intel-panel {
+  position: absolute;
+  left: 18px;
+  bottom: 238px;
+  z-index: 21;
+  width: 200px;
+  height: auto;
+  padding: 8px 10px 9px;
+  pointer-events: none;
+}
+
+#intel-panel[hidden] {
+  display: none;
+}
+
+.intel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.intel-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid rgba(82, 172, 202, 0.08);
+}
+
+.intel-row span {
+  color: var(--dim);
+  font-size: 7.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.intel-row b {
+  color: #dff5ff;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.intel-verdict {
+  margin-top: 4px;
+  font-family: var(--font-display);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  color: var(--cyan);
+}
+
+.intel-verdict[data-state="hold"] {
+  color: var(--amber);
+}
+
+.intel-verdict[data-state="ready"] {
+  color: var(--green);
+}
+
+.intel-verdict[data-state="search"] {
+  color: var(--dim);
+}
+
+.intel-note {
+  font-family: var(--font-display);
+  font-size: 8px;
+  line-height: 1.35;
+  color: var(--dim);
+}
+
 /* Миникарта */
 #minimap-panel {
   padding-bottom: 7px;
@@ -2909,6 +2982,36 @@ body.mode-attack .tc-cancel {
     top: 58px;
     left: 8px;
     width: calc(100% - 16px);
+  }
+
+  #intel-panel {
+    left: 8px;
+    bottom: calc(var(--hud-bottom-height) + 8px + env(safe-area-inset-bottom));
+    width: 176px;
+    padding: 5px 7px 6px;
+  }
+
+  #intel-panel .panel-head {
+    padding-bottom: 3px;
+    margin-bottom: 3px;
+  }
+
+  .intel-body {
+    gap: 2px;
+    font-size: 7.5px;
+  }
+
+  .intel-row span {
+    font-size: 6.5px;
+  }
+
+  .intel-verdict {
+    margin-top: 3px;
+    font-size: 7px;
+  }
+
+  .intel-note {
+    font-size: 6.5px;
   }
 
   .msg {
