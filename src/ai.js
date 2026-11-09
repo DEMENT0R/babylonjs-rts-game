@@ -55,6 +55,9 @@ export class AIController {
     // и снова повторял один и тот же провальный удар.
     this.waveLog = [];
     this.activeWave = null;
+    // Итог последней разведки боем: если оборона штаба слабая, следующая
+    // волна не ждёт обычного интервала.
+    this.probeIntel = null;
     // Цели, на которых волна уже провалилась: их не трогаем, пока не истечёт
     // кулдаун, иначе ИИ раз за разом бьётся в одно и то же место.
     this.targetCooldowns = new Map();
@@ -110,6 +113,22 @@ export class AIController {
     const dz = playerHq.z - enemyHq.z;
     const len = Math.hypot(dx, dz) || 1;
     return { x: dx / len, z: dz / len };
+  }
+
+  /** Дистанция между базами: масштаб для подхода, обхода и таймингов. */
+  baseDistance() {
+    const a = this.game.map.spawn.enemy.hq;
+    const b = this.game.map.spawn.player.hq;
+    return dist(a.x, a.z, b.x, b.z);
+  }
+
+  /** Радиус подхода к цели, растущий вместе с размером поля. */
+  approachRadius() {
+    return clamp(
+      this.baseDistance() * AI.approachDistanceShare,
+      AI.assaultApproachRadius,
+      AI.assaultApproachMax,
+    );
   }
 
   /**
@@ -379,6 +398,7 @@ export class AIController {
       this.tryTrain();
     }
 
+    this.updateWaveField();
     this.updateWaveMemory();
     this.updateWave(dt);
     this.updateDebugOverlay(dt);
@@ -1382,8 +1402,11 @@ export class AIController {
    * Запоминает отправленную волну. Запись закроется сама, когда отряд
    * погибнет или потеряет темп, — по ней ИИ судит, стоило ли оно того.
    */
-  beginWave({ tactic, squad, point, targetEntity = null }) {
+  beginWave({
+    tactic, squad, point, targetEntity = null, route = null, pending = [], travel = 0,
+  }) {
     if (this.activeWave) this.finishWave(this.activeWave, 'superseded');
+    if (route) route.since = this.game.elapsed;
     const record = {
       index: this.waveIndex + 1,
       tactic,
@@ -1394,6 +1417,13 @@ export class AIController {
       units: squad.map((u) => ({ unit: u, supply: u.def.supply ?? 1 })),
       ids: new Set(squad.map((u) => u.id)),
       supplySent: squad.reduce((sum, u) => sum + (u.def.supply ?? 1), 0),
+      // Маршрут обхода и отложенная половина охвата живут до конца волны.
+      route,
+      pending,
+      travel,
+      // Таймаут учитывает дорогу: на просторной карте отряд иначе отзывают
+      // до первого контакта.
+      timeout: AI.waveTimeout + travel,
       kills: 0,
       damage: 0,
       killTypes: {},
@@ -1435,7 +1465,7 @@ export class AIController {
       this.retreatWave(record);
       return;
     }
-    if (age >= AI.waveTimeout) {
+    if (age >= (record.timeout ?? AI.waveTimeout)) {
       this.recallWave(record);
       this.finishWave(record, 'timeout');
     }
@@ -1483,8 +1513,13 @@ export class AIController {
     if (this.activeWave === record) this.activeWave = null;
     record.failed = this.isFailedWave(record);
     if (record.failed && record.targetId != null && this.rules.targetCooldown) {
-      this.targetCooldowns.set(record.targetId, this.game.elapsed + AI.targetCooldown);
+      this.targetCooldowns.set(
+        record.targetId,
+        this.game.elapsed + AI.targetCooldown + (record.travel ?? 0),
+      );
     }
+    // Разведка боем отработала — её вывод решает темп следующей волны.
+    if (record.tactic === 'probe') this.recordProbeIntel();
     const s = this.stats;
     s.settled++;
     s.supplyLost += record.supplyLost;
@@ -1643,7 +1678,7 @@ export class AIController {
   }
 
   /** Подход со случайной стороны: маршрут не повторяется от волны к волне. */
-  approachPoint(position, radius = AI.assaultApproachRadius) {
+  approachPoint(position, radius = this.approachRadius()) {
     const angle = Math.random() * TAU;
     const r = radius * (0.75 + Math.random() * 0.5);
     return {
@@ -1653,19 +1688,11 @@ export class AIController {
   }
 
   /**
-   * Подход с той стороны, где меньше известно турелей. Настоящего поиска
-   * пути тут нет: противник перебирает точки по кругу и выбирает ту, что дальше
-   * от секторов обстрела.
+   * Подход с той стороны, где меньше известно угроз: турелей и войск игрока.
+   * Настоящего поиска пути тут нет: противник перебирает точки по кругу и
+   * выбирает самую спокойную.
    */
-  safeApproachPoint(position, radius = AI.assaultApproachRadius) {
-    const turrets = this.game.buildings.filter((b) => (
-      b.alive
-      && b.faction === 'player'
-      && b.type === 'turret'
-      && this.game.isBuildingKnownTo('enemy', b)
-    ));
-    if (!turrets.length) return this.approachPoint(position, radius);
-
+  safeApproachPoint(position, radius = this.approachRadius()) {
     let best = null;
     let bestScore = Infinity;
     for (let i = 0; i < 12; i++) {
@@ -1675,18 +1702,170 @@ export class AIController {
         x: clamp(position.x + Math.cos(angle) * r, -MAP.clamp, MAP.clamp),
         z: clamp(position.z + Math.sin(angle) * r, -MAP.clamp, MAP.clamp),
       };
-      let score = Math.random() * 2;
-      for (const turret of turrets) {
-        const reach = (turret.defense?.range ?? turret.def.defense?.range ?? 17) + 6;
-        const d = dist(point.x, point.z, turret.position.x, turret.position.z);
-        if (d < reach) score += (reach - d) * 3;
-      }
+      const score = this.threatScore(point);
       if (score < bestScore) {
         bestScore = score;
         best = point;
       }
     }
     return best;
+  }
+
+  /**
+   * Насколько точка опасна: известные турели и разведанные войска игрока.
+   * Случайный шум не даёт волнам ходить одним и тем же маршрутом.
+   */
+  threatScore(point) {
+    let score = Math.random() * 2;
+    for (const b of this.game.buildings) {
+      if (!b.alive || b.faction !== 'player' || b.type !== 'turret' || !b.complete) continue;
+      if (!this.game.isBuildingKnownTo('enemy', b)) continue;
+      const reach = (b.defense?.range ?? b.def.defense?.range ?? 17) + 6;
+      const d = dist(point.x, point.z, b.position.x, b.position.z);
+      if (d < reach) score += (reach - d) * 3;
+    }
+    for (const u of this.game.units) {
+      if (!u.alive || u.faction !== 'player' || !u.canFight) continue;
+      if (!this.game.isEntityVisibleTo('enemy', u)) continue;
+      const d = dist(point.x, point.z, u.position.x, u.position.z);
+      if (d < AI.approachArmyRadius) score += (AI.approachArmyRadius - d) * 2;
+    }
+    return score;
+  }
+
+  /**
+   * Точка флангового обхода: доля пути база→цель, вынесенная вбок.
+   * Сторона выбирается по разведке — там, где меньше турелей и войск.
+   */
+  flankPoint(position, start) {
+    const dx = position.x - start.x;
+    const dz = position.z - start.z;
+    const len = Math.hypot(dx, dz) || 1;
+    const base = {
+      x: start.x + dx * AI.flankRouteAt,
+      z: start.z + dz * AI.flankRouteAt,
+    };
+    const perp = { x: -dz / len, z: dx / len };
+    const side = this.pickFlankSide(base, perp);
+    const offset = len * AI.flankRouteOffset;
+    return {
+      x: clamp(base.x + perp.x * side * offset, -MAP.clamp, MAP.clamp),
+      z: clamp(base.z + perp.z * side * offset, -MAP.clamp, MAP.clamp),
+    };
+  }
+
+  /** Сторона обхода с меньшей известной угрозой; при равенстве — случайная. */
+  pickFlankSide(point, perp) {
+    const score = (sign) => this.threatScore({
+      x: clamp(point.x + perp.x * sign * 18, -MAP.clamp, MAP.clamp),
+      z: clamp(point.z + perp.z * sign * 18, -MAP.clamp, MAP.clamp),
+    });
+    const right = score(1);
+    const left = score(-1);
+    if (Math.abs(right - left) < 2) return Math.random() < 0.5 ? 1 : -1;
+    return right <= left ? 1 : -1;
+  }
+
+  /** Оценка времени марша отряда к точке по скорости пехоты. */
+  waveTravel(units, point) {
+    const alive = units.filter((u) => u.alive);
+    if (!alive.length) return 0;
+    const cx = alive.reduce((sum, u) => sum + u.position.x, 0) / alive.length;
+    const cz = alive.reduce((sum, u) => sum + u.position.z, 0) / alive.length;
+    return dist(cx, cz, point.x, point.z) / AI.marchSpeed;
+  }
+
+  /** Центр разведанной армии игрока: рейд идёт туда, куда она не смотрит. */
+  knownArmyCenter() {
+    let x = 0;
+    let z = 0;
+    let n = 0;
+    for (const u of this.game.units) {
+      if (!u.alive || u.faction !== 'player' || !u.canFight) continue;
+      if (!this.game.isEntityVisibleTo('enemy', u)) continue;
+      x += u.position.x;
+      z += u.position.z;
+      n++;
+    }
+    if (n) return { x: x / n, z: z / n };
+    const hq = this.game.map.spawn.player.hq;
+    return { x: hq.x, z: hq.z };
+  }
+
+  /**
+   * Ведёт волну в поле: выводит отложенную половину охвата и в нужный момент
+   * поворачивает отряд с фланговой точки на саму цель.
+   */
+  updateWaveField() {
+    const record = this.activeWave;
+    if (!record) return;
+    const now = this.game.elapsed;
+
+    for (const pending of record.pending ?? []) {
+      if (pending.sent || now < pending.at) continue;
+      pending.sent = true;
+      for (const u of pending.units) {
+        if (!u.alive) continue;
+        u.issueAttackMove(
+          pending.x + (Math.random() - 0.5) * 4,
+          pending.z + (Math.random() - 0.5) * 4,
+        );
+      }
+      this.debugLog(`волна №${record.index}: вторая группа вышла на цель`);
+    }
+    record.pending = (record.pending ?? []).filter((p) => !p.sent);
+
+    const route = record.route;
+    if (!route || route.done) return;
+    // Отложенные половины охвата идут на свои цели: их маршрут не трогаем.
+    const waiting = new Set();
+    for (const pending of record.pending ?? []) {
+      for (const u of pending.units) waiting.add(u.id);
+    }
+    const alive = record.units
+      .map(({ unit }) => unit)
+      .filter((u) => u.alive && !waiting.has(u.id));
+    if (!alive.length) return;
+    const reached = alive.filter((u) => (
+      dist(u.position.x, u.position.z, route.point.x, route.point.z) <= AI.flankRouteRadius
+    )).length;
+    const arrived = reached >= Math.ceil(alive.length * AI.flankRouteArrive);
+    if (!arrived && now - route.since < route.timeout) return;
+    route.done = true;
+    for (const u of alive) {
+      if (u.def.healer || u.def.builder) {
+        u.issueEscort(
+          route.final.x + (Math.random() - 0.5) * 5,
+          route.final.z + (Math.random() - 0.5) * 5,
+        );
+      } else {
+        u.issueAttackMove(
+          route.final.x + (Math.random() - 0.5) * 4,
+          route.final.z + (Math.random() - 0.5) * 4,
+        );
+      }
+    }
+    this.debugLog(`волна №${record.index}: обход с фланга завершён, поворот на цель`);
+  }
+
+  /**
+   * Итог разведки боем: если оборона штаба оказалась слабой, следующая волна
+   * не ждёт обычного интервала и идёт с меньшим требованием к перевесу.
+   */
+  recordProbeIntel() {
+    const hq = this.game.entities.find(
+      (e) => e.alive && e.faction === 'player' && e.isBuilding && e.type === 'hq',
+    );
+    if (!hq) return;
+    const defense = this.defenseAt(hq.position);
+    const weak = defense < AI.probeWeakDefense;
+    this.probeIntel = { at: this.game.elapsed, defense, weak };
+    if (weak) {
+      this.waveTimer = Math.min(this.waveTimer, AI.probePunishDelay);
+      this.debugLog(
+        `разведка нашла слабую оборону (${Math.round(defense)}): атака ускоряется`,
+      );
+    }
   }
 
   /** Турели — частая причина провала: против них нужна тяжёлая техника. */
@@ -1704,7 +1883,11 @@ export class AIController {
     return null;
   }
 
-  /** Выбирает цель рейда: вышки и электростанции вкуснее казарм. */
+  /**
+   * Выбирает цель рейда. Вышки и электростанции по-прежнему вкуснее, но
+   * теперь рейд идёт туда, где слабее оборона и дальше разведанная армия
+   * игрока: бить в тыл выгоднее, чем в готовый кулак.
+   */
   pickRaidTarget(buildings) {
     const candidates = buildings.filter((b) => (
       b.alive
@@ -1716,9 +1899,21 @@ export class AIController {
       && this.game.isBuildingKnownTo('enemy', b)
     ));
     if (!candidates.length) return null;
-    const derricks = candidates.filter((b) => b.type === 'derrick');
-    const pool = derricks.length && Math.random() < 0.7 ? derricks : candidates;
-    return pool[Math.floor(Math.random() * pool.length)];
+    const army = this.knownArmyCenter();
+    let best = null;
+    let bestScore = -Infinity;
+    for (const b of candidates) {
+      const score = dist(b.position.x, b.position.z, army.x, army.z)
+        * AI.raidArmyDistanceWeight
+        + (b.type === 'derrick' ? AI.raidDerrickBonus : 0)
+        - this.defenseAt(b.position) * AI.raidDefenseWeight
+        + Math.random() * AI.raidRandomness;
+      if (score > bestScore) {
+        bestScore = score;
+        best = b;
+      }
+    }
+    return best;
   }
 
   /**
@@ -1878,14 +2073,24 @@ export class AIController {
     if (!raidTarget && tactic !== 'assault' && tactic !== 'probe') tactic = 'assault';
 
     const primaryTarget = tactic === 'raid' && raidTarget ? raidTarget : playerHQ;
-    const primary = tactic === 'raid' && raidTarget
+    // Кольцо подхода задаёт тихий сектор, но не является целью: отряд должен
+    // дойти до самой постройки, иначе остановится в поле вне радиуса атаки.
+    const targetPoint = {
+      x: primaryTarget.position.x,
+      z: primaryTarget.position.z,
+    };
+    const raidPoint = tactic === 'raid' && raidTarget
       ? this.pointNear(raidTarget.position, 5)
-      : this.rules.avoidTurrets
-        ? this.safeApproachPoint(playerHQ.position)
-        : this.approachPoint(playerHQ.position);
+      : null;
     const secondary = tactic === 'split' && raidTarget
       ? this.pointNear(raidTarget.position, 5)
       : null;
+    // Кольцо подхода задаёт тихий сектор для обхода: для рейда — сама цель,
+    // для штурма — сторона штаба без известных турелей и войск.
+    const approach = raidPoint ?? (this.rules.avoidTurrets
+      ? this.safeApproachPoint(playerHQ.position)
+      : this.approachPoint(playerHQ.position));
+    const primary = raidPoint ?? targetPoint;
 
     // Оборона цели известна по разведке. Если игрок застроился турелями и
     // баррикадами, РСЗО идёт в отряд первой и считается дороже: только она
@@ -1905,7 +2110,15 @@ export class AIController {
     // скромнее требуемое превосходство: иначе три турели у штаба способны
     // заморозить ИИ навсегда.
     const patience = Math.min(AI.maxPatienceDiscount, this.postponedRuns * AI.patienceStep);
-    const requiredAdvantage = this.rules.requiredAdvantage * (1 - patience);
+    let requiredAdvantage = this.rules.requiredAdvantage * (1 - patience);
+    // Разведка нашла слабую оборону — перевес можно не копить. Интеллект
+    // тратится на одну волну, а не живёт до конца партии.
+    const intel = this.probeIntel;
+    if (tactic !== 'probe' && intel
+      && this.game.elapsed - intel.at <= AI.probeIntelFresh && intel.weak) {
+      requiredAdvantage *= 1 - AI.probePunishDiscount;
+      this.probeIntel = null;
+    }
     const defense = this.defenseAt(primaryTarget.position);
     // Порог мощи: без него ИИ наступал, как только истекал таймер, даже если
     // разведка не нашла обороны и в бой шли два-три случайных бойца. Порог
@@ -1979,15 +2192,65 @@ export class AIController {
 
     // Бойцы ушли в волну: разведка их больше не ждёт.
     for (const u of squad) this.scoutTasks.delete(u.id);
+
+    // Охват пополам: одна половина бьёт по экономике, вторая — по штабу.
+    const mainSquad = [];
+    const secondSquad = [];
     squad.forEach((u, i) => {
-      const point = secondary && i % 2 === 0 ? secondary : primary;
+      if (secondary && i % 2 === 0) secondSquad.push(u);
+      else mainSquad.push(u);
+    });
+
+    // Фланговый маршрут: основная группа идёт не по прямой, а в обход.
+    // Разведка боем — исключение: ей нужен быстрый контакт.
+    const base = this.game.map.spawn.enemy.hq;
+    const route = tactic === 'probe' ? null : {
+      point: this.flankPoint(approach, base),
+      final: { x: primary.x, z: primary.z },
+      done: false,
+      timeout: 0,
+    };
+    const mainTravel = this.waveTravel(mainSquad, route ? route.point : primary);
+    if (route) route.timeout = mainTravel * 1.5 + AI.flankRouteGrace;
+
+    for (const u of mainSquad) {
+      const point = route ? route.point : primary;
       u.issueAttackMove(
         point.x + (Math.random() - 0.5) * 4,
         point.z + (Math.random() - 0.5) * 4,
       );
-    });
+    }
+
+    // Вторая половина охвата ждёт ровно столько, насколько её путь короче
+    // флангового: обе группы должны ударить одновременно, а не колонной.
+    const pending = [];
+    let splitDelay = 0;
+    if (secondSquad.length) {
+      const routeTravel = route
+        ? mainTravel + dist(route.point.x, route.point.z, primary.x, primary.z) / AI.marchSpeed
+        : 0;
+      splitDelay = clamp(
+        routeTravel - this.waveTravel(secondSquad, secondary),
+        0,
+        routeTravel * AI.splitDelayShare,
+      );
+      if (splitDelay > 0.5) {
+        pending.push({
+          units: secondSquad,
+          at: this.game.elapsed + splitDelay,
+        });
+      } else {
+        for (const u of secondSquad) {
+          u.issueAttackMove(
+            secondary.x + (Math.random() - 0.5) * 4,
+            secondary.z + (Math.random() - 0.5) * 4,
+          );
+        }
+      }
+    }
+
     const support = this.waveSupport(squad, tactic);
-    const escort = this.escortPoint(squad, primary);
+    const escort = this.escortPoint(squad, route ? route.point : primary);
     for (const u of support) {
       u.issueEscort(
         escort.x + (Math.random() - 0.5) * 5,
@@ -1999,6 +2262,9 @@ export class AIController {
       squad: squad.concat(support),
       point: primary,
       targetEntity: primaryTarget,
+      route,
+      pending,
+      travel: mainTravel + splitDelay,
     });
     this.postponedRuns = 0;
 
