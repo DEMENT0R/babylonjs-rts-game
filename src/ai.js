@@ -1734,19 +1734,21 @@ export class AIController {
   }
 
   /**
-   * Точка флангового обхода: доля пути база→цель, вынесенная вбок.
-   * Сторона выбирается по разведке — там, где меньше турелей и войск.
+   * Точка флангового обхода: доля пути база→цель, вынесенная вбок на сторону
+   * тихого сектора подхода. Если тихий сектор лежит на оси, сторону выбирает
+   * разведка по турелям и войскам рядом с точкой.
    */
-  flankPoint(position, start) {
-    const dx = position.x - start.x;
-    const dz = position.z - start.z;
+  flankPoint(target, quiet, start) {
+    const dx = target.x - start.x;
+    const dz = target.z - start.z;
     const len = Math.hypot(dx, dz) || 1;
     const base = {
       x: start.x + dx * AI.flankRouteAt,
       z: start.z + dz * AI.flankRouteAt,
     };
     const perp = { x: -dz / len, z: dx / len };
-    const side = this.pickFlankSide(base, perp);
+    const bias = (quiet.x - start.x) * perp.x + (quiet.z - start.z) * perp.z;
+    const side = Math.abs(bias) > 1 ? Math.sign(bias) : this.pickFlankSide(base, perp);
     const offset = len * AI.flankRouteOffset;
     return {
       x: clamp(base.x + perp.x * side * offset, -MAP.clamp, MAP.clamp),
@@ -2205,7 +2207,7 @@ export class AIController {
     // Разведка боем — исключение: ей нужен быстрый контакт.
     const base = this.game.map.spawn.enemy.hq;
     const route = tactic === 'probe' ? null : {
-      point: this.flankPoint(approach, base),
+      point: this.flankPoint(primary, approach, base),
       final: { x: primary.x, z: primary.z },
       done: false,
       timeout: 0,
