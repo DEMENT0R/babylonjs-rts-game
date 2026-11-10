@@ -1161,7 +1161,10 @@ export class AIController {
 
     let def = UNITS[type];
     // Если под выбранную машину не хватает лимита, противник добирает пехоту.
+    // Исключение — первая РСЗО: под неё лимит копится, иначе дешёвые юниты
+    // занимают все места и артиллерия не появляется никогда.
     if (used + (def.supply ?? 1) > cap) {
+      if (type === 'artillery') return;
       const fallback = ['marine', 'medic', 'scout', 'tank'].find((key) => (
         this.canTrain(key) && used + (UNITS[key].supply ?? 1) <= cap
       ));
