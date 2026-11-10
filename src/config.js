@@ -504,6 +504,20 @@ export const UPGRADES = {
     target: null,
     effects: { armyCap: 5 },
   },
+  energy: {
+    key: 'energy',
+    line: 'energy',
+    tier: 1,
+    name: 'Плотная компоновка',
+    role: 'ЭНЕРГЕТИКА',
+    icon: 'power',
+    desc: 'Повышает отдачу всех электростанций на 50%. Позволяет питать базу меньшим числом станций и экономит место.',
+    cost: 380,
+    time: 90,
+    scope: 'building',
+    target: 'power',
+    effects: { powerProduce: 1.5 },
+  },
 };
 
 // Линии исследований в порядке кнопок. Поле building говорит, в каком здании
@@ -523,6 +537,7 @@ export const UPGRADE_LINES = [
   { key: 'maintenance', category: 'base', building: 'rear' },
   { key: 'logistics', category: 'base', building: 'rear' },
   { key: 'reserve', category: 'base', building: 'rear' },
+  { key: 'energy', category: 'base', building: 'rear' },
 ];
 
 // Линия → тип здания, где её исследуют. Одна точка правды для UI и ИИ.
@@ -545,6 +560,7 @@ export const UPGRADE_LINE_KEYS = {
   maintenance: ['maintenance'],
   logistics: ['logistics'],
   reserve: ['reserve'],
+  energy: ['energy'],
 };
 
 export const UNITS = {

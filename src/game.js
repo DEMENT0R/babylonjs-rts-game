@@ -522,7 +522,7 @@ export class Game {
 
   /** Множители характеристик здания с учётом изученных улучшений. */
   buildingModifiers(faction, type) {
-    const mods = { hp: 1, armor: 0, damage: 1, range: 1, cooldown: 1 };
+    const mods = { hp: 1, armor: 0, damage: 1, range: 1, cooldown: 1, powerProduce: 1 };
     for (const key of this.upgrades[faction] ?? []) {
       const def = UPGRADES[key];
       if (!def || def.scope !== 'building') continue;
@@ -533,6 +533,7 @@ export class Game {
       if (effects.damage) mods.damage *= effects.damage;
       if (effects.range) mods.range *= effects.range;
       if (effects.cooldown) mods.cooldown *= effects.cooldown;
+      if (effects.powerProduce) mods.powerProduce *= effects.powerProduce;
     }
     return mods;
   }
@@ -543,7 +544,8 @@ export class Game {
       if (!b.alive || !b.complete) continue;
       const p = result[b.faction];
       if (!p) continue;
-      p.produced += b.def.powerProduce || 0;
+      const mods = this.buildingModifiers(b.faction, b.type);
+      p.produced += (b.def.powerProduce || 0) * mods.powerProduce;
       p.used += b.def.powerUse || 0;
     }
     for (const f of ['player', 'enemy']) {
@@ -1563,6 +1565,9 @@ export class Game {
           if (def.target !== 'building' && b.type !== def.target) continue;
           b.applyUpgrades?.(true);
         }
+        // Энергоотдача считается на лету, но пересчитываем сразу, чтобы
+        // полоса сети в HUD не ждала следующего тика.
+        this.recomputePower();
       } else if (def.scope === 'global') {
         // Лимит армии кэшируется в публичном поле — обновляем его сразу,
         // не дожидаясь следующего пересчёта энергосети.

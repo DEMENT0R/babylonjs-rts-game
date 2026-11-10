@@ -1011,6 +1011,10 @@ export class AIController {
       if (key === 'rockets') {
         score += this.siegeArtilleryNeeded() > 0 ? 14 : (game.elapsed > 140 ? 4 : 0);
       }
+      if (key === 'energy') {
+        const power = game.power.enemy;
+        score += power.used > power.produced ? 8 : 2;
+      }
       if (score > bestScore) {
         bestScore = score;
         best = key;

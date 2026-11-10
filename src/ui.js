@@ -1733,6 +1733,7 @@ export class UI {
       trainTime: 'НАЁМ',
       buildTime: 'СТРОЙКА',
       armyCap: 'ЛИМИТ',
+      powerProduce: 'ЭНЕРГООТДАЧА',
     };
     const flat = new Set(['armor', 'pierce', 'visionAdd', 'salvoAdd', 'armyCap']);
     const lower = new Set(['cooldown', 'trainTime', 'buildTime', 'repairCost']);
@@ -1835,7 +1836,9 @@ export class UI {
         range: Math.round(def.defense.range * mods.range),
       }
       : null;
-    const power = def.powerProduce ? `+${def.powerProduce}` : def.powerUse ? `−${def.powerUse}` : '';
+    const power = def.powerProduce
+      ? `+${Math.round(def.powerProduce * mods.powerProduce)}`
+      : def.powerUse ? `−${def.powerUse}` : '';
     const requires = (def.requires ?? [])
       .map((req) => BUILDINGS[req]?.name ?? req)
       .join(', ');
@@ -2084,8 +2087,11 @@ export class UI {
     this.el.selTitle.textContent = def.name + (buildings.length > 1 ? ` ×${buildings.length}` : '');
     this.el.selTag.textContent = b.faction === 'player' ? 'ЗДАНИЕ' : 'ПРОТИВНИК';
 
-    const powerChip = def.powerProduce
-      ? `<span class="chip chip--power">${icon('bolt')} +${def.powerProduce}</span>`
+    const powerOut = def.powerProduce
+      ? Math.round(def.powerProduce * this.game.buildingModifiers(b.faction, b.type).powerProduce)
+      : 0;
+    const powerChip = powerOut
+      ? `<span class="chip chip--power">${icon('bolt')} +${powerOut}</span>`
       : def.powerUse
         ? `<span class="chip chip--power-use">${icon('bolt')} −${def.powerUse}</span>`
         : '';
