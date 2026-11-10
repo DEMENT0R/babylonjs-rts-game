@@ -40,6 +40,9 @@ export class AIController {
     // погиб, и по ним же разведка не переназначается каждый цикл.
     this.scoutTasks = new Map();
     this.scoutCheckTimer = 1;
+    // Опытные бойцы проверяются реже общего цикла: отход — не мгновенная
+    // реакция на каждое попадание, а решение раз в секунду.
+    this.veteranTimer = 1;
     // Сколько секунд подряд казармы простаивают из-за нехватки кредитов.
     // Пока это значение велико, противник обороняется, а не нападает.
     this.starvedTime = 0;
@@ -228,6 +231,7 @@ export class AIController {
         !u.aiGarrison
         && !u.aiPicket
         && !(active && active.has(u.id))
+        && (u.aiShelterUntil ?? 0) <= this.game.elapsed
         && (!u.order || u.order.type === 'move' || u.order.type === 'hold')
         && dist(u.position.x, u.position.z, hq.position.x, hq.position.z) <= AI.garrisonRadius
       ))
@@ -319,6 +323,7 @@ export class AIController {
           && !u.aiGarrison
           && !u.aiPicket
           && !(active && active.has(u.id))
+          && (u.aiShelterUntil ?? 0) <= this.game.elapsed
           && (!u.order || u.order.type === 'move' || u.order.type === 'hold')
         ))
         .sort((a, b) => (
@@ -414,6 +419,12 @@ export class AIController {
     if (this.scoutCheckTimer <= 0) {
       this.scoutCheckTimer = 1;
       this.updateScouts();
+    }
+
+    this.veteranTimer -= dt;
+    if (this.veteranTimer <= 0) {
+      this.veteranTimer = 1;
+      this.updateVeteranSafety();
     }
 
     this.intelTimer -= dt;
@@ -788,6 +799,8 @@ export class AIController {
       && !this.scoutTasks.has(u.id)
       // Вернувшийся из-под огня боец отдыхает у базы, а не идёт обратно.
       && (u.aiScoutRest ?? 0) <= game.elapsed
+      // Отведённый в укрытие ветеран сначала доходит до турели/базы.
+      && (u.aiShelterUntil ?? 0) <= game.elapsed
       // Боец в активной волне занят атакой: разведка его не снимает,
       // иначе удар слабеет прямо на полпути к цели.
       && !this.activeWave?.ids.has(u.id)
@@ -1271,6 +1284,7 @@ export class AIController {
       if (!u.alive || u.faction !== 'enemy' || u.def.builder || u.def.healer) continue;
       if (u.aiPicket) continue;
       if (active && active.has(u.id)) continue;
+      if ((u.aiShelterUntil ?? 0) > this.game.elapsed) continue;
       if (u.order?.type === 'hold' || u.order?.type === 'escort') continue;
       // Уже дерётся с конкретной целью — не сбиваем приказ каждые 1.5 с.
       if (u.order?.type === 'attack' && u.order.target?.alive) continue;
@@ -1318,7 +1332,8 @@ export class AIController {
 
     const defenders = game.units.filter(
       (u) => u.alive && u.faction === 'enemy' && !u.def.builder && !u.def.healer
-        && !u.aiGarrison,
+        && !u.aiGarrison
+        && (u.aiShelterUntil ?? 0) <= game.elapsed,
     );
     if (!defenders.length) return;
 
@@ -1373,6 +1388,7 @@ export class AIController {
           && !u.def.builder
           && !u.def.healer
           && !(active && active.has(u.id))
+          && (u.aiShelterUntil ?? 0) <= game.elapsed
           // Караул отвечает только за свою вышку, а не бегает по всей карте.
           && (!u.aiPicket
             || dist(u.position.x, u.position.z, b.position.x, b.position.z)
@@ -1569,12 +1585,12 @@ export class AIController {
    * двигаются, их помнят), войска — только по текущему обзору. В тумане
    * гарнизон для противника не существует, и придумывать его он не должен.
    */
-  defenseAt(point) {
+  defenseAt(point, radius = AI.defenseRadius) {
     let value = 0;
     for (const b of this.game.buildings) {
       if (!b.alive || b.faction !== 'player') continue;
       if (!this.game.isBuildingKnownTo('enemy', b)) continue;
-      if (dist(point.x, point.z, b.position.x, b.position.z) > AI.defenseRadius + b.radius) continue;
+      if (dist(point.x, point.z, b.position.x, b.position.z) > radius + b.radius) continue;
       if (b.type === 'wall') {
         if (b.complete) value += AI.wallDefenseValue;
         continue;
@@ -1584,10 +1600,127 @@ export class AIController {
     for (const u of this.game.units) {
       if (!u.alive || u.faction !== 'player') continue;
       if (!this.game.isEntityVisibleTo('enemy', u)) continue;
-      if (dist(point.x, point.z, u.position.x, u.position.z) > AI.defenseRadius) continue;
+      if (dist(point.x, point.z, u.position.x, u.position.z) > radius) continue;
       value += this.combatValue(u);
     }
     return value;
+  }
+
+  /** Центр живых бойцов отряда: точка оценки угрозы и выбора укрытия. */
+  squadCenter(units) {
+    const alive = units.filter((u) => u && u.alive);
+    if (!alive.length) return null;
+    let x = 0;
+    let z = 0;
+    for (const u of alive) {
+      x += u.position.x;
+      z += u.position.z;
+    }
+    return { x: x / alive.length, z: z / alive.length };
+  }
+
+  /**
+   * Во сколько раз видимая мощь игрока вокруг отряда превышает его
+   * собственную. defenseAt считает только разведанные войска и известные
+   * постройки, поэтому в тумане отряд не убегает от несуществующего врага.
+   */
+  waveThreatRatio(units) {
+    const center = this.squadCenter(units);
+    if (!center) return 0;
+    const own = this.squadPower(units.filter((u) => u.alive));
+    if (own <= 0) return 0;
+    return this.defenseAt(center, AI.cautionRadius) / own;
+  }
+
+  /** Ближайшая готовая своя турель: к ней отряд и отходит. */
+  nearestTurret(point) {
+    let best = null;
+    let bestD = Infinity;
+    for (const b of this.game.buildings) {
+      if (!b.alive || b.faction !== 'enemy' || b.type !== 'turret' || !b.complete) continue;
+      const d = dist(point.x, point.z, b.position.x, b.position.z);
+      if (d < bestD) {
+        bestD = d;
+        best = b;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Точка укрытия: за ближайшей турелью со стороны своей базы, чтобы отряд
+   * встал под её огнём. Без турелей — гарнизонная точка у штаба.
+   */
+  shelterPoint(point) {
+    const turret = point ? this.nearestTurret(point) : null;
+    const hq = this.enemyHq();
+    if (turret && hq) {
+      const dx = hq.position.x - turret.position.x;
+      const dz = hq.position.z - turret.position.z;
+      const len = Math.hypot(dx, dz) || 1;
+      return {
+        x: clamp(
+          turret.position.x + (dx / len) * AI.shelterTurretOffset,
+          -MAP.clamp,
+          MAP.clamp,
+        ),
+        z: clamp(
+          turret.position.z + (dz / len) * AI.shelterTurretOffset,
+          -MAP.clamp,
+          MAP.clamp,
+        ),
+      };
+    }
+    const anchor = this.defenseAnchor();
+    return { x: anchor.x, z: anchor.z };
+  }
+
+  /** Кого ИИ бережёт: ветераны пехоты и опытная техника. */
+  isVeteranUnit(unit) {
+    const rank = unit.rank ?? 0;
+    if (unit.type === 'tank' || unit.type === 'artillery') {
+      return rank >= AI.veteranVehicleRank;
+    }
+    return rank >= AI.veteranRank;
+  }
+
+  /**
+   * Индивидуальный отход опытных бойцов и техники. Волна может продолжать
+   * бой, но раненый ветеран уходит к турели или базе: опыт не восстановить.
+   */
+  updateVeteranSafety() {
+    if (!this.rules.retreat) return;
+    const now = this.game.elapsed;
+    if (!this.enemyHq()) return;
+    for (const u of this.game.units) {
+      if (!u.alive || u.faction !== 'enemy' || u.def.builder || u.def.healer) continue;
+      if (u.aiGarrison) continue;
+      if ((u.aiShelterUntil ?? 0) > now) continue;
+      if (!this.isVeteranUnit(u)) continue;
+      const vehicle = u.type === 'tank' || u.type === 'artillery';
+      const hpShare = u.hp / u.maxHp;
+      const threshold = vehicle ? AI.veteranVehicleRetreatHp : AI.veteranRetreatHp;
+      if (hpShare > threshold) continue;
+      // Отходим только при реальной угрозе: раненый ветеран в тылу лечится
+      // медиком, а не мечется к турели без причины.
+      const threatened = this.game.units.some((e) => (
+        e.alive && e.faction === 'player'
+        && this.game.isEntityVisibleTo('enemy', e)
+        && dist(u.position.x, u.position.z, e.position.x, e.position.z)
+          <= AI.veteranThreatRadius
+      ));
+      if (!threatened) continue;
+      const shelter = this.shelterPoint(u.position);
+      u.issueMove(
+        clamp(shelter.x + (Math.random() - 0.5) * 5, -MAP.clamp, MAP.clamp),
+        clamp(shelter.z + (Math.random() - 0.5) * 5, -MAP.clamp, MAP.clamp),
+      );
+      u.retaliateTimer = 0;
+      u.aiShelterUntil = now + AI.veteranShelterTime;
+      this.debugLog(
+        `ветеран ${u.def.name} (ранг ${u.rank}) отходит к укрытию при ${Math.round(hpShare * 100)}% HP`,
+      );
+    }
   }
 
   /** Сколько бойцов нужно, чтобы набрать требуемую мощь. */
@@ -1660,6 +1793,17 @@ export class AIController {
     }
     const age = this.game.elapsed - record.sentAt;
     const aliveSupply = alive.reduce((sum, { supply }) => sum + supply, 0);
+    // Вокруг отряда видно превосходящую армию игрока — уходим к турели или
+    // базе, не дожидаясь, пока отряд перебьют по одному. defenseAt считает
+    // только разведанные войска, поэтому это не реакция на туман.
+    const now = this.game.elapsed;
+    if (this.rules.retreat && age > AI.cautionGrace && now >= (record.cautionAt ?? 0)) {
+      record.cautionAt = now + AI.cautionInterval;
+      if (this.waveThreatRatio(alive.map(({ unit }) => unit)) >= AI.cautionRatio) {
+        this.retreatWave(record, 'outgunned');
+        return;
+      }
+    }
     // Половина отряда полегла, а урон так и не нанесён — бой проигран,
     // и остатки уходят к сбору, а не гибнут по одному.
     if (
@@ -1691,13 +1835,34 @@ export class AIController {
     }
   }
 
-  /** Отводит остатки волны к точке сбора: они догонят следующий отряд. */
-  retreatWave(record) {
-    this.recallWave(record);
+  /**
+   * Отводит остатки волны к укрытию: под ближайшую турель или к базе.
+   * Причина влияет только на сообщение игроку и отладку.
+   */
+  retreatWave(record, reason = 'weak') {
+    const now = this.game.elapsed;
+    const center = this.squadCenter(record.units.map(({ unit }) => unit));
+    const shelter = this.shelterPoint(center);
+    // Отложенная половина охвата и фланговый маршрут отменяются: иначе они
+    // развернут отступающих обратно в бой.
+    record.pending = [];
+    record.route = null;
+    record.retreatReason = reason;
+    for (const { unit } of record.units) {
+      if (!unit.alive) continue;
+      unit.issueMove(
+        clamp(shelter.x + (Math.random() - 0.5) * 6, -MAP.clamp, MAP.clamp),
+        clamp(shelter.z + (Math.random() - 0.5) * 6, -MAP.clamp, MAP.clamp),
+      );
+      unit.retaliateTimer = 0;
+      unit.aiShelterUntil = now + AI.shelterRest;
+    }
     this.stats.retreats++;
     this.finishWave(record, 'retreated');
     this.game.notify(
-      'Отряд противника отступает: пробить оборону не удалось.',
+      reason === 'outgunned'
+        ? 'Отряд противника отходит: встретил превосходящие силы.'
+        : 'Отряд противника отступает: пробить оборону не удалось.',
       'success',
       'ai-retreat',
       90,
@@ -2047,7 +2212,7 @@ export class AIController {
       if (pending.sent || now < pending.at) continue;
       pending.sent = true;
       for (const u of pending.units) {
-        if (!u.alive) continue;
+        if (!u.alive || (u.aiShelterUntil ?? 0) > now) continue;
         u.issueAttackMove(
           pending.x + (Math.random() - 0.5) * 4,
           pending.z + (Math.random() - 0.5) * 4,
@@ -2066,7 +2231,7 @@ export class AIController {
     }
     const alive = record.units
       .map(({ unit }) => unit)
-      .filter((u) => u.alive && !waiting.has(u.id));
+      .filter((u) => u.alive && !waiting.has(u.id) && (u.aiShelterUntil ?? 0) <= now);
     if (!alive.length) return;
     const reached = alive.filter((u) => (
       dist(u.position.x, u.position.z, route.point.x, route.point.z) <= AI.flankRouteRadius
@@ -2229,6 +2394,7 @@ export class AIController {
     return this.game.units
       .filter((u) => {
         if (!u.alive || u.faction !== 'enemy' || !isKind(u)) return false;
+        if ((u.aiShelterUntil ?? 0) > this.game.elapsed) return false;
         if (u.assistBuilding && u.assistBuilding.alive && !u.assistBuilding.complete) return false;
         return !u.order
           || u.order.type === 'move'
@@ -2248,7 +2414,8 @@ export class AIController {
     // гарнизон в волны не входит.
     const fighters = this.game.units.filter(
       (u) => u.alive && u.faction === 'enemy' && !u.def.builder && !u.def.healer
-        && !u.aiGarrison && !u.aiPicket,
+        && !u.aiGarrison && !u.aiPicket
+        && (u.aiShelterUntil ?? 0) <= this.game.elapsed,
     );
     if (fighters.length < 2) {
       this.waveTimer = 8 + Math.random() * 8;
@@ -2337,6 +2504,15 @@ export class AIController {
     }
     if (!raidTarget && tactic !== 'assault' && tactic !== 'probe') tactic = 'assault';
 
+    // Пробы и рейды — расходные операции. Опытных бойцов и технику туда не
+    // берём, если набирается хотя бы пара новобранцев: ветеран нужен для
+    // основного удара или обороны базы, а его опыт не восстановить.
+    let available = fighters;
+    if (this.rules.retreat && (tactic === 'probe' || tactic === 'raid')) {
+      const rookies = fighters.filter((u) => !this.isVeteranUnit(u));
+      if (rookies.length >= 2) available = rookies;
+    }
+
     const primaryTarget = tactic === 'raid' && raidTarget ? raidTarget : playerHQ;
     // Кольцо подхода задаёт тихий сектор, но не является целью: отряд должен
     // дойти до самой постройки, иначе остановится в поле вне радиуса атаки.
@@ -2395,8 +2571,8 @@ export class AIController {
       tactic === 'probe' ? 0 : defense * requiredAdvantage,
       basePower,
     );
-    const needed = this.neededSquad(fighters, requiredPower, siegeBonus);
-    if (needed > fighters.length) {
+    const needed = this.neededSquad(available, requiredPower, siegeBonus);
+    if (needed > available.length) {
       this.waveTimer = AI.regroupDelay * (0.8 + Math.random() * 0.6);
       this.postponedRuns++;
       if (this.postponedRuns >= 2) {
@@ -2409,9 +2585,9 @@ export class AIController {
         );
       }
       this.debugLog(
-        `волна отложена: мощь ${Math.round(this.squadPower(fighters))}`
+        `волна отложена: мощь ${Math.round(this.squadPower(available))}`
         + `/${Math.round(requiredPower)}, оборона ${Math.round(defense)}, `
-        + `бойцов ${fighters.length}`,
+        + `бойцов ${available.length}`,
       );
       return;
     }
@@ -2425,8 +2601,8 @@ export class AIController {
       : AI.minWaveSquad + recentWipes * AI.wipeSquadBonus;
 
     let squadSize = Math.max(wanted, minSquad, needed);
-    squadSize = Math.max(1, Math.min(fighters.length, squadSize));
-    const pool = shuffle(fighters.slice(), Math.random);
+    squadSize = Math.max(1, Math.min(available.length, squadSize));
+    const pool = shuffle(available.slice(), Math.random);
     // Осадное звено идёт в отряд первым: иначе случайный набор снова оставит
     // РСЗО на базе, а пехоту — под турелями.
     if (siege) {
@@ -2444,7 +2620,7 @@ export class AIController {
     // база пуста, и один ответный рейд заканчивает партию. Если убрать
     // бойца нельзя без потери мощи, волна идёт как есть: резерв не должен
     // останавливать наступление навсегда.
-    const fighterSupply = fighters.reduce((sum, u) => sum + (u.def.supply ?? 1), 0);
+    const fighterSupply = available.reduce((sum, u) => sum + (u.def.supply ?? 1), 0);
     let homeSupply = fighterSupply
       - squad.reduce((sum, u) => sum + (u.def.supply ?? 1), 0);
     while (homeSupply < AI.waveHomeReserve && squad.length > 1) {
