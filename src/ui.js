@@ -1755,8 +1755,12 @@ export class UI {
     const effects = Object.entries(def.effects ?? {}).map(([stat, value]) => {
       let text;
       if (flat.has(stat)) text = `+${value}`;
-      else if (lower.has(stat)) text = `−${Math.round((1 - value) * 100)}%`;
-      else text = `+${Math.round((value - 1) * 100)}%`;
+      else if (lower.has(stat)) {
+        // Множитель меньше единицы ускоряет процесс, больше — замедляет.
+        text = value <= 1
+          ? `−${Math.round((1 - value) * 100)}%`
+          : `+${Math.round((value - 1) * 100)}%`;
+      } else text = `+${Math.round((value - 1) * 100)}%`;
       return `<span><i>${labels[stat] ?? stat.toUpperCase()}</i>${text}</span>`;
     }).join('');
     const levels = UPGRADE_LINE_KEYS[def.line]?.length ?? 1;
