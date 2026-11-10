@@ -1556,6 +1556,10 @@ export class Building extends Entity {
 
   enqueue(type) {
     const def = UNITS[type];
+    if (!def) return false;
+    // Исследование-замок проверяется и здесь: так заказ нельзя обойти ни
+    // через панель, ни через ИИ.
+    if (def.requires && !this.game.upgrades[this.faction]?.has(def.requires)) return false;
     const time = def.buildTime * (this.game.trainTimeMultiplier?.(this.faction) ?? 1);
     this.queue.push({ type, remaining: time, total: time });
     this.forceBar = true;

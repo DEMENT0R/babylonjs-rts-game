@@ -506,6 +506,9 @@ export class AIController {
     const walls = game.buildings.filter(
       (b) => b.alive && b.faction === 'enemy' && b.type === 'wall',
     ).length;
+    const powerPlants = game.buildings.filter(
+      (b) => b.alive && b.faction === 'enemy' && b.type === 'power' && b.complete,
+    ).length;
     const buildings = game.buildings.filter((b) => b.alive && b.faction === 'enemy').length;
     const power = game.power.enemy;
     // Стройка ещё не даёт энергии, но уже начнёт её потреблять: учитываем
@@ -534,42 +537,52 @@ export class AIController {
     const needDepot = plannedCap < capTarget || armyCap - armyUsed < 6;
 
     let type = null;
-    if (barracks === 0) type = 'barracks';
+    // Каждая строка проверяет требования цепочки: недоступную постройку
+    // ИИ не выбирает и не копит на неё кредиты.
+    if (powerPlants === 0) type = 'power';
+    else if (barracks === 0 && this.canBuild('barracks')) type = 'barracks';
     // Энергию держим с запасом, а не по факту дефицита: при перерасходе
     // производство падает втрое, и армия встаёт вместе с базой.
-    else if (powerMargin < AI.powerReserve) type = 'power';
+    else if (powerMargin < AI.powerReserve && this.canBuild('power')) type = 'power';
     // Разведанное месторождение — приоритет: вышка дешёвая и сразу платит.
-    else if (freePatch && this.credits > BUILDINGS.derrick.cost + 60) type = 'derrick';
-    else if (factory === 0 && this.credits > BUILDINGS.factory.cost + 40) {
+    else if (freePatch && this.credits > BUILDINGS.derrick.cost + 60
+      && this.canBuild('derrick')) type = 'derrick';
+    else if (factory === 0 && this.canBuild('factory')
+      && this.credits > BUILDINGS.factory.cost + 40) {
       // Техника требует отдельного завода: без него армия остаётся пехотной.
       type = 'factory';
     } else if (needDepot && plannedCap + depotStep <= this.rules.armyCap
-      && depots + depotSites < this.rules.depotCap && this.credits > BUILDINGS.depot.cost + 30) {
+      && depots + depotSites < this.rules.depotCap && this.canBuild('depot')
+      && this.credits > BUILDINGS.depot.cost + 30) {
       type = 'depot';
-    } else if (turrets === 0 && game.elapsed > 130) {
+    } else if (turrets === 0 && game.elapsed > 130 && this.canBuild('turret')) {
       // Первую турель противник копит целенаправленно: армия на время замирает.
       type = 'turret';
     } else if (game.elapsed > 110 && turrets < (game.elapsed > 220 ? AI.turretCap : 2)
-      && this.credits > BUILDINGS.turret.cost + 80) {
+      && this.canBuild('turret') && this.credits > BUILDINGS.turret.cost + 80) {
       type = 'turret';
-    } else if (lab === 0 && game.elapsed > 140 && this.credits > BUILDINGS.lab.cost + 40) {
+    } else if (lab === 0 && game.elapsed > 140 && this.canBuild('lab')
+      && this.credits > BUILDINGS.lab.cost + 40) {
       type = 'lab';
     } else if (engineering === 0 && lab > 0 && game.elapsed > 180
-      && this.credits > BUILDINGS.engineering.cost + 40) {
+      && this.canBuild('engineering') && this.credits > BUILDINGS.engineering.cost + 40) {
       type = 'engineering';
     } else if (rear === 0 && lab > 0 && engineering > 0 && game.elapsed > 240
-      && this.credits > BUILDINGS.rear.cost + 60) {
+      && this.canBuild('rear') && this.credits > BUILDINGS.rear.cost + 60) {
       type = 'rear';
-    } else if (barracks < 2 && game.elapsed > 135) type = 'barracks';
+    } else if (barracks < 2 && game.elapsed > 135 && this.canBuild('barracks')) {
+      type = 'barracks';
+    }
     // Баррикады дешёвые и быстрые: линия перед турелями появляется после
     // первых двух турелей и второй казармы, чтобы не тормозить армию.
     else if (game.elapsed > 170 && turrets >= 2 && walls < AI.wallCap
-      && this.credits > BUILDINGS.wall.cost + 20) {
+      && this.canBuild('wall') && this.credits > BUILDINGS.wall.cost + 20) {
       type = 'wall';
     }
     else if (game.elapsed > 240 && buildings < 20 && this.credits > 520) {
       const roll = Math.random();
       type = roll < 0.35 ? 'power' : roll < 0.55 ? 'barracks' : roll < 0.7 ? 'factory' : roll < 0.85 ? 'depot' : 'turret';
+      if (type && !this.canBuild(type)) type = null;
     }
 
     // Смена цели начинает отсчёт ожидания заново: иначе пауза в найме
@@ -588,7 +601,7 @@ export class AIController {
   }
 
   buildStructure(type) {
-    if (!type || this.credits < BUILDINGS[type].cost) return false;
+    if (!type || !this.canBuild(type) || this.credits < BUILDINGS[type].cost) return false;
     let spot = null;
     if (type === 'derrick') spot = this.findFreePatch();
     else if (type === 'turret') spot = this.findTurretSpot();
@@ -993,6 +1006,11 @@ export class AIController {
       else if (key === 'reserve') score += (capUsed / Math.max(1, cap)) * 6;
       else if (key === 'logistics') score += 2.5;
       else if (key === 'maintenance') score += 1.5;
+      // Ракетная платформа нужна, как только у игрока появляются укрепления:
+      // без неё ИИ не может заказать РСЗО и теряет осадный ответ.
+      if (key === 'rockets') {
+        score += this.siegeArtilleryNeeded() > 0 ? 14 : (game.elapsed > 140 ? 4 : 0);
+      }
       if (score > bestScore) {
         bestScore = score;
         best = key;
@@ -1052,6 +1070,11 @@ export class AIController {
       && this.game.isEntityVisibleTo('enemy', e)
       && dist(e.position.x, e.position.z, hq.position.x, hq.position.z) < AI.defendRadius
     ));
+  }
+
+  /** Выполнены ли требования для постройки этого типа. */
+  canBuild(type) {
+    return this.game.missingBuildingRequirements('enemy', type).length === 0;
   }
 
   /** Производственные здания противника с пустой очередью. */

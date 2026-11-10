@@ -1590,7 +1590,9 @@ export class UI {
     const game = this.game;
     const def = BUILDINGS[type];
     const freePatch = type === 'derrick' && !game.world.oilPatches.some((p) => !p.derrick || !p.derrick.alive);
-    const disabled = game.credits < def.cost || freePatch;
+    const missing = game.missingBuildingRequirements('player', type);
+    const disabled = game.credits < def.cost || freePatch || missing.length > 0;
+    const missingNames = missing.map((req) => BUILDINGS[req]?.name ?? req).join(', ');
     return {
       id: `build:${type}`,
       label: def.name,
@@ -1601,7 +1603,11 @@ export class UI {
       desc: def.desc,
       kind: 'build',
       disabled,
-      reason: freePatch ? 'Нет свободных нефтяных месторождений.' : `Недостаточно кредитов. Нужно ${def.cost}.`,
+      reason: missing.length
+        ? `Требуется: ${missingNames}.`
+        : freePatch
+          ? 'Нет свободных нефтяных месторождений.'
+          : `Недостаточно кредитов. Нужно ${def.cost}.`,
       action: () => game.startPlacement(type),
       tip: this.buildTip(def),
     };
@@ -1617,10 +1623,13 @@ export class UI {
     const capReached = game.getArmyUsed('player') + game.getQueuedSupply('player') + supply
       > game.getArmyCap('player');
     const ready = list.filter((b) => b.complete);
-    const disabled = ready.length === 0 || capReached || game.credits < def.cost;
-    const reason = list.length === 0 || ready.length === 0 ? MESSAGES.notReady
-      : capReached ? MESSAGES.capReached
-        : `Недостаточно кредитов. Нужно ${def.cost}.`;
+    const locked = def.requires && !game.upgrades.player.has(def.requires);
+    const disabled = locked || ready.length === 0 || capReached || game.credits < def.cost;
+    const reason = locked
+      ? `Требуется исследование «${UPGRADES[def.requires]?.name ?? def.requires}».`
+      : list.length === 0 || ready.length === 0 ? MESSAGES.notReady
+        : capReached ? MESSAGES.capReached
+          : `Недостаточно кредитов. Нужно ${def.cost}.`;
     return {
       id: `train:${type}`,
       label: def.name,
@@ -1727,6 +1736,9 @@ export class UI {
     };
     const flat = new Set(['armor', 'pierce', 'visionAdd', 'salvoAdd', 'armyCap']);
     const lower = new Set(['cooldown', 'trainTime', 'buildTime', 'repairCost']);
+    const unlocks = (def.unlocks ?? [])
+      .map((type) => UNITS[type]?.name ?? type)
+      .join(', ');
     const effects = Object.entries(def.effects ?? {}).map(([stat, value]) => {
       let text;
       if (flat.has(stat)) text = `+${value}`;
@@ -1743,7 +1755,7 @@ export class UI {
     return `
       <div class="tip-head"><span class="tip-role">ИССЛЕДОВАНИЕ</span><b>${def.name}</b></div>
       <p>${def.desc}</p>
-      <div class="tip-stats">${effects}</div>
+      <div class="tip-stats">${effects}${unlocks ? `<span><i>ОТКРЫВАЕТ</i>${unlocks}</span>` : ''}</div>
       <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.time} с · ${state}</span></div>
     `;
   }
@@ -1824,6 +1836,9 @@ export class UI {
       }
       : null;
     const power = def.powerProduce ? `+${def.powerProduce}` : def.powerUse ? `−${def.powerUse}` : '';
+    const requires = (def.requires ?? [])
+      .map((req) => BUILDINGS[req]?.name ?? req)
+      .join(', ');
     return `
       <div class="tip-head"><span class="tip-role">${def.role}</span><b>${def.name}</b></div>
       <p>${def.desc}</p>
@@ -1833,7 +1848,7 @@ export class UI {
         ${def.armyCap ? `<span><i>ЛИМИТ АРМИИ</i>+${def.armyCap}</span>` : ''}
         ${defense ? `<span><i>УРОН</i>${defense.damage}</span><span><i>ДАЛЬНОСТЬ</i>${defense.range}</span>` : ''}
       </div>
-      <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.buildTime} с · нужны инженеры рядом</span></div>
+      <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.buildTime} с${requires ? ` · требует: ${requires}` : ' · нужны инженеры рядом'}</span></div>
     `;
   }
 

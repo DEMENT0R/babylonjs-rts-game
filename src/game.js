@@ -559,6 +559,17 @@ export class Game {
   }
 
   // ------------------------------------------------------------- army limit
+  /**
+   * Каких достроенных зданий не хватает для постройки. Пустой список —
+   * требования выполнены.
+   */
+  missingBuildingRequirements(faction, type) {
+    const requires = BUILDINGS[type]?.requires ?? [];
+    return requires.filter((req) => !this.buildings.some((b) => (
+      b.alive && b.complete && b.faction === faction && b.type === req
+    )));
+  }
+
   /** Лимит армии фракции: его дают достроенные штаб и жилые модули. */
   getArmyCap(faction = 'player') {
     let cap = 0;
@@ -1265,6 +1276,14 @@ export class Game {
       this.notify('В этой операции такая постройка недоступна.', 'warn', 'mission-build', 0, 3);
       return null;
     }
+    const missing = this.missingBuildingRequirements(faction, type);
+    if (missing.length) {
+      if (faction === 'player') {
+        const names = missing.map((req) => BUILDINGS[req]?.name ?? req).join(', ');
+        this.notify(`Сначала постройте: ${names}.`, 'warn', `build-requires-${type}`, 0, 4);
+      }
+      return null;
+    }
     if (credits < def.cost) {
       if (faction === 'player') this.notify(MESSAGES.noCredits, 'warn', 'no-credits', 0, 3);
       return null;
@@ -1571,6 +1590,11 @@ export class Game {
   trainUnit(type, building = this.primaryProducer(type)) {
     const def = UNITS[type];
     if (!def) return false;
+    if (def.requires && !this.upgrades.player?.has(def.requires)) {
+      const name = UPGRADES[def.requires]?.name ?? def.requires;
+      this.notify(`Требуется исследование «${name}».`, 'warn', `train-locked-${type}`, 0, 4);
+      return false;
+    }
     if (!this.missionAllowsUnit(type)) {
       this.notify('В этой операции такой юнит недоступен.', 'warn', 'mission-train', 0, 3);
       return false;
@@ -1767,6 +1791,12 @@ export class Game {
   startPlacement(type) {
     if (!this.missionAllowsBuilding(type)) {
       this.notify('В этой операции такая постройка недоступна.', 'warn', 'mission-build', 0, 3);
+      return;
+    }
+    const missing = this.missingBuildingRequirements('player', type);
+    if (missing.length) {
+      const names = missing.map((req) => BUILDINGS[req]?.name ?? req).join(', ');
+      this.notify(`Сначала постройте: ${names}.`, 'warn', `build-requires-${type}`, 0, 4);
       return;
     }
     if (this.input) this.input.startPlacement(type);
