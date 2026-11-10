@@ -898,7 +898,7 @@ export class Input {
     const hotkeyMap = {
       KeyZ: 'Z', KeyX: 'X', KeyC: 'C', KeyV: 'V', KeyB: 'B',
       KeyN: 'N', KeyM: 'M', KeyG: 'G', KeyT: 'T', KeyH: 'H', KeyF: 'F', KeyR: 'R', KeyP: 'P',
-      KeyK: 'K',
+      KeyK: 'K', Comma: ',', Period: '.', Slash: '/',
     };
     if (hotkeyMap[e.code] && !e.repeat) {
       const handled = this.game.ui?.triggerHotkey(hotkeyMap[e.code]);

@@ -13,8 +13,12 @@ const STORAGE_KEY = 'gelios7.missions.v1';
 // миссию можно прочитать и проверить без знания предыдущих.
 const BUILDINGS_EARLY = ['power', 'barracks'];
 const BUILDINGS_SUPPLY = ['power', 'barracks', 'factory', 'derrick', 'turret', 'depot'];
-const BUILDINGS_TECH = ['power', 'barracks', 'factory', 'derrick', 'turret', 'depot', 'lab'];
-const BUILDINGS_ALL = ['power', 'barracks', 'factory', 'derrick', 'turret', 'depot', 'lab', 'wall'];
+const BUILDINGS_TECH = [
+  'power', 'barracks', 'factory', 'derrick', 'turret', 'depot', 'lab', 'engineering', 'rear',
+];
+const BUILDINGS_ALL = [
+  'power', 'barracks', 'factory', 'derrick', 'turret', 'depot', 'lab', 'engineering', 'rear', 'wall',
+];
 const UNITS_EARLY = ['engineer', 'marine'];
 const UNITS_ARMOR = ['engineer', 'marine', 'scout', 'tank'];
 const UNITS_TECH = ['engineer', 'marine', 'scout', 'tank', 'medic'];

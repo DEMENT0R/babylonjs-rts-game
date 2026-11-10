@@ -238,6 +238,8 @@ export class ModelFactory {
       wall: () => this.buildWall(faction),
       depot: () => this.buildDepot(faction),
       lab: () => this.buildLab(faction),
+      engineering: () => this.buildEngineering(faction),
+      rear: () => this.buildRear(faction),
     }[type];
     return this.cloneTemplate(`building:${type}:${faction}`, build);
   }
@@ -1524,6 +1526,218 @@ export class ModelFactory {
       crate.rotation.y = i * 0.5;
       add(crate, root, false).material = i === 1 ? m.rust : m.dark;
     }
+
+    parts.height = 6.0;
+    return { root, parts, height: 6.0 };
+  }
+
+  // ---------------------------------------------------------------- BUILDING: ENGINEERING
+  buildEngineering(faction) {
+    const m = this.baseMaterials(faction);
+    const root = new TransformNode(`engineering_${faction}`, this.scene);
+    const parts = {};
+    const add = (mesh, parent = root, shadow = true) => {
+      mesh.parent = parent;
+      mesh.isPickable = false;
+      mesh.receiveShadows = true;
+      mesh.castShadow = shadow;
+      return mesh;
+    };
+
+    const pad = MeshBuilder.CreateBox('pad', { width: 9.0, height: 0.22, depth: 7.6 }, this.scene);
+    pad.position.y = 0.11;
+    add(pad, root, false).material = m.concrete;
+
+    const hall = MeshBuilder.CreateBox('hall', { width: 6.8, height: 3.0, depth: 5.2 }, this.scene);
+    hall.position.set(0, 1.7, -0.3);
+    add(hall).material = m.panel;
+
+    const band = MeshBuilder.CreateBox('band', { width: 6.86, height: 0.3, depth: 5.26 }, this.scene);
+    band.position.set(0, 2.35, -0.3);
+    add(band, root, false).material = m.dark;
+
+    const roof = MeshBuilder.CreateBox('roof', { width: 7.3, height: 0.28, depth: 5.7 }, this.scene);
+    roof.position.set(0, 3.3, -0.3);
+    add(roof).material = m.dark;
+
+    const trim = MeshBuilder.CreateBox('rooftrim', { width: 7.36, height: 0.06, depth: 0.14 }, this.scene);
+    trim.position.set(0, 3.45, 2.55);
+    add(trim, root, false).material = m.accent;
+
+    // Открытая мастерская с воротами и подъёмной рамой.
+    const doorFrame = MeshBuilder.CreateBox('doorframe', { width: 4.2, height: 2.5, depth: 0.22 }, this.scene);
+    doorFrame.position.set(0, 1.35, 2.32);
+    add(doorFrame, root, false).material = m.dark;
+
+    const door = MeshBuilder.CreateBox('door', { width: 3.7, height: 2.15, depth: 0.16 }, this.scene);
+    door.position.set(0, 1.2, 2.44);
+    add(door, root, false).material = m.steel;
+    parts.door = door;
+    parts.doorBaseY = 1.2;
+
+    for (const side of [-1, 1]) {
+      const rail = MeshBuilder.CreateBox(`cranerail_${side}`, { width: 0.14, height: 1.6, depth: 0.14 }, this.scene);
+      rail.position.set(3.9 * side, 2.9, 1.9);
+      add(rail).material = m.steel;
+    }
+    const gantry = MeshBuilder.CreateBox('gantry', { width: 8.0, height: 0.22, depth: 0.22 }, this.scene);
+    gantry.position.set(0, 3.7, 1.9);
+    add(gantry).material = m.warn;
+    const hoist = MeshBuilder.CreateCylinder('hoist', { diameter: 0.06, height: 1.5, tessellation: 4 }, this.scene);
+    hoist.position.set(0.6, 2.95, 1.9);
+    add(hoist, root, false).material = m.dark;
+
+    // Шестерня на фасаде — визуальный признак инженерного корпуса.
+    const gear = new TransformNode('gear', this.scene);
+    gear.parent = root;
+    gear.position.set(0, 3.85, -1.2);
+    gear.rotation.x = Math.PI / 2;
+    const gearRing = MeshBuilder.CreateTorus('gearring', { diameter: 2.0, thickness: 0.36, tessellation: 22 }, this.scene);
+    add(gearRing, gear, false).material = m.accent;
+    const gearHub = MeshBuilder.CreateCylinder('gearhub', { diameter: 0.7, height: 0.4, tessellation: 12 }, this.scene);
+    add(gearHub, gear, false).material = m.steel;
+    for (let i = 0; i < 8; i++) {
+      const tooth = MeshBuilder.CreateBox(`geartooth_${i}`, { width: 0.5, height: 0.24, depth: 0.2 }, this.scene);
+      const a = (i / 8) * Math.PI * 2;
+      tooth.position.set(Math.cos(a) * 1.18, 0.28, Math.sin(a) * 1.18);
+      tooth.rotation.y = -a;
+      add(tooth, gear, false).material = m.accent;
+    }
+    parts.gear = gear;
+
+    // Трубы и вентиляция на крыше.
+    for (let i = 0; i < 3; i++) {
+      const pipe = MeshBuilder.CreateCylinder(`pipe_${i}`, { diameter: 0.42, height: 1.2, tessellation: 8 }, this.scene);
+      pipe.position.set(-2.1 + i * 1.2, 3.9, -1.9);
+      add(pipe).material = m.steel;
+      const cap = MeshBuilder.CreateCylinder(`pipecap_${i}`, { diameter: 0.5, height: 0.12, tessellation: 8 }, this.scene);
+      cap.position.set(-2.1 + i * 1.2, 4.5, -1.9);
+      add(cap, root, false).material = m.warn;
+    }
+
+    for (let i = 0; i < 3; i++) {
+      const win = MeshBuilder.CreateBox(`engwin_${i}`, { width: 0.9, height: 0.5, depth: 0.1 }, this.scene);
+      win.position.set(-1.9 + i * 1.9, 2.9, 2.12);
+      add(win, root, false).material = m.glass;
+    }
+    for (const side of [-1, 1]) {
+      const windowSide = MeshBuilder.CreateBox(`engside_${side}`, { width: 0.08, height: 0.5, depth: 1.5 }, this.scene);
+      windowSide.position.set(3.42 * side, 1.9, -0.8);
+      add(windowSide, root, false).material = m.glass;
+      const stripe = MeshBuilder.CreateBox(`engstripe_${side}`, { width: 0.08, height: 0.2, depth: 3.0 }, this.scene);
+      stripe.position.set(3.42 * side, 1.35, -0.4);
+      add(stripe, root, false).material = m.accent;
+    }
+
+    for (let i = 0; i < 3; i++) {
+      const crate = MeshBuilder.CreateBox(`engcrate_${i}`, { width: 0.8, height: 0.8, depth: 0.8 }, this.scene);
+      crate.position.set(-3.6 + i * 0.95, 0.52, 3.1);
+      crate.rotation.y = i * 0.6;
+      add(crate, root, false).material = i === 1 ? m.rust : m.dark;
+    }
+
+    parts.height = 6.0;
+    return { root, parts, height: 6.0 };
+  }
+
+  // ---------------------------------------------------------------- BUILDING: REAR
+  buildRear(faction) {
+    const m = this.baseMaterials(faction);
+    const root = new TransformNode(`rear_${faction}`, this.scene);
+    const parts = {};
+    const add = (mesh, parent = root, shadow = true) => {
+      mesh.parent = parent;
+      mesh.isPickable = false;
+      mesh.receiveShadows = true;
+      mesh.castShadow = shadow;
+      return mesh;
+    };
+
+    const pad = MeshBuilder.CreateBox('pad', { width: 9.4, height: 0.22, depth: 8.0 }, this.scene);
+    pad.position.y = 0.11;
+    add(pad, root, false).material = m.concrete;
+
+    const bunker = MeshBuilder.CreateBox('bunker', { width: 7.2, height: 2.2, depth: 5.4 }, this.scene);
+    bunker.position.set(0, 1.3, -0.4);
+    add(bunker).material = m.panel;
+
+    const lip = MeshBuilder.CreateBox('lip', { width: 7.8, height: 0.3, depth: 6.0 }, this.scene);
+    lip.position.set(0, 2.45, -0.4);
+    add(lip).material = m.dark;
+
+    const roof = MeshBuilder.CreateBox('roof', { width: 7.9, height: 0.22, depth: 6.1 }, this.scene);
+    roof.position.set(0, 2.68, -0.4);
+    add(roof).material = m.hull;
+
+    // Смотровая надстройка и антенна связи.
+    const tower = MeshBuilder.CreateBox('tower', { width: 2.6, height: 1.9, depth: 2.3 }, this.scene);
+    tower.position.set(-1.3, 3.6, -1.2);
+    add(tower).material = m.hull;
+    const towerWindow = MeshBuilder.CreateBox('towerwindow', { width: 2.1, height: 0.5, depth: 0.1 }, this.scene);
+    towerWindow.position.set(-1.3, 3.9, 0);
+    add(towerWindow, root, false).material = m.glass;
+
+    const mast = MeshBuilder.CreateCylinder('mast', { diameter: 0.12, height: 3.4, tessellation: 6 }, this.scene);
+    mast.position.set(-2.3, 5.2, -2.0);
+    add(mast).material = m.steel;
+    const beacon = MeshBuilder.CreateSphere('beacon', { diameter: 0.24, segments: 6 }, this.scene);
+    beacon.position.set(-2.3, 6.95, -2.0);
+    add(beacon, root, false).material = m.warn;
+
+    // Спутниковая тарелка тылового узла.
+    const dishBase = MeshBuilder.CreateCylinder('dishbase', { diameter: 0.3, height: 1.0, tessellation: 6 }, this.scene);
+    dishBase.position.set(1.9, 3.2, -1.5);
+    add(dishBase).material = m.steel;
+    const dish = MeshBuilder.CreateCylinder('dish', {
+      diameterTop: 0.14,
+      diameterBottom: 1.9,
+      height: 0.2,
+      tessellation: 16,
+    }, this.scene);
+    dish.position.set(1.9, 3.75, -1.5);
+    dish.rotation.x = -0.7;
+    add(dish, root, false).material = m.white;
+
+    // Склад: контейнеры и погрузочная рампа.
+    for (let i = 0; i < 2; i++) {
+      const container = MeshBuilder.CreateBox(`container_${i}`, { width: 2.4, height: 1.1, depth: 1.6 }, this.scene);
+      container.position.set(3.9 + i * 0.1, 0.75, 1.4 - i * 1.9);
+      container.rotation.y = i * 0.08;
+      add(container).material = i === 0 ? m.rust : m.hull;
+      const stripe = MeshBuilder.CreateBox(`contstripe_${i}`, { width: 2.44, height: 0.12, depth: 1.64 }, this.scene);
+      stripe.position.set(3.9 + i * 0.1, 1.1, 1.4 - i * 1.9);
+      add(stripe, root, false).material = m.accent;
+    }
+
+    const ramp = MeshBuilder.CreateBox('ramp', { width: 2.8, height: 0.14, depth: 1.3 }, this.scene);
+    ramp.position.set(0, 0.1, 3.4);
+    ramp.rotation.x = -0.1;
+    add(ramp, root, false).material = m.concrete;
+
+    const doorFrame = MeshBuilder.CreateBox('doorframe', { width: 2.6, height: 1.9, depth: 0.2 }, this.scene);
+    doorFrame.position.set(0, 1.0, 2.42);
+    add(doorFrame, root, false).material = m.dark;
+    const door = MeshBuilder.CreateBox('door', { width: 2.1, height: 1.6, depth: 0.14 }, this.scene);
+    door.position.set(0, 0.9, 2.54);
+    add(door, root, false).material = m.steel;
+
+    // Солнечные панели на крыше.
+    for (let i = 0; i < 2; i++) {
+      const panel = MeshBuilder.CreateBox(`solar_${i}`, { width: 2.4, height: 0.06, depth: 1.4 }, this.scene);
+      panel.position.set(1.0 + i * 2.7, 3.35, 0.6);
+      panel.rotation.x = 0.22;
+      add(panel, root, false).material = m.glass;
+    }
+
+    for (let i = 0; i < 3; i++) {
+      const win = MeshBuilder.CreateBox(`rearwin_${i}`, { width: 1.0, height: 0.55, depth: 0.1 }, this.scene);
+      win.position.set(-2.2 + i * 2.2, 1.55, 2.35);
+      add(win, root, false).material = m.glass;
+    }
+
+    const emblem = MeshBuilder.CreateBox('rearemblem', { width: 2.2, height: 0.5, depth: 0.08 }, this.scene);
+    emblem.position.set(0, 2.95, -2.5);
+    add(emblem, root, false).material = m.glow;
 
     parts.height = 6.0;
     return { root, parts, height: 6.0 };

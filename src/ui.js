@@ -6,7 +6,6 @@ import {
   UNITS,
   BUILDINGS,
   UPGRADES,
-  UPGRADE_PAGES,
   UPGRADE_LINE_KEYS,
   BUILD_ORDER,
   BUILD_HOTKEYS,
@@ -73,8 +72,6 @@ export class UI {
     // Открытый список миссий: нужен, чтобы «Назад» из настроек вернул в него.
     this.missionsScreen = null;
     this.settingsTab = 'graphics';
-    // Страница исследований техцентра: 0 — войска, 1 — база.
-    this.researchPage = 0;
     // Лобби: сложность выбирается сразу, а сид карты — случайно (по умолчанию)
     // или вручную. Режим из адреса нужен, чтобы F5 после ручного сида возвращал
     // в лобби с тем же выбором, а не сбрасывал его.
@@ -1546,12 +1543,10 @@ export class UI {
       return commands;
     }
 
-    if (b.type === 'lab') {
-      // Линии разнесены на две страницы, чтобы панель не уходила в прокрутку,
-      // а на каждую команду хватало горячей клавиши.
-      const lines = UPGRADE_PAGES[this.researchPage] ?? UPGRADE_PAGES[0];
+    if (b.def.research) {
+      // Каждое исследовательское здание показывает только свои линии.
+      const lines = game.researchLines(b.type);
       const commands = lines.map((lineKey, i) => this.upgradeCommand(lineKey, b, BUILD_HOTKEYS[i]));
-      commands.push(this.researchPageCommand());
       if (repair) commands.push(repair);
       if (sell) commands.push(sell);
       return commands;
@@ -1672,26 +1667,6 @@ export class UI {
         }
       },
       tip: this.unitTip(def),
-    };
-  }
-
-  researchPageCommand() {
-    const toBase = this.researchPage === 0;
-    return {
-      id: 'research-page',
-      label: toBase ? 'База' : 'Войска',
-      short: toBase ? 'БАЗА' : 'ВОЙСКА',
-      icon: 'lab',
-      hotkey: 'T',
-      desc: toBase
-        ? 'Перейти к исследованиям базы: экономика, оборона, снабжение и лимит армии.'
-        : 'Вернуться к исследованиям войск: пехота, скауты, танки, РСЗО, медики и инженеры.',
-      kind: 'research',
-      disabled: false,
-      action: () => {
-        this.researchPage = toBase ? 1 : 0;
-        this.renderCommands();
-      },
     };
   }
 
@@ -2085,7 +2060,7 @@ export class UI {
           ? (b.defenseTarget?.alive ? { text: 'ВЕДЁТ ОГОНЬ', cls: 'warn' } : { text: 'ОХРАНА', cls: 'ok' })
           : b.queue.length
             ? {
-              text: b.type === 'lab'
+              text: b.def.research
                 ? `ИССЛЕДОВАНИЕ ${Math.floor((1 - b.queue[0].remaining / b.queue[0].total) * 100)}%`
                 : `ОЧЕРЕДЬ ${b.queue.length}`,
               cls: 'accent',
@@ -2110,7 +2085,7 @@ export class UI {
     const repairChip = b.repairing
       ? `<span class="chip chip--repair">${icon('repair')} +${this.game.repairRate(b).toFixed(1)} HP/с</span>`
       : '';
-    const researchChip = b.type === 'lab' && b.faction === 'player'
+    const researchChip = b.def.research && b.faction === 'player'
       ? `<span class="chip chip--research">${icon('research')} ИЗУЧЕНО ${this.game.upgrades.player.size}/${Object.keys(UPGRADES).length}</span>`
       : '';
     const queueHTML = this.renderQueue(b);
@@ -2140,13 +2115,13 @@ export class UI {
         </div>
         ${this.sideStatus()}
       </div>
-      ${UNIT_PRODUCTION[b.type] || b.type === 'lab' ? queueHTML : ''}
+      ${UNIT_PRODUCTION[b.type] || b.def.research ? queueHTML : ''}
       ${buildHTML}
       <div class="sel-foot"><span class="dot"></span> ${UNIT_PRODUCTION[b.type] && b.type !== 'hq'
         ? 'ПКМ по земле — точка сбора · клик по очереди — отмена · R — ремонт'
         : b.type === 'hq'
           ? 'ПКМ по месторождению — быстрая нефтяная вышка · R — ремонт'
-          : b.type === 'lab'
+          : b.def.research
             ? 'Исследования — на панели команд · клик по очереди — отмена · R — ремонт'
             : 'Пассивное строение · R — ремонт'}</div>
     `;
@@ -2313,7 +2288,7 @@ export class UI {
                 : b.type === 'turret'
                   ? (b.defenseTarget?.alive ? 'ВЕДЁТ ОГОНЬ' : 'ОХРАНА')
                   : b.queue.length
-                    ? (b.type === 'lab'
+                    ? (b.def.research
                       ? `ИССЛЕДОВАНИЕ ${Math.floor((1 - b.queue[0].remaining / b.queue[0].total) * 100)}%`
                       : `ОЧЕРЕДЬ ${b.queue.length}`)
                     : 'ГОТОВО';

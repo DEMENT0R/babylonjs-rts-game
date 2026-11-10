@@ -1,7 +1,9 @@
 // Простой противник: экономика, инженеры, застройка, ремонт и волны атак.
 
 import { Vector3 } from './babylon.js';
-import { AI, AI_DIFFICULTY, BUILDINGS, MAP, UNITS, UPGRADES, UNIT_PRODUCTION } from './config.js';
+import {
+  AI, AI_DIFFICULTY, BUILDINGS, MAP, UNITS, UPGRADES, UNIT_PRODUCTION, UPGRADE_BUILDING,
+} from './config.js';
 import { clamp, dist, distToSegment, shuffle, TAU } from './utils.js';
 
 export class AIController {
@@ -486,6 +488,12 @@ export class AIController {
     const lab = game.buildings.filter(
       (b) => b.alive && b.faction === 'enemy' && b.type === 'lab' && b.complete,
     ).length;
+    const engineering = game.buildings.filter(
+      (b) => b.alive && b.faction === 'enemy' && b.type === 'engineering' && b.complete,
+    ).length;
+    const rear = game.buildings.filter(
+      (b) => b.alive && b.faction === 'enemy' && b.type === 'rear' && b.complete,
+    ).length;
     const depots = game.buildings.filter(
       (b) => b.alive && b.faction === 'enemy' && b.type === 'depot' && b.complete,
     ).length;
@@ -544,8 +552,15 @@ export class AIController {
     } else if (game.elapsed > 110 && turrets < (game.elapsed > 220 ? AI.turretCap : 2)
       && this.credits > BUILDINGS.turret.cost + 80) {
       type = 'turret';
-    } else if (lab === 0 && game.elapsed > 170 && this.credits > 320) type = 'lab';
-    else if (barracks < 2 && game.elapsed > 135) type = 'barracks';
+    } else if (lab === 0 && game.elapsed > 140 && this.credits > BUILDINGS.lab.cost + 40) {
+      type = 'lab';
+    } else if (engineering === 0 && lab > 0 && game.elapsed > 180
+      && this.credits > BUILDINGS.engineering.cost + 40) {
+      type = 'engineering';
+    } else if (rear === 0 && lab > 0 && engineering > 0 && game.elapsed > 240
+      && this.credits > BUILDINGS.rear.cost + 60) {
+      type = 'rear';
+    } else if (barracks < 2 && game.elapsed > 135) type = 'barracks';
     // Баррикады дешёвые и быстрые: линия перед турелями появляется после
     // первых двух турелей и второй казармы, чтобы не тормозить армию.
     else if (game.elapsed > 170 && turrets >= 2 && walls < AI.wallCap
@@ -934,11 +949,11 @@ export class AIController {
     }
   }
 
-  /** ИИ тоже исследует улучшения в техцентре, когда накопил на них кредиты. */
+  /** ИИ исследует улучшения в подходящем здании, когда накопил кредиты. */
   tryResearch() {
     const game = this.game;
     const labs = game.buildings.filter(
-      (b) => b.alive && b.faction === 'enemy' && b.type === 'lab'
+      (b) => b.alive && b.faction === 'enemy' && b.def.research
         && b.complete && b.queue.length === 0,
     );
     if (!labs.length) return;
@@ -962,9 +977,14 @@ export class AIController {
     const cap = game.getArmyCap('enemy');
 
     let best = null;
+    let bestBuilding = null;
     let bestScore = -Infinity;
     for (const key of available) {
       const def = UPGRADES[key];
+      // Линию нельзя купить не в том здании: ищем свободный подходящий корпус.
+      const buildingType = UPGRADE_BUILDING[def.line];
+      const site = labs.find((b) => b.type === buildingType);
+      if (!site) continue;
       let score = 1 + Math.random() * 2;
       if (def.scope === 'unit') score += (counts.get(def.target) ?? 0) * 3;
       else if (def.scope === 'building') {
@@ -976,11 +996,11 @@ export class AIController {
       if (score > bestScore) {
         bestScore = score;
         best = key;
+        bestBuilding = site;
       }
     }
-    if (!best) return;
-    const lab = labs[Math.floor(Math.random() * labs.length)];
-    game.startUpgrade(lab, best);
+    if (!best || !bestBuilding) return;
+    game.startUpgrade(bestBuilding, best);
   }
 
   // ------------------------------------------------------------- армия

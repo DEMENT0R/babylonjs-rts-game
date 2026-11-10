@@ -55,6 +55,22 @@ export const ICONS = {
     <circle cx="24" cy="25" r="3.2"/>
     <path d="M24 22v6M21 25h6" opacity=".6"/>
   `),
+  engineering: stroke(`
+    <path d="M6 40h36M9 40V24l15-8 15 8v16"/>
+    <path d="M15 40V30h8v10M27 40v-9h7v9"/>
+    <circle cx="24" cy="14" r="5"/>
+    <path d="M24 6v3M24 19v3M16 14h3M29 14h3M19 9l2 2M29 9l-2 2M19 19l2-2M29 19l-2-2" opacity=".8"/>
+    <path d="M34 20h7v7h-7Z" opacity=".6"/>
+  `),
+  rear: stroke(`
+    <path d="M5 40h38M8 40V25h32v15"/>
+    <path d="M14 40v-8h7v8M28 40v-7h7v7"/>
+    <path d="M20 25V15h9v10" opacity=".8"/>
+    <path d="M24 15V7m0 0-4 3m4-3 4 3" opacity=".7"/>
+    <circle cx="24" cy="6" r="1.6" fill="currentColor" stroke="none"/>
+    <path d="M31 10h6v5h-6Z" opacity=".6"/>
+    <path d="M11 31h5M33 31h3" opacity=".5"/>
+  `),
   research: stroke(`
     <path d="M19 6h10M22 6v11L13 36a4 4 0 0 0 3.4 6h15.2a4 4 0 0 0 3.4-6L26 17V6"/>
     <path d="M17 30h14"/>

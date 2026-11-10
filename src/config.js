@@ -234,8 +234,10 @@ export const CONSTRUCTION = {
 };
 
 // order — порядок кнопок в командной панели.
-export const BUILD_ORDER = ['power', 'barracks', 'factory', 'derrick', 'lab', 'turret', 'depot', 'wall'];
-export const BUILD_HOTKEYS = ['Z', 'X', 'C', 'V', 'B', 'N', 'M', ','];
+export const BUILD_ORDER = [
+  'power', 'barracks', 'factory', 'derrick', 'lab', 'engineering', 'rear', 'turret', 'depot', 'wall',
+];
+export const BUILD_HOTKEYS = ['Z', 'X', 'C', 'V', 'B', 'N', 'M', ',', '.', '/'];
 // Найм внутри одного производственного здания: клавиши выдаются по порядку.
 export const TRAIN_HOTKEYS = ['Z', 'X', 'C', 'V', 'B', 'N', 'M'];
 // Инженер нанимается в штабе, где те же клавиши заняты стройкой.
@@ -268,7 +270,7 @@ export const UPGRADES = {
     icon: 'marine',
     desc: 'Усиливает пехотинцев: больше урона и запаса прочности. Дорогое, но универсальное усиление основной ударной силы.',
     cost: 220,
-    time: 26,
+    time: 65,
     scope: 'unit',
     target: 'marine',
     effects: { damage: 1.35, hp: 1.25 },
@@ -283,7 +285,7 @@ export const UPGRADES = {
     icon: 'marine',
     desc: 'Патроны игнорируют до 2 единиц брони цели. Пехота снова пробивает танки и турели, а не царапает их.',
     cost: 360,
-    time: 35,
+    time: 95,
     scope: 'unit',
     target: 'marine',
     effects: { pierce: 2 },
@@ -297,7 +299,7 @@ export const UPGRADES = {
     icon: 'scout',
     desc: 'Разгоняет скаутов и повышает урон их спаренных бластеров. Рейды по вышкам становятся ещё быстрее.',
     cost: 240,
-    time: 26,
+    time: 65,
     scope: 'unit',
     target: 'scout',
     effects: { speed: 1.3, damage: 1.2 },
@@ -312,7 +314,7 @@ export const UPGRADES = {
     icon: 'scout',
     desc: 'Расширяет обзор скаутов на 5 единиц и слегка повышает скорость. Рейды и разведка становятся точнее.',
     cost: 400,
-    time: 35,
+    time: 95,
     scope: 'unit',
     target: 'scout',
     effects: { visionAdd: 5, speed: 1.1 },
@@ -326,7 +328,7 @@ export const UPGRADES = {
     icon: 'tank',
     desc: 'Наращивает броню и прочность танков «Молот». Тяжёлая техника переживает ещё больше попаданий.',
     cost: 360,
-    time: 38,
+    time: 95,
     scope: 'unit',
     target: 'tank',
     effects: { hp: 1.35, armor: 2 },
@@ -341,7 +343,7 @@ export const UPGRADES = {
     icon: 'tank',
     desc: 'Увеличивает радиус поражения танков на 30%. Скопления пехоты накрываются ещё надёжнее.',
     cost: 600,
-    time: 51,
+    time: 130,
     scope: 'unit',
     target: 'tank',
     effects: { splash: 1.3 },
@@ -355,7 +357,7 @@ export const UPGRADES = {
     icon: 'artillery',
     desc: 'Увеличивает дальность и урон залпа РСЗО. Хрупкая установка сможет бить, оставаясь вне ответного огня.',
     cost: 380,
-    time: 42,
+    time: 100,
     scope: 'unit',
     target: 'artillery',
     effects: { damage: 1.25, range: 1.2 },
@@ -370,7 +372,7 @@ export const UPGRADES = {
     icon: 'artillery',
     desc: 'В залп РСЗО добавляется шестая ракета, но установка перезаряжается на 15% дольше. Плотность залпа растёт ценой темпа огня.',
     cost: 640,
-    time: 56,
+    time: 145,
     scope: 'unit',
     target: 'artillery',
     effects: { salvoAdd: 1, cooldown: 1.15 },
@@ -384,7 +386,7 @@ export const UPGRADES = {
     icon: 'medic',
     desc: 'Ускоряет лечение на 40% и расширяет радиус поиска раненых. Медики успевают спасать больше бойцов.',
     cost: 260,
-    time: 29,
+    time: 70,
     scope: 'unit',
     target: 'medic',
     effects: { healRate: 1.4, healRadius: 1.2 },
@@ -393,12 +395,12 @@ export const UPGRADES = {
     key: 'engineer',
     line: 'engineer',
     tier: 1,
-    name: 'Инженерный корпус',
+    name: 'Инженерная школа',
     role: 'ИНЖЕНЕРИЯ',
     icon: 'engineer',
     desc: 'Ускоряет ремонт техники на 40% и стройку на 25%. Инженеры становятся заметно полезнее.',
     cost: 280,
-    time: 32,
+    time: 80,
     scope: 'unit',
     target: 'engineer',
     effects: { repairRate: 1.4, buildSpeed: 1.25 },
@@ -412,7 +414,7 @@ export const UPGRADES = {
     icon: 'turret',
     desc: 'Увеличивает дальность турелей на 3 единицы и урон на 15%. Оборона базы бьёт дальше и больнее.',
     cost: 360,
-    time: 35,
+    time: 85,
     scope: 'building',
     target: 'turret',
     effects: { damage: 1.15, range: 1.18 },
@@ -426,7 +428,7 @@ export const UPGRADES = {
     icon: 'wall',
     desc: 'Повышает прочность всех зданий на 25%. База дольше держится под осадой.',
     cost: 340,
-    time: 35,
+    time: 85,
     scope: 'building',
     target: 'building',
     effects: { hp: 1.25 },
@@ -440,7 +442,7 @@ export const UPGRADES = {
     icon: 'derrick',
     desc: 'Повышает отдачу всех вышек на 20%. Чем больше месторождений вы контролируете, тем выгоднее вложение.',
     cost: 360,
-    time: 35,
+    time: 85,
     scope: 'global',
     target: null,
     effects: { income: 1.2 },
@@ -454,7 +456,7 @@ export const UPGRADES = {
     icon: 'repair',
     desc: 'Снижает стоимость восстановления зданий на 25%. Держать базу в порядке становится дешевле.',
     cost: 320,
-    time: 32,
+    time: 80,
     scope: 'global',
     target: null,
     effects: { repairCost: 0.75 },
@@ -468,7 +470,7 @@ export const UPGRADES = {
     icon: 'move',
     desc: 'Ускоряет наём юнитов и возведение зданий на 20%. Армия и застройка появляются быстрее.',
     cost: 340,
-    time: 35,
+    time: 85,
     scope: 'global',
     target: null,
     effects: { trainTime: 0.8, buildTime: 0.8 },
@@ -482,34 +484,35 @@ export const UPGRADES = {
     icon: 'army',
     desc: 'Расширяет лимит армии на 5 единиц. Позволяет держать больше техники без нового жилого модуля.',
     cost: 400,
-    time: 38,
+    time: 95,
     scope: 'global',
     target: null,
     effects: { armyCap: 5 },
   },
 };
 
-// Линии исследований в порядке кнопок. Армейские и базовые разнесены по
-// двум страницам техцентра, чтобы все команды помещались на панель.
+// Линии исследований в порядке кнопок. Поле building говорит, в каком здании
+// покупается линия: техцентр — пехота, инженерный корпус — техника, центр
+// тыла — база и экономика.
 export const UPGRADE_LINES = [
-  { key: 'marine', category: 'army' },
-  { key: 'scout', category: 'army' },
-  { key: 'tank', category: 'army' },
-  { key: 'artillery', category: 'army' },
-  { key: 'medic', category: 'army' },
-  { key: 'engineer', category: 'army' },
-  { key: 'turret', category: 'base' },
-  { key: 'structures', category: 'base' },
-  { key: 'income', category: 'base' },
-  { key: 'maintenance', category: 'base' },
-  { key: 'logistics', category: 'base' },
-  { key: 'reserve', category: 'base' },
+  { key: 'marine', category: 'army', building: 'lab' },
+  { key: 'scout', category: 'army', building: 'engineering' },
+  { key: 'tank', category: 'army', building: 'engineering' },
+  { key: 'artillery', category: 'army', building: 'engineering' },
+  { key: 'medic', category: 'army', building: 'lab' },
+  { key: 'engineer', category: 'army', building: 'lab' },
+  { key: 'turret', category: 'base', building: 'rear' },
+  { key: 'structures', category: 'base', building: 'rear' },
+  { key: 'income', category: 'base', building: 'rear' },
+  { key: 'maintenance', category: 'base', building: 'rear' },
+  { key: 'logistics', category: 'base', building: 'rear' },
+  { key: 'reserve', category: 'base', building: 'rear' },
 ];
 
-export const UPGRADE_PAGES = [
-  ['marine', 'scout', 'tank', 'artillery', 'medic', 'engineer'],
-  ['turret', 'structures', 'income', 'maintenance', 'logistics', 'reserve'],
-];
+// Линия → тип здания, где её исследуют. Одна точка правды для UI и ИИ.
+export const UPGRADE_BUILDING = Object.fromEntries(
+  UPGRADE_LINES.map((line) => [line.key, line.building]),
+);
 
 // Все уровни каждой линии по порядку: по ним UI и ИИ находят следующий.
 export const UPGRADE_LINE_KEYS = {
@@ -837,7 +840,8 @@ export const BUILDINGS = {
     name: 'Техцентр',
     role: 'ИССЛЕДОВАНИЯ',
     icon: 'lab',
-    desc: 'Исследует улучшения для разных юнитов: пехоты, скаутов, танков и РСЗО. Каждое улучшение покупается один раз и действует на весь отряд. Исследования дороги и идут десятки секунд. Потребляет 6 энергии.',
+    research: true,
+    desc: 'Исследует пехоту: пехотинцев, медиков и инженеров. Каждое улучшение покупается один раз и действует на весь отряд. Потребляет 6 энергии.',
     cost: 240,
     buildTime: 24,
     hp: 700,
@@ -847,6 +851,41 @@ export const BUILDINGS = {
     powerProduce: 0,
     powerUse: 6,
     from: 'hq',
+  },
+  engineering: {
+    key: 'engineering',
+    name: 'Инженерный корпус',
+    role: 'ИССЛЕДОВАНИЯ',
+    icon: 'engineering',
+    research: true,
+    desc: 'Исследует технику: скаутов, танки и РСЗО. Заменяет техцентр в вопросах брони и вооружения машин. Потребляет 6 энергии.',
+    cost: 260,
+    buildTime: 26,
+    hp: 760,
+    armor: 2,
+    radius: 3.6,
+    height: 6.0,
+    powerProduce: 0,
+    powerUse: 6,
+    from: 'hq',
+  },
+  rear: {
+    key: 'rear',
+    name: 'Центр тыла',
+    role: 'ТЫЛ',
+    icon: 'rear',
+    research: true,
+    desc: 'Исследует оборону, экономику и снабжение. Открывается, когда построены и техцентр, и инженерный корпус. Потребляет 6 энергии.',
+    cost: 300,
+    buildTime: 28,
+    hp: 800,
+    armor: 2,
+    radius: 3.8,
+    height: 6.0,
+    powerProduce: 0,
+    powerUse: 6,
+    from: 'hq',
+    requires: ['lab', 'engineering'],
   },
 };
 

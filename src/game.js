@@ -7,6 +7,7 @@ import {
   BUILDINGS,
   UPGRADES,
   UPGRADE_LINES,
+  UPGRADE_BUILDING,
   UPGRADE_LINE_KEYS,
   UNIT_PRODUCTION,
   FACTIONS,
@@ -1453,6 +1454,13 @@ export class Game {
     return null;
   }
 
+  /** Линии, которые исследуются в здании этого типа. */
+  researchLines(buildingType) {
+    return UPGRADE_LINES
+      .filter((line) => line.building === buildingType)
+      .map((line) => line.key);
+  }
+
   /** Доступные ИИ исследования: следующие уровни линий без дублей. */
   availableUpgrades(faction) {
     const list = [];
@@ -1480,7 +1488,8 @@ export class Game {
   startUpgrade(building, key) {
     const def = UPGRADES[key];
     if (!def || !building || !building.alive || !building.complete) return false;
-    if (building.type !== 'lab') return false;
+    // Каждая линия исследуется только в своём здании.
+    if (UPGRADE_BUILDING[def.line] !== building.type) return false;
     const faction = building.faction;
     if (this.upgrades[faction]?.has(key)) {
       if (faction === 'player') {
