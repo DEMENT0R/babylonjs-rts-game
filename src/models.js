@@ -905,6 +905,12 @@ export class ModelFactory {
     backPlate.position.set(0, 0.32, -1.04);
     add(backPlate, rack).material = m.hull;
 
+    // Точка выброса отработанных труб: из неё во время перезарядки летят
+    // крупные гильзы, поэтому она вынесена за корму пакета направляющих.
+    const casingPort = new TransformNode('artcasingport', this.scene);
+    casingPort.parent = rack;
+    casingPort.position.set(0, 0.08, -1.28);
+
     const muzzles = [];
     let tubeIndex = 0;
     for (let row = 0; row < 2; row++) {
@@ -943,6 +949,7 @@ export class ModelFactory {
     parts.turret = launcher;
     parts.barrelGroup = rack;
     parts.muzzles = muzzles;
+    parts.casingPort = casingPort;
     parts.height = 3.2;
     return { root, parts, height: 3.2 };
   }

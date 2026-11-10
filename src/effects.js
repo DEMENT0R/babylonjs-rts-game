@@ -247,7 +247,9 @@ export class Effects {
 
     // Гильзы: маленькие латунные цилиндры, вылетающие из оружия. Все они —
     // thin instances одного меша, поэтому куча гильз на земле стоит один draw call.
-    this.casingMax = 72;
+    // Запас с учётом залпов РСЗО: каждая установка выбрасывает по гильзе
+    // на ракету, и несколько машин в бою иначе вытесняли бы стрелковые гильзы.
+    this.casingMax = 96;
     this.casings = [];
     this.casingCursor = 0;
     this.casingData = new Float32Array(this.casingMax * 16);

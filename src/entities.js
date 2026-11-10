@@ -271,6 +271,10 @@ export class Unit extends Entity {
     this.recoil = 0;
     this.muzzleIndex = 0;
     this.pendingVolley = [];
+    // Перезарядка РСЗО: общая длительность и очередь выбрасываемых гильз.
+    this.reloadTotal = 0;
+    this.casingBurst = 0;
+    this.casingTimer = 0;
     this.retaliateTimer = 0;
     this.workTimer = 0;
     this.assistBuilding = null;
@@ -457,6 +461,39 @@ export class Unit extends Entity {
     this.updateBar?.();
   }
 
+  /**
+   * Полоса перезарядки РСЗО. Пока установка не готова, над ней видна шкала
+   * даже без выделения: игрок и противник понимают, когда можно нажать.
+   */
+  updateBar() {
+    const reloading = this.reloadTotal > 0
+      && this.attackCd > 0.05
+      && this.attackCd <= this.reloadTotal;
+    this.forceBar = reloading;
+    super.updateBar();
+    if (!this.bar) return;
+    const progress = this.bar.progress;
+    if (!reloading || !this.barVisible) {
+      progress.setEnabled(false);
+      return;
+    }
+    const frac = clamp(1 - this.attackCd / this.reloadTotal, 0, 1);
+    progress.setEnabled(true);
+    this.bar.pFill.scaling.x = Math.max(0.001, frac);
+    this.bar.pFill.position.x = -(this.bar.pWidth * (1 - frac)) / 2;
+  }
+
+  /** Крупные гильзы, вылетающие из кормы установки во время перезарядки. */
+  updateReloadFx(dt) {
+    if (this.casingBurst <= 0) return;
+    this.casingTimer -= dt;
+    if (this.casingTimer > 0) return;
+    const port = this.parts?.casingPort?.getAbsolutePosition() ?? this.getMuzzle();
+    this.game.fx.casing(port, this.root.rotation.y, 'shell', 0.5);
+    this.casingBurst--;
+    this.casingTimer = 0.24 + Math.random() * 0.14;
+  }
+
   resetPath() {
     this.path = null;
     this.pathIndex = 0;
@@ -578,6 +615,7 @@ export class Unit extends Entity {
     if (!this.alive) return;
     this.attackCd = Math.max(0, this.attackCd - dt);
     this.updateVolley(dt);
+    this.updateReloadFx(dt);
     if (this.workTimer > 0) this.workTimer -= dt;
     if (this.retaliateTimer > 0) this.retaliateTimer -= dt;
 
@@ -806,6 +844,13 @@ export class Unit extends Entity {
 
     const kind = this.def.projectile ?? 'bullet';
     if (kind === 'rocket') {
+      const count = this.salvo ?? this.def.salvo ?? 1;
+      const delay = this.def.salvoDelay ?? 0.14;
+      // Гильзы начинают вылетать, когда отстреляна последняя ракета: именно
+      // в этот момент установка уходит в перезарядку.
+      this.reloadTotal = this.attackCd;
+      this.casingBurst = count;
+      this.casingTimer = count * delay + 0.35;
       this.startVolley(target);
       return;
     }
