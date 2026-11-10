@@ -232,6 +232,7 @@ export class ModelFactory {
       hq: () => this.buildHQ(faction),
       power: () => this.buildPower(faction),
       barracks: () => this.buildBarracks(faction),
+      factory: () => this.buildFactory(faction),
       derrick: () => this.buildDerrick(faction),
       turret: () => this.buildTurret(faction),
       wall: () => this.buildWall(faction),
@@ -1391,6 +1392,141 @@ export class ModelFactory {
 
     parts.height = 5.4;
     return { root, parts, height: 5.4 };
+  }
+
+  // ---------------------------------------------------------------- BUILDING: FACTORY
+  buildFactory(faction) {
+    const m = this.baseMaterials(faction);
+    const root = new TransformNode(`factory_${faction}`, this.scene);
+    const parts = {};
+    const add = (mesh, parent = root, shadow = true) => {
+      mesh.parent = parent;
+      mesh.isPickable = false;
+      mesh.receiveShadows = true;
+      mesh.castShadow = shadow;
+      return mesh;
+    };
+
+    const pad = MeshBuilder.CreateBox('pad', { width: 10.4, height: 0.22, depth: 8.8 }, this.scene);
+    pad.position.y = 0.11;
+    add(pad, root, false).material = m.concrete;
+
+    for (const side of [-1, 1]) {
+      const stripe = MeshBuilder.CreateBox(`padstripe_${side}`, { width: 0.18, height: 0.06, depth: 8.2 }, this.scene);
+      stripe.position.set(4.4 * side, 0.24, 0);
+      add(stripe, root, false).material = m.warn;
+    }
+
+    const hall = MeshBuilder.CreateBox('hall', { width: 8.2, height: 3.1, depth: 6.2 }, this.scene);
+    hall.position.set(0, 1.75, -0.4);
+    add(hall).material = m.panel;
+
+    const band = MeshBuilder.CreateBox('band', { width: 8.26, height: 0.34, depth: 6.26 }, this.scene);
+    band.position.set(0, 2.4, -0.4);
+    add(band, root, false).material = m.dark;
+
+    const roof = MeshBuilder.CreateBox('roof', { width: 8.7, height: 0.3, depth: 6.7 }, this.scene);
+    roof.position.set(0, 3.45, -0.4);
+    add(roof).material = m.dark;
+
+    const roofTrim = MeshBuilder.CreateBox('rooftrim', { width: 8.76, height: 0.06, depth: 0.14 }, this.scene);
+    roofTrim.position.set(0, 3.6, 2.92);
+    add(roofTrim, root, false).material = m.accent;
+
+    // Ворота цеха во всю высоту: главный признак завода техники.
+    const doorFrame = MeshBuilder.CreateBox('doorframe', { width: 5.4, height: 2.9, depth: 0.24 }, this.scene);
+    doorFrame.position.set(0, 1.5, 2.78);
+    add(doorFrame, root, false).material = m.dark;
+
+    const door = MeshBuilder.CreateBox('door', { width: 4.9, height: 2.55, depth: 0.18 }, this.scene);
+    door.position.set(0, 1.32, 2.9);
+    add(door, root, false).material = m.steel;
+    parts.door = door;
+    parts.doorBaseY = 1.32;
+
+    for (let i = 0; i < 4; i++) {
+      const slat = MeshBuilder.CreateBox(`doorslat_${i}`, { width: 4.86, height: 0.1, depth: 0.1 }, this.scene);
+      slat.position.set(0, 0.35 + i * 0.62, 3.0);
+      add(slat, root, false).material = m.dark;
+    }
+
+    for (const side of [-1, 1]) {
+      const glow = MeshBuilder.CreateBox(`doorglow_${side}`, { width: 0.12, height: 2.45, depth: 0.12 }, this.scene);
+      glow.position.set(2.55 * side, 1.35, 3.02);
+      add(glow, root, false).material = m.warn;
+    }
+
+    const header = MeshBuilder.CreateBox('header', { width: 5.2, height: 0.24, depth: 0.26 }, this.scene);
+    header.position.set(0, 3.16, 2.92);
+    add(header, root, false).material = m.accent;
+
+    // Боковой склад с трубой.
+    const annex = MeshBuilder.CreateBox('annex', { width: 3.0, height: 2.5, depth: 3.4 }, this.scene);
+    annex.position.set(-5.3, 1.35, -1.2);
+    add(annex).material = m.hull;
+
+    const chimney = MeshBuilder.CreateCylinder('chimney', { diameter: 0.9, height: 2.6, tessellation: 10 }, this.scene);
+    chimney.position.set(-5.9, 3.9, -1.9);
+    add(chimney).material = m.rust;
+    const chimneyBand = MeshBuilder.CreateCylinder('chimneyband', { diameter: 0.96, height: 0.16, tessellation: 10 }, this.scene);
+    chimneyBand.position.set(-5.9, 4.6, -1.9);
+    add(chimneyBand, root, false).material = m.warn;
+
+    // Козловой кран над крышей: видно, что цех работает.
+    const crane = new TransformNode('crane', this.scene);
+    crane.parent = root;
+    for (const side of [-1, 1]) {
+      const rail = MeshBuilder.CreateBox(`cranerail_${side}`, { width: 0.18, height: 0.18, depth: 6.4 }, this.scene);
+      rail.position.set(3.6 * side, 3.7, -0.4);
+      add(rail, crane).material = m.steel;
+      const post = MeshBuilder.CreateBox(`cranepost_${side}`, { width: 0.16, height: 1.6, depth: 0.16 }, this.scene);
+      post.position.set(3.6 * side, 4.4, 2.4);
+      add(post, crane).material = m.steel;
+    }
+    const bridge = MeshBuilder.CreateBox('cranebridge', { width: 7.4, height: 0.2, depth: 0.22 }, this.scene);
+    bridge.position.set(0, 4.9, -0.4);
+    add(bridge, crane).material = m.warn;
+    const trolley = MeshBuilder.CreateBox('trolley', { width: 0.7, height: 0.32, depth: 0.55 }, this.scene);
+    trolley.position.set(1.1, 4.72, -0.4);
+    add(trolley, crane).material = m.dark;
+    const hook = MeshBuilder.CreateCylinder('hook', { diameter: 0.06, height: 2.2, tessellation: 4 }, this.scene);
+    hook.position.set(1.1, 3.6, -0.4);
+    add(hook, crane, false).material = m.dark;
+    parts.crane = crane;
+
+    // Вентиляция и окна цеха.
+    for (let i = 0; i < 2; i++) {
+      const vent = MeshBuilder.CreateBox(`vent_${i}`, { width: 1.1, height: 0.3, depth: 1.1 }, this.scene);
+      vent.position.set(2.2 - i * 2.4, 3.72, -2.3);
+      add(vent, root, false).material = m.dark;
+    }
+    for (let i = 0; i < 3; i++) {
+      const win = MeshBuilder.CreateBox(`factorywin_${i}`, { width: 0.95, height: 0.55, depth: 0.1 }, this.scene);
+      win.position.set(-2.1 + i * 2.1, 2.85, 2.72);
+      add(win, root, false).material = m.glass;
+    }
+    for (const side of [-1, 1]) {
+      const sideWin = MeshBuilder.CreateBox(`factoryside_${side}`, { width: 0.08, height: 0.5, depth: 1.6 }, this.scene);
+      sideWin.position.set(4.12 * side, 2.2, -0.9);
+      add(sideWin, root, false).material = m.glass;
+      const sideStripe = MeshBuilder.CreateBox(`factorystripe_${side}`, { width: 0.08, height: 0.22, depth: 3.6 }, this.scene);
+      sideStripe.position.set(4.12 * side, 1.5, -0.6);
+      add(sideStripe, root, false).material = m.accent;
+    }
+
+    const emblem = MeshBuilder.CreateBox('factoryemblem', { width: 2.0, height: 0.46, depth: 0.08 }, this.scene);
+    emblem.position.set(0, 3.85, -2.4);
+    add(emblem, root, false).material = m.glow;
+
+    for (let i = 0; i < 3; i++) {
+      const crate = MeshBuilder.CreateBox(`factorycrate_${i}`, { width: 0.9, height: 0.85, depth: 0.9 }, this.scene);
+      crate.position.set(4.1 + i * 0.2, 0.62, 2.6 - i * 1.1);
+      crate.rotation.y = i * 0.5;
+      add(crate, root, false).material = i === 1 ? m.rust : m.dark;
+    }
+
+    parts.height = 6.0;
+    return { root, parts, height: 6.0 };
   }
 
   // ---------------------------------------------------------------- BUILDING: TURRET

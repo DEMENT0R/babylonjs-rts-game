@@ -8,6 +8,7 @@ import {
   UPGRADES,
   UPGRADE_LINES,
   UPGRADE_LINE_KEYS,
+  UNIT_PRODUCTION,
   FACTIONS,
   MAP,
   MESSAGES,
@@ -1058,9 +1059,11 @@ export class Game {
     return n;
   }
 
-  primaryBarracks() {
-    const bs = this.selectedBuildings().filter((b) => b.type === 'barracks');
-    return bs[0] ?? null;
+  /** Первое выбранное здание, которое нанимает этот тип юнита. */
+  primaryProducer(type) {
+    const source = UNITS[type]?.from;
+    if (!source) return null;
+    return this.selectedBuildings().find((b) => b.type === source) ?? null;
   }
 
   primaryHQ() {
@@ -1156,9 +1159,9 @@ export class Game {
   }
 
   setRally(point) {
-    const barracks = this.selectedBuildings().filter((b) => b.type === 'barracks');
-    for (const b of barracks) b.setRally(point.x, point.z);
-    if (!barracks.length) {
+    const producers = this.selectedBuildings().filter((b) => UNIT_PRODUCTION[b.type]);
+    for (const b of producers) b.setRally(point.x, point.z);
+    if (!producers.length) {
       const hq = this.primaryHQ();
       if (hq) hq.setRally(point.x, point.z);
     }
@@ -1556,7 +1559,7 @@ export class Game {
     }
   }
 
-  trainUnit(type, building = this.primaryBarracks()) {
+  trainUnit(type, building = this.primaryProducer(type)) {
     const def = UNITS[type];
     if (!def) return false;
     if (!this.missionAllowsUnit(type)) {

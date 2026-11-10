@@ -10,7 +10,7 @@ import {
 } from './babylon.js';
 import {
   UNITS, BUILDINGS, UPGRADES, FACTIONS, MAP, MESSAGES, FIELD_SUPPORT, CONSTRUCTION, VISION,
-  VETERANCY, veteranRank,
+  VETERANCY, veteranRank, UNIT_PRODUCTION,
 } from './config.js';
 import { clamp, dist, turnTowards, damp, angleDiff } from './utils.js';
 import { segmentDistance } from './nav.js';
@@ -1288,7 +1288,7 @@ export class Building extends Entity {
     }
 
     this.rally = this.defaultRally();
-    if (type === 'barracks') this.ensureRallyVisual();
+    if (UNIT_PRODUCTION[type] && type !== 'hq') this.ensureRallyVisual();
     this.updateBar();
   }
 

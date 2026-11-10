@@ -10,9 +10,8 @@ import {
   UPGRADE_LINE_KEYS,
   BUILD_ORDER,
   BUILD_HOTKEYS,
-  TRAIN_ORDER,
+  UNIT_PRODUCTION,
   TRAIN_HOTKEYS,
-  HQ_TRAIN_ORDER,
   HQ_TRAIN_HOTKEYS,
   MESSAGES,
   MAP,
@@ -1527,7 +1526,7 @@ export class UI {
       const commands = BUILD_ORDER
         .map((type, i) => (game.missionAllowsBuilding(type) ? this.buildCommand(type, BUILD_HOTKEYS[i]) : null))
         .filter(Boolean);
-      HQ_TRAIN_ORDER.forEach((type, i) => {
+      (UNIT_PRODUCTION.hq ?? []).forEach((type, i) => {
         if (!game.missionAllowsUnit(type)) return;
         commands.push(this.trainCommand(type, b, HQ_TRAIN_HOTKEYS[i]));
       });
@@ -1535,11 +1534,12 @@ export class UI {
       return commands;
     }
 
-    if (b.type === 'barracks') {
-      // Найм идёт во все выбранные казармы, а не только в первую.
-      const barracks = buildings.filter((item) => item.type === 'barracks');
-      const commands = TRAIN_ORDER
-        .map((type, i) => (game.missionAllowsUnit(type) ? this.trainCommand(type, barracks, TRAIN_HOTKEYS[i]) : null))
+    const trainTypes = UNIT_PRODUCTION[b.type];
+    if (trainTypes?.length) {
+      // Найм идёт во все выбранные здания этого типа, а не только в первое.
+      const producers = buildings.filter((item) => item.type === b.type);
+      const commands = trainTypes
+        .map((type, i) => (game.missionAllowsUnit(type) ? this.trainCommand(type, producers, TRAIN_HOTKEYS[i]) : null))
         .filter(Boolean);
       if (repair) commands.push(repair);
       if (sell) commands.push(sell);
@@ -1615,7 +1615,7 @@ export class UI {
   trainCommand(type, buildings, hotkey) {
     const game = this.game;
     const def = UNITS[type];
-    const expected = type === 'engineer' ? 'hq' : 'barracks';
+    const expected = UNITS[type]?.from;
     const list = (Array.isArray(buildings) ? buildings : [buildings])
       .filter((b) => b && b.alive && b.type === expected);
     const supply = def.supply ?? 1;
@@ -1831,7 +1831,7 @@ export class UI {
         ${def.builder ? '<span><i>СТРОЙКА</i>до ×4</span>' : ''}
         ${support}
       </div>
-      <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.buildTime} с · ${def.from === 'barracks' ? 'казармы' : 'штаб'} · Shift+клик — ×5</span></div>
+      <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.buildTime} с · ${BUILDINGS[def.from]?.name?.toLowerCase() ?? 'штаб'} · Shift+клик — ×5</span></div>
     `;
   }
 
@@ -2140,9 +2140,9 @@ export class UI {
         </div>
         ${this.sideStatus()}
       </div>
-      ${b.type === 'barracks' || b.type === 'hq' || b.type === 'lab' ? queueHTML : ''}
+      ${UNIT_PRODUCTION[b.type] || b.type === 'lab' ? queueHTML : ''}
       ${buildHTML}
-      <div class="sel-foot"><span class="dot"></span> ${b.type === 'barracks'
+      <div class="sel-foot"><span class="dot"></span> ${UNIT_PRODUCTION[b.type] && b.type !== 'hq'
         ? 'ПКМ по земле — точка сбора · клик по очереди — отмена · R — ремонт'
         : b.type === 'hq'
           ? 'ПКМ по месторождению — быстрая нефтяная вышка · R — ремонт'
@@ -2204,7 +2204,7 @@ export class UI {
 
   renderQueue(b) {
     if (!b.queue.length) {
-      const emptyLabel = b.type === 'lab' ? 'ВЫБЕРИТЕ УЛУЧШЕНИЕ' : 'ГОТОВ К НАЙМУ';
+      const emptyLabel = b.def.research ? 'ВЫБЕРИТЕ УЛУЧШЕНИЕ' : 'ГОТОВ К НАЙМУ';
       return `<div class="queue queue--empty"><span>Очередь производства пуста</span><span>${b.complete ? emptyLabel : 'ИДЁТ СТРОЙКА'}</span></div>`;
     }
     const slots = [];

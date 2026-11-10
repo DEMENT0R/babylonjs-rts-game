@@ -12,9 +12,9 @@ const STORAGE_KEY = 'gelios7.missions.v1';
 // следующую ступень техники. Списки заданы целиком, а не «дельтой»: так
 // миссию можно прочитать и проверить без знания предыдущих.
 const BUILDINGS_EARLY = ['power', 'barracks'];
-const BUILDINGS_SUPPLY = ['power', 'barracks', 'derrick', 'turret', 'depot'];
-const BUILDINGS_TECH = ['power', 'barracks', 'derrick', 'turret', 'depot', 'lab'];
-const BUILDINGS_ALL = ['power', 'barracks', 'derrick', 'turret', 'depot', 'lab', 'wall'];
+const BUILDINGS_SUPPLY = ['power', 'barracks', 'factory', 'derrick', 'turret', 'depot'];
+const BUILDINGS_TECH = ['power', 'barracks', 'factory', 'derrick', 'turret', 'depot', 'lab'];
+const BUILDINGS_ALL = ['power', 'barracks', 'factory', 'derrick', 'turret', 'depot', 'lab', 'wall'];
 const UNITS_EARLY = ['engineer', 'marine'];
 const UNITS_ARMOR = ['engineer', 'marine', 'scout', 'tank'];
 const UNITS_TECH = ['engineer', 'marine', 'scout', 'tank', 'medic'];
@@ -230,7 +230,7 @@ export const TRIALS = [
     map: mapOf('diagonal', 'ochre'),
     difficulty: 'normal',
     ai: { firstWave: 150, waveInterval: 70, income: 1.05 },
-    buildings: ['power', 'barracks', 'derrick', 'turret', 'depot'],
+    buildings: ['power', 'barracks', 'factory', 'derrick', 'turret', 'depot'],
     units: UNITS_ARMOR,
     briefing: [
       'Техцентра нет, танки и скауты есть. Захватите шесть месторождений: каждая вышка — это и доход, и цель для противника.',
@@ -308,7 +308,7 @@ export const TRIALS = [
     map: mapOf('rot180', 'ash'),
     difficulty: 'normal',
     ai: { firstWave: 210, waveInterval: 80, income: 1.05 },
-    buildings: ['power', 'barracks', 'turret', 'depot'],
+    buildings: ['power', 'barracks', 'factory', 'turret', 'depot'],
     units: UNITS_ARMOR,
     briefing: [
       'Новые вышки строить нельзя. Всё, что приносит кредиты, — стартовое месторождение. Успеете собрать армию до того, как противник задавит экономикой.',

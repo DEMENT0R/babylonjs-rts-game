@@ -1,7 +1,7 @@
 // Простой противник: экономика, инженеры, застройка, ремонт и волны атак.
 
 import { Vector3 } from './babylon.js';
-import { AI, AI_DIFFICULTY, BUILDINGS, MAP, UNITS, UPGRADES } from './config.js';
+import { AI, AI_DIFFICULTY, BUILDINGS, MAP, UNITS, UPGRADES, UNIT_PRODUCTION } from './config.js';
 import { clamp, dist, distToSegment, shuffle, TAU } from './utils.js';
 
 export class AIController {
@@ -480,6 +480,9 @@ export class AIController {
     const barracks = game.buildings.filter(
       (b) => b.alive && b.faction === 'enemy' && b.type === 'barracks' && b.complete,
     ).length;
+    const factory = game.buildings.filter(
+      (b) => b.alive && b.faction === 'enemy' && b.type === 'factory' && b.complete,
+    ).length;
     const lab = game.buildings.filter(
       (b) => b.alive && b.faction === 'enemy' && b.type === 'lab' && b.complete,
     ).length;
@@ -529,7 +532,10 @@ export class AIController {
     else if (powerMargin < AI.powerReserve) type = 'power';
     // Разведанное месторождение — приоритет: вышка дешёвая и сразу платит.
     else if (freePatch && this.credits > BUILDINGS.derrick.cost + 60) type = 'derrick';
-    else if (needDepot && plannedCap + depotStep <= this.rules.armyCap
+    else if (factory === 0 && this.credits > BUILDINGS.factory.cost + 40) {
+      // Техника требует отдельного завода: без него армия остаётся пехотной.
+      type = 'factory';
+    } else if (needDepot && plannedCap + depotStep <= this.rules.armyCap
       && depots + depotSites < this.rules.depotCap && this.credits > BUILDINGS.depot.cost + 30) {
       type = 'depot';
     } else if (turrets === 0 && game.elapsed > 130) {
@@ -548,7 +554,7 @@ export class AIController {
     }
     else if (game.elapsed > 240 && buildings < 20 && this.credits > 520) {
       const roll = Math.random();
-      type = roll < 0.4 ? 'power' : roll < 0.7 ? 'barracks' : roll < 0.85 ? 'depot' : 'turret';
+      type = roll < 0.35 ? 'power' : roll < 0.55 ? 'barracks' : roll < 0.7 ? 'factory' : roll < 0.85 ? 'depot' : 'turret';
     }
 
     // Смена цели начинает отсчёт ожидания заново: иначе пауза в найме
@@ -978,23 +984,16 @@ export class AIController {
   }
 
   // ------------------------------------------------------------- армия
-  /** Есть ли готовые казармы: без них армию нечем пополнять. */
-  hasBarracks() {
-    return this.game.buildings.some(
-      (b) => b.alive && b.faction === 'enemy' && b.type === 'barracks' && b.complete,
-    );
-  }
-
   /**
-   * Голодает ли экономика. Пока казармы простаивают из-за нехватки кредитов
-   * на самого дешёвого бойца, копим силы у базы. Короткая пауза между
-   * наймом юнитов голодом не считается: важно именно затянувшееся безденежье.
+   * Голодает ли экономика. Пока производство простаивает из-за нехватки
+   * кредитов на самого дешёвого бойца, копим силы у базы. Короткая пауза
+   * между наймом юнитов голодом не считается: важно затянувшееся безденежье.
    */
   updateEconomy(dt) {
     const game = this.game;
     const used = game.getArmyUsed('enemy') + game.getQueuedSupply('enemy');
     const cap = Math.min(this.rules.armyCap, game.getArmyCap('enemy'));
-    const stalled = this.hasBarracks()
+    const stalled = this.hasProduction()
       && used < cap
       && this.credits < AI.economyCredits;
     if (stalled) this.starvedTime += dt;
@@ -1013,7 +1012,7 @@ export class AIController {
    */
   isUrgentBuild(type) {
     if (!type) return false;
-    if (type === 'barracks') return true;
+    if (type === 'barracks' || type === 'factory') return true;
     if (type === 'power') {
       const power = this.game.power.enemy;
       return power.used >= power.produced;
@@ -1035,24 +1034,45 @@ export class AIController {
     ));
   }
 
+  /** Производственные здания противника с пустой очередью. */
+  productionBuildings() {
+    return this.game.buildings.filter((b) => (
+      b.alive
+      && b.faction === 'enemy'
+      && b.complete
+      && b.queue.length === 0
+      && UNIT_PRODUCTION[b.type]?.length
+    ));
+  }
+
+  /** Есть ли куда нанимать: хотя бы одно производственное здание готово. */
+  hasProduction() {
+    return this.productionBuildings().length > 0;
+  }
+
+  /** Может ли ИИ прямо сейчас заказать юнит: здание есть, исследование изучено. */
+  canTrain(type) {
+    const def = UNITS[type];
+    if (!def) return false;
+    if (def.requires && !this.game.upgrades.enemy?.has(def.requires)) return false;
+    return this.productionBuildings().some((b) => b.type === def.from);
+  }
+
   tryTrain() {
     const game = this.game;
     const used = game.getArmyUsed('enemy') + game.getQueuedSupply('enemy');
     const cap = Math.min(this.rules.armyCap, game.getArmyCap('enemy'));
     if (used >= cap) return;
-    const barracks = game.buildings.filter(
-      (b) => b.alive && b.faction === 'enemy' && b.type === 'barracks'
-        && b.complete && b.queue.length === 0,
-    );
-    if (!barracks.length) return;
+    const producers = this.productionBuildings();
+    if (!producers.length) return;
 
     const t = game.elapsed;
     // Игрок ушёл в оборону: против турелей нужен осадный ответ, а не ещё
     // одна волна пехоты под огонь. РСЗО заказывается вне случайного выбора,
     // иначе осадного звена можно не дождаться всю партию.
     const siegeNeeded = t > AI.siegeArtilleryFrom ? this.siegeArtilleryNeeded() : 0;
-    let type;
-    if (siegeNeeded > this.artilleryCount()) {
+    let type = null;
+    if (siegeNeeded > this.artilleryCount() && this.canTrain('artillery')) {
       type = 'artillery';
     } else {
       // Случайный, но осмысленный состав: чем агрессивнее партия, тем охотнее
@@ -1071,24 +1091,32 @@ export class AIController {
           if (item.type === 'artillery' && t > 120) item.weight = Math.max(item.weight, 0.7);
         }
       }
-      const total = weights.reduce((sum, item) => sum + item.weight, 0);
+      // Закрытые исследованием юниты не участвуют в жребии, иначе ИИ
+      // выбирал бы недоступную технику и простаивал.
+      const allowed = weights.filter((item) => item.weight > 0 && this.canTrain(item.type));
+      const total = allowed.reduce((sum, item) => sum + item.weight, 0);
+      if (total <= 0) return;
       let roll = Math.random() * total;
-      type = 'marine';
-      for (const item of weights) {
+      for (const item of allowed) {
         roll -= item.weight;
-        if (roll <= 0 && item.weight > 0) {
+        if (roll <= 0) {
           type = item.type;
           break;
         }
       }
+      type ??= allowed[allowed.length - 1]?.type ?? null;
+      if (!type) return;
     }
 
     let def = UNITS[type];
     // Если под выбранную машину не хватает лимита, противник добирает пехоту.
     if (used + (def.supply ?? 1) > cap) {
-      type = 'marine';
-      def = UNITS.marine;
-      if (used + def.supply > cap) return;
+      const fallback = ['marine', 'medic', 'scout', 'tank'].find((key) => (
+        this.canTrain(key) && used + (UNITS[key].supply ?? 1) <= cap
+      ));
+      if (!fallback) return;
+      type = fallback;
+      def = UNITS[type];
     }
     if (this.credits < def.cost + 40) return;
     // Пока копим на стройку, армия ждёт, но не дольше лимита: иначе найм
@@ -1101,14 +1129,16 @@ export class AIController {
       if (this.saveTime < patience) return;
     }
     if (game.powerFactor('enemy') < 0.9 && Math.random() < 0.35) return;
+    const candidates = producers.filter((b) => b.type === def.from);
+    if (!candidates.length) return;
     this.credits -= def.cost;
-    const builder = barracks[Math.floor(Math.random() * barracks.length)];
+    const builder = candidates[Math.floor(Math.random() * candidates.length)];
     builder.enqueue(type);
     this.saveTime = 0;
     this.trainTimer = 3.5 + Math.random() * 2.5;
   }
 
-  /** Сколько РСЗО уже есть в армии или заказано в казармах. */
+  /** Сколько РСЗО уже есть в армии или заказано в производстве. */
   artilleryCount() {
     let count = 0;
     for (const u of this.game.units) {
@@ -2171,10 +2201,10 @@ export class AIController {
       return;
     }
 
-    // Без казарм армию не пополнить: сначала производство, потом наступление.
-    if (!this.hasBarracks()) {
+    // Без производственных зданий армию не пополнить: сначала стройка, потом наступление.
+    if (!this.hasProduction()) {
       this.waveTimer = AI.regroupDelay * (0.8 + Math.random() * 0.6);
-      this.debugLog('волна отложена: нет готовых казарм');
+      this.debugLog('волна отложена: нет готового производства');
       return;
     }
 

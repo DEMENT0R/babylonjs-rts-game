@@ -234,11 +234,11 @@ export const CONSTRUCTION = {
 };
 
 // order — порядок кнопок в командной панели.
-export const BUILD_ORDER = ['power', 'barracks', 'derrick', 'lab', 'turret', 'depot', 'wall'];
-export const BUILD_HOTKEYS = ['Z', 'X', 'C', 'V', 'B', 'N', 'M'];
-export const TRAIN_ORDER = ['marine', 'scout', 'tank', 'artillery', 'medic'];
-export const TRAIN_HOTKEYS = ['Z', 'X', 'C', 'V', 'B'];
-export const HQ_TRAIN_ORDER = ['engineer'];
+export const BUILD_ORDER = ['power', 'barracks', 'factory', 'derrick', 'lab', 'turret', 'depot', 'wall'];
+export const BUILD_HOTKEYS = ['Z', 'X', 'C', 'V', 'B', 'N', 'M', ','];
+// Найм внутри одного производственного здания: клавиши выдаются по порядку.
+export const TRAIN_HOTKEYS = ['Z', 'X', 'C', 'V', 'B', 'N', 'M'];
+// Инженер нанимается в штабе, где те же клавиши заняты стройкой.
 export const HQ_TRAIN_HOTKEYS = ['G'];
 
 // Поддержка в поле: медики лечат пехоту, инженеры ремонтируют технику.
@@ -599,7 +599,7 @@ export const UNITS = {
     height: 2,
     projectile: null,
     muzzleHeight: 1.1,
-    from: 'barracks',
+    from: 'factory',
     vehicle: true,
     casing: 0.1,
   },
@@ -624,7 +624,7 @@ export const UNITS = {
     height: 3,
     projectile: 'shell',
     muzzleHeight: 2.1,
-    from: 'barracks',
+    from: 'factory',
     vehicle: true,
     casing: 0.24,
   },
@@ -655,7 +655,7 @@ export const UNITS = {
     height: 3.4,
     projectile: 'rocket',
     muzzleHeight: 2.1,
-    from: 'barracks',
+    from: 'factory',
     vehicle: true,
   },
   medic: {
@@ -683,6 +683,13 @@ export const UNITS = {
     infantry: true,
   },
 };
+
+// Какие юниты нанимает каждое здание: единственный источник правды для
+// панелей найма, подсказок и ИИ. Порядок юнитов в UNITS задаёт горячие клавиши.
+export const UNIT_PRODUCTION = {};
+for (const [key, def] of Object.entries(UNITS)) {
+  (UNIT_PRODUCTION[def.from] ??= []).push(key);
+}
 
 export const BUILDINGS = {
   hq: {
@@ -723,13 +730,29 @@ export const BUILDINGS = {
     name: 'Казармы',
     role: 'ВОЕННЫЙ ОБЪЕКТ',
     icon: 'barracks',
-    desc: 'Нанимает пехоту, скаутов и танки. Потребляет 5 энергии.',
+    desc: 'Нанимает пехотинцев и медиков. Потребляет 5 энергии.',
     cost: 160,
     buildTime: 20,
     hp: 900,
     armor: 3,
     radius: 3.6,
     height: 5.6,
+    powerProduce: 0,
+    powerUse: 5,
+    from: 'hq',
+  },
+  factory: {
+    key: 'factory',
+    name: 'Завод техники',
+    role: 'ВОЕННЫЙ ОБЪЕКТ',
+    icon: 'factory',
+    desc: 'Собирает скаутов, танки и РСЗО. Потребляет 5 энергии.',
+    cost: 190,
+    buildTime: 22,
+    hp: 950,
+    armor: 3,
+    radius: 4.0,
+    height: 6.0,
     powerProduce: 0,
     powerUse: 5,
     from: 'hq',
