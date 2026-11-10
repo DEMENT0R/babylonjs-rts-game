@@ -1109,7 +1109,13 @@ export class AIController {
     const game = this.game;
     const used = game.getArmyUsed('enemy') + game.getQueuedSupply('enemy');
     const cap = Math.min(this.rules.armyCap, game.getArmyCap('enemy'));
-    if (used >= cap) return;
+    if (used >= cap) {
+      // Полный лимит не блокирует первую РСЗО: иначе она не появится никогда.
+      const wantsFirstArtillery = game.elapsed > 240
+        && this.artilleryCount() === 0
+        && this.canTrain('artillery');
+      if (!wantsFirstArtillery) return;
+    }
     const producers = this.productionBuildings();
     if (!producers.length) return;
 
@@ -1161,16 +1167,18 @@ export class AIController {
 
     let def = UNITS[type];
     // Если под выбранную машину не хватает лимита, противник добирает пехоту.
-    // Исключение — первая РСЗО: под неё лимит копится, иначе дешёвые юниты
-    // занимают все места и артиллерия не появляется никогда.
+    // Первая РСЗО — исключение: она заказывается даже при полном лимите,
+    // иначе дешёвые юниты занимают все места и артиллерия не появляется.
     if (used + (def.supply ?? 1) > cap) {
-      if (type === 'artillery') return;
-      const fallback = ['marine', 'medic', 'scout', 'tank'].find((key) => (
-        this.canTrain(key) && used + (UNITS[key].supply ?? 1) <= cap
-      ));
-      if (!fallback) return;
-      type = fallback;
-      def = UNITS[type];
+      const firstArtillery = type === 'artillery' && this.artilleryCount() === 0;
+      if (!firstArtillery) {
+        const fallback = ['marine', 'medic', 'scout', 'tank'].find((key) => (
+          this.canTrain(key) && used + (UNITS[key].supply ?? 1) <= cap
+        ));
+        if (!fallback) return;
+        type = fallback;
+        def = UNITS[type];
+      }
     }
     if (this.credits < def.cost + 40) return;
     // Пока копим на стройку, армия ждёт, но не дольше лимита: иначе найм
