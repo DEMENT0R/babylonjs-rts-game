@@ -61,6 +61,11 @@ export class UI {
     this.selectionAcc = 0;
     this.lastSignature = '';
     this.lastGroupClick = null;
+    // Удержание слота отряда на сенсорном экране запоминает выделение.
+    this.groupHold = null;
+    // Клик после удержания не должен вызывать отряд: храним момент, до
+    // которого клики по рейке игнорируются.
+    this.groupHoldGuard = 0;
     this.tooltipVisible = false;
     this.overlayOpen = true;
     this.overlayBack = null;
@@ -252,9 +257,58 @@ export class UI {
         if (b) b.cancelConstruction(true);
       }
     });
-    this.el.squadRail?.addEventListener('click', (e) => {
+    const rail = this.el.squadRail;
+    const GROUP_HOLD_MS = 450;
+    const cancelGroupHold = () => {
+      const hold = this.groupHold;
+      if (!hold) return;
+      clearTimeout(hold.timer);
+      hold.btn.classList.remove('is-pressing');
+      this.groupHold = null;
+    };
+    rail?.addEventListener('contextmenu', (e) => e.preventDefault());
+    rail?.addEventListener('pointerdown', (e) => {
+      // Удержание — сенсорный жест. На мыши слоты работают как раньше,
+      // без случайного перезапоминания отряда.
+      if (e.pointerType === 'mouse') return;
       const btn = e.target.closest('[data-group]');
       if (!btn) return;
+      cancelGroupHold();
+      const hold = {
+        index: Number(btn.dataset.group),
+        x: e.clientX,
+        y: e.clientY,
+        pointerId: e.pointerId,
+        btn,
+        timer: 0,
+      };
+      hold.timer = setTimeout(() => {
+        if (this.groupHold !== hold) return;
+        this.groupHold = null;
+        btn.classList.remove('is-pressing');
+        // Тот же палец оставит после себя click: гасим его, иначе отряд
+        // тут же выделится вместо запоминания.
+        this.groupHoldGuard = performance.now() + 700;
+        this.game.assignGroup(hold.index);
+      }, GROUP_HOLD_MS);
+      this.groupHold = hold;
+      btn.classList.add('is-pressing');
+      try { btn.setPointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
+    });
+    rail?.addEventListener('pointermove', (e) => {
+      const hold = this.groupHold;
+      if (!hold || hold.pointerId !== e.pointerId) return;
+      if (Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 12) cancelGroupHold();
+    });
+    rail?.addEventListener('pointerup', cancelGroupHold);
+    rail?.addEventListener('pointercancel', cancelGroupHold);
+    rail?.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-group]');
+      if (!btn) return;
+      if (performance.now() < this.groupHoldGuard) {
+        this.groupHoldGuard = 0;
+        return;
+      }
       const index = Number(btn.dataset.group);
       const now = performance.now();
       const previous = this.lastGroupClick;
@@ -1261,7 +1315,7 @@ export class UI {
           <div><kbd>Esc</kbd><span>пауза / меню</span></div>
           <div><kbd>ЛКМ</kbd><span>по миникарте — камера</span></div>
         </div>
-        <p class="touch-hint">На сенсорном экране: тап — выбрать или отдать приказ, двойной тап по юниту — выделить всех таких на экране, один палец — панорама, два пальца — рамка выбора, щипок — зум. Кнопки справа — камера и отмена режима.</p>
+        <p class="touch-hint">На сенсорном экране: тап — выбрать или отдать приказ, двойной тап по юниту — выделить всех таких на экране, один палец — панорама, два пальца — рамка выбора, щипок — зум. Кнопки справа — камера и отмена режима. Удержание слота отряда — запомнить текущее выделение, тап по нему — вызвать отряд, двойной тап — навести камеру.</p>
       </div>
       <div class="overlay-actions">
         <button class="btn-primary" data-action="back">НАЗАД <span>→</span></button>
@@ -1948,16 +2002,38 @@ export class UI {
       });
     }
     entries.sort((a, b) => a.index - b.index);
-    rail.innerHTML = entries.map(({ index, entities, def, types, active }) => `
+    // На сенсорном экране физической клавиатуры нет: показываем все девять
+    // слотов, чтобы удержанием любого из них можно было запомнить выделение.
+    const showEmpty = document.body.classList.contains('is-touch') || this.game.input?.isTouch;
+    if (showEmpty) {
+      const used = new Set(entries.map((entry) => entry.index));
+      for (let index = 1; index <= 9; index++) {
+        if (used.has(index)) continue;
+        entries.push({ index, entities: [], def: null, types: '', active: false });
+      }
+      entries.sort((a, b) => a.index - b.index);
+    }
+    rail.innerHTML = entries.map(({ index, entities, def, types, active }) => {
+      if (!entities.length) {
+        return `
+      <button type="button" class="squad-slot is-empty"
+        data-group="${index}"
+        title="Отряд ${index}: пусто. Удерживайте, чтобы запомнить выделение."
+        aria-label="Отряд ${index}: пусто">
+        <span class="squad-key">${index}</span>
+        <span class="squad-plus">+</span>
+      </button>`;
+      }
+      return `
       <button type="button" class="squad-slot${active ? ' is-active' : ''}"
         data-group="${index}"
-        title="Отряд ${index}: ${esc(types)}. Нажмите, чтобы выделить; двойное нажатие — камера."
+        title="Отряд ${index}: ${esc(types)}. Нажмите, чтобы выделить; двойное нажатие — камера; удержание — запомнить выделение."
         aria-label="Отряд ${index}: ${esc(types)}">
         <span class="squad-key">${index}</span>
         ${icon(def?.icon ?? 'army')}
         <span class="squad-count">×${entities.length}</span>
-      </button>
-    `).join('');
+      </button>`;
+    }).join('');
     document.body.classList.toggle('has-groups', entries.length > 0);
     document.body.style.setProperty(
       '--squad-rail-width',
