@@ -603,8 +603,9 @@ export class Input {
   handleEntityTap(entity, additive, clientX, clientY) {
     const now = performance.now();
     const previous = this.lastTap;
-    const isDouble = entity.isUnit
-      && previous.time > 0
+    // Двойной клик работает и по юнитам, и по постройкам: так удобно
+    // выделить все казармы или заводы на экране и раздать наём.
+    const isDouble = previous.time > 0
       && now - previous.time < DOUBLE_TAP_MS
       && previous.type === entity.type
       && Math.hypot(clientX - previous.x, clientY - previous.y) < DOUBLE_TAP_DIST;
@@ -692,10 +693,14 @@ export class Input {
   }
 
   selectSameTypeOnScreen(entity) {
-    const units = this.game.playerUnits().filter((u) => u.type === entity.type);
+    const same = [
+      ...this.game.playerUnits(),
+      ...this.game.playerBuildings(),
+    ].filter((e) => e.type === entity.type);
     const rect = this.canvas.getBoundingClientRect();
-    const selected = units.filter((u) => {
-      const p = this.project(u.position.x, 1, u.position.z);
+    const selected = same.filter((e) => {
+      const height = e.isBuilding ? e.def.height * 0.5 : 1;
+      const p = this.project(e.position.x, height, e.position.z);
       return p.x >= rect.left && p.x <= rect.right && p.y >= rect.top && p.y <= rect.bottom;
     });
     if (selected.length) this.game.selectOnly(selected);

@@ -944,16 +944,16 @@ export class Game {
   }
 
   // ------------------------------------------------------------- control groups
-  /** Запомнить выделенных юнитов за цифрой 1…9. */
+  /** Запомнить выделенных юнитов и постройки за цифрой 1…9. */
   assignGroup(index) {
-    const units = this.selectedUnits();
-    if (!units.length) {
-      this.notify('Сначала выберите юнитов для отряда.', 'warn', 'group-empty', 0, 3);
+    const entities = this.selectedEntities();
+    if (!entities.length) {
+      this.notify('Сначала выберите юнитов или постройки для отряда.', 'warn', 'group-empty', 0, 3);
       return false;
     }
-    this.groups.set(index, new Set(units));
+    this.groups.set(index, new Set(entities));
     this.notify(
-      `Отряд ${index}: ${units.length} ${plural(units.length, 'юнит', 'юнита', 'юнитов')}.`,
+      `Отряд ${index}: ${entities.length} ${plural(entities.length, 'объект', 'объекта', 'объектов')}.`,
       'info',
       `group-set-${index}`,
       0,
@@ -963,12 +963,12 @@ export class Game {
     return true;
   }
 
-  /** Живые юниты отряда; погибшие вычищаются по пути. */
-  groupUnits(index) {
+  /** Живые объекты отряда; погибшие и уничтоженные вычищаются по пути. */
+  groupEntities(index) {
     const group = this.groups.get(index);
     if (!group) return [];
-    for (const unit of group) {
-      if (!unit.alive || unit.faction !== 'player') group.delete(unit);
+    for (const entity of group) {
+      if (!entity.alive || entity.faction !== 'player') group.delete(entity);
     }
     if (!group.size) {
       this.groups.delete(index);
@@ -978,20 +978,20 @@ export class Game {
     return [...group];
   }
 
-  /** Вызвать отряд: выделить всех его живых юнитов. */
+  /** Вызвать отряд: выделить все его живые юниты и постройки. */
   recallGroup(index) {
-    const units = this.groupUnits(index);
-    if (!units.length) return false;
-    this.selectOnly(units);
+    const entities = this.groupEntities(index);
+    if (!entities.length) return false;
+    this.selectOnly(entities);
     return true;
   }
 
   /** Навести камеру на центр отряда. */
   focusGroup(index) {
-    const units = this.groupUnits(index);
-    if (!units.length) return false;
-    const cx = units.reduce((sum, u) => sum + u.position.x, 0) / units.length;
-    const cz = units.reduce((sum, u) => sum + u.position.z, 0) / units.length;
+    const entities = this.groupEntities(index);
+    if (!entities.length) return false;
+    const cx = entities.reduce((sum, e) => sum + e.position.x, 0) / entities.length;
+    const cz = entities.reduce((sum, e) => sum + e.position.z, 0) / entities.length;
     this.input?.focusOn(cx, cz);
     return true;
   }
@@ -1005,6 +1005,10 @@ export class Game {
       if (!group.size) this.groups.delete(index);
     }
     if (changed) this.ui?.onGroupsChanged?.();
+  }
+
+  selectedEntities() {
+    return [...this.selected].filter((e) => e.alive && e.faction === 'player');
   }
 
   selectedUnits() {

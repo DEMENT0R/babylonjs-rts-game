@@ -1925,34 +1925,37 @@ export class UI {
   renderGroups() {
     const rail = this.el.squadRail;
     if (!rail) return;
-    const selected = new Set(this.game.selectedUnits());
+    const selected = new Set(this.game.selectedEntities());
     const entries = [];
     for (const [index, group] of this.game.groups) {
-      const units = [...group].filter((u) => u.alive);
-      if (!units.length) continue;
+      const entities = [...group].filter((e) => e.alive && e.faction === 'player');
+      if (!entities.length) continue;
       const counts = new Map();
-      for (const u of units) counts.set(u.type, (counts.get(u.type) ?? 0) + 1);
+      for (const e of entities) counts.set(e.type, (counts.get(e.type) ?? 0) + 1);
       const dominant = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+      const defOf = (type) => (
+        entities.some((e) => e.type === type && e.isBuilding) ? BUILDINGS[type] : UNITS[type]
+      );
       const types = [...counts.entries()]
-        .map(([type, n]) => `${UNITS[type].name} ×${n}`)
+        .map(([type, n]) => `${defOf(type)?.name ?? type} ×${n}`)
         .join(', ');
       entries.push({
         index,
-        units,
-        dominant,
+        entities,
+        def: defOf(dominant),
         types,
-        active: units.every((u) => selected.has(u)),
+        active: entities.every((e) => selected.has(e)),
       });
     }
     entries.sort((a, b) => a.index - b.index);
-    rail.innerHTML = entries.map(({ index, units, dominant, types, active }) => `
+    rail.innerHTML = entries.map(({ index, entities, def, types, active }) => `
       <button type="button" class="squad-slot${active ? ' is-active' : ''}"
         data-group="${index}"
         title="Отряд ${index}: ${esc(types)}. Нажмите, чтобы выделить; двойное нажатие — камера."
         aria-label="Отряд ${index}: ${esc(types)}">
         <span class="squad-key">${index}</span>
-        ${icon(UNITS[dominant].icon)}
-        <span class="squad-count">×${units.length}</span>
+        ${icon(def?.icon ?? 'army')}
+        <span class="squad-count">×${entities.length}</span>
       </button>
     `).join('');
     document.body.classList.toggle('has-groups', entries.length > 0);
