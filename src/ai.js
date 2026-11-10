@@ -1118,8 +1118,12 @@ export class AIController {
     // одна волна пехоты под огонь. РСЗО заказывается вне случайного выбора,
     // иначе осадного звена можно не дождаться всю партию.
     const siegeNeeded = t > AI.siegeArtilleryFrom ? this.siegeArtilleryNeeded() : 0;
+    // Хотя бы одна РСЗО нужна и без осадной цели: иначе ИИ изучает ракетную
+    // платформу, но за всю партию не выпускает ни одной установки.
+    const artilleryNeeded = siegeNeeded > this.artilleryCount()
+      || (t > 240 && this.artilleryCount() === 0);
     let type = null;
-    if (siegeNeeded > this.artilleryCount() && this.canTrain('artillery')) {
+    if (artilleryNeeded && this.canTrain('artillery')) {
       type = 'artillery';
     } else {
       // Случайный, но осмысленный состав: чем агрессивнее партия, тем охотнее
