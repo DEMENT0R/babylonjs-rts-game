@@ -1493,6 +1493,51 @@ body.mode-patrol #scene {
   pointer-events: none;
 }
 
+/* Виртуальный прицел геймпада. Скрыт, пока игрок пользуется мышью. */
+#gamepadCursor {
+  position: fixed;
+  z-index: 79;
+  left: 50%;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  display: none;
+  pointer-events: none;
+  filter: drop-shadow(0 0 6px rgba(79, 210, 255, 0.55));
+}
+
+#gamepadCursor.is-visible {
+  display: block;
+}
+
+#gamepadCursor::before,
+#gamepadCursor::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(79, 210, 255, 0.9);
+  transform: rotate(45deg);
+}
+
+#gamepadCursor::after {
+  inset: 10px;
+  background: #bdf3ff;
+  border: 0;
+  box-shadow: 0 0 10px rgba(79, 210, 255, 0.9);
+}
+
+#gamepadCursor.is-over::before {
+  border-color: #eaffff;
+  box-shadow: 0 0 14px rgba(79, 210, 255, 0.8);
+}
+
+body.using-gamepad .is-gamepad-focus {
+  outline: 2px solid #8fe9ff;
+  outline-offset: 2px;
+  box-shadow: 0 0 22px rgba(79, 210, 255, 0.35);
+}
+
 #pauseBadge {
   display: none;
 }

@@ -17,6 +17,7 @@ import { Effects } from './effects.js';
 import { Game } from './game.js';
 import { UI } from './ui.js';
 import { Input } from './input.js';
+import { GamepadInput } from './gamepad.js';
 import { AttractMode } from './attract.js';
 import { GraphicsSettings, AudioSettings, DifficultySettings, FogSettings } from './settings.js';
 import { AudioEngine } from './audio.js';
@@ -169,6 +170,8 @@ function boot() {
   });
   const ui = new UI(game);
   const input = new Input(game);
+  const gamepad = new GamepadInput(input);
+  input.gamepad = gamepad;
 
   // Пока партия не началась, за меню идёт демонстрационный бой: его ведёт
   // отдельный режим, а обычная симуляция остаётся выключенной.
@@ -188,6 +191,8 @@ function boot() {
     const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
     last = now;
 
+    // Геймпад работает и в меню: стики не должны ждать начала партии.
+    gamepad.update(dt);
     // Витрина сама останавливается, когда начинается настоящая партия.
     attract.update(dt);
     if (game.started && !game.paused && !game.over) game.update(dt);
@@ -203,7 +208,7 @@ function boot() {
 
   // Отладочные инструменты доступны только с ?debug и не мешают обычной игре.
   if (new URLSearchParams(window.location.search).has('debug')) {
-    window.__GAME__ = { engine, scene, camera, game, ui, input, world, map, fx, factory, graphics, audio, audioSettings, difficultySettings, fogSettings, attract };
+    window.__GAME__ = { engine, scene, camera, game, ui, input, gamepad, world, map, fx, factory, graphics, audio, audioSettings, difficultySettings, fogSettings, attract };
     window.game = game;
     window.__ATTRACT__ = attract;
     window.__MAP__ = map;

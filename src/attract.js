@@ -78,6 +78,7 @@ export class AttractMode {
     window.addEventListener('pointerdown', this.onActivity, { passive: true });
     window.addEventListener('keydown', this.onActivity);
     window.addEventListener('wheel', this.onActivity, { passive: true });
+    window.addEventListener('gamepadactivity', this.onActivity);
     return true;
   }
 
@@ -98,6 +99,7 @@ export class AttractMode {
     window.removeEventListener('pointerdown', this.onActivity);
     window.removeEventListener('keydown', this.onActivity);
     window.removeEventListener('wheel', this.onActivity);
+    window.removeEventListener('gamepadactivity', this.onActivity);
   }
 
   update(dt) {
