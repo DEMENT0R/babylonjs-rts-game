@@ -196,6 +196,7 @@ export class UI {
       else if (action === 'help') this.openHelp();
       else if (action === 'changelog') this.openChangelog();
       else if (action === 'back') this.backFromOverlay();
+      else if (action === 'close') this.closeOverlay();
     });
     this.el.overlay.addEventListener('input', (e) => {
       if (e.target.closest('[data-seed-input]')) {
@@ -1375,6 +1376,16 @@ export class UI {
     else this.resume();
   }
 
+  /** Крестик закрывает вложенный экран назад, а паузу — обратно в бой. */
+  closeOverlay() {
+    document.activeElement?.blur?.();
+    if (this.overlayBack) {
+      this.backFromOverlay();
+      return;
+    }
+    if (this.game.started && !this.game.over) this.resume();
+  }
+
   showChangelog() {
     const releases = CHANGELOG.map((release) => {
       const sections = release.sections.map((section) => `
@@ -1420,8 +1431,12 @@ export class UI {
   }
 
   setOverlay(html, variant) {
+    const closable = Boolean(this.overlayBack) || (this.game.started && !this.game.over);
+    const close = closable
+      ? '<button type="button" class="overlay-close" data-action="close" aria-label="Закрыть" title="Закрыть (Esc)">✕</button>'
+      : '';
     this.el.overlayCard.className = `overlay-card ${variant ?? ''}`;
-    this.el.overlayCard.innerHTML = html;
+    this.el.overlayCard.innerHTML = `${close}${html}`;
     this.el.overlay.className = `overlay is-open ${variant ?? ''}`;
     this.overlayOpen = true;
     document.body.classList.add('overlay-open');
