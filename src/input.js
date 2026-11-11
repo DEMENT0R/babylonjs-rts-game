@@ -233,10 +233,15 @@ export class Input {
     try { this.canvas.releasePointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
   }
 
+  /** Shift ускоряет перемещение камеры. */
+  cameraBoost() {
+    return this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? 2.5 : 1;
+  }
+
   /** Сдвиг камеры вслед за пальцем или зажатой средней кнопкой мыши. */
   panCamera(dx, dy) {
     const { forward, right } = this.cameraBasis();
-    const k = this.camera.radius * 0.0018;
+    const k = this.camera.radius * 0.0018 * this.cameraBoost();
     this.desired.target.x += (-right.x * dx + forward.x * dy) * k;
     this.desired.target.z += (-right.z * dx + forward.z * dy) * k;
     this.clampTarget();
@@ -949,7 +954,7 @@ export class Input {
     if (k.has('KeyA') || k.has('ArrowLeft')) mx -= 1;
     if (mx || mz) {
       const { forward, right } = this.cameraBasis();
-      const speed = panSpeed * dt;
+      const speed = panSpeed * this.cameraBoost() * dt;
       this.desired.target.x += (forward.x * mz + right.x * mx) * speed;
       this.desired.target.z += (forward.z * mz + right.z * mx) * speed;
       this.clampTarget();
