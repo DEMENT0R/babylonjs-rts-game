@@ -2632,6 +2632,28 @@ body.using-gamepad .is-gamepad-focus {
   font-size: 7.5px;
 }
 
+.overlay--help .controls-grid > div {
+  align-items: flex-start;
+}
+
+.overlay--help .controls-grid span {
+  white-space: normal;
+  overflow: visible;
+}
+
+.help-touch-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.help-note {
+  margin: 10px 0 0;
+  padding-left: 10px;
+  border-left: 1px solid rgba(79, 210, 255, 0.45);
+  font-size: 8px;
+  line-height: 1.55;
+  color: var(--dim);
+}
+
 /* Журнал изменений */
 .overlay--changelog .overlay-card {
   width: min(760px, 94vw);

@@ -1294,7 +1294,7 @@ export class UI {
         <p class="tagline">Камера, приказы и быстрые команды. Пауза не блокирует управление — меню можно открыть в любой момент.</p>
       </div>
       <div class="controls-block help-controls">
-        <div class="controls-title">КЛАВИАТУРА И МЫШЬ</div>
+        <div class="controls-title">КЛАВИАТУРА И МЫШЬ <span>ПК</span></div>
         <div class="controls-grid">
           <div><kbd>ЛКМ</kbd><span>выбор, рамка</span></div>
           <div><kbd>ПКМ</kbd><span>приказ, атака</span></div>
@@ -1311,11 +1311,43 @@ export class UI {
           <div><kbd>K</kbd><span>продать здание</span></div>
           <div><kbd>R</kbd><span>ремонт здания</span></div>
           <div><kbd>Shift</kbd><span>добавить к выбору</span></div>
+          <div><kbd>Shift + 1…9</kbd><span>запомнить отряд</span></div>
+          <div><kbd>1…9</kbd><span>вызвать отряд</span></div>
           <div><kbd>Пробел</kbd><span>на базу</span></div>
           <div><kbd>Esc</kbd><span>пауза / меню</span></div>
           <div><kbd>ЛКМ</kbd><span>по миникарте — камера</span></div>
         </div>
-        <p class="touch-hint">На сенсорном экране: тап — выбрать или отдать приказ, двойной тап по юниту — выделить всех таких на экране, один палец — панорама, два пальца — рамка выбора, щипок — зум. Кнопки справа — камера и отмена режима. Удержание слота отряда — запомнить текущее выделение, тап по нему — вызвать отряд, двойной тап — навести камеру.</p>
+      </div>
+      <div class="controls-block">
+        <div class="controls-title">СЕНСОРНЫЙ ЭКРАН <span>СМАРТФОН И ПЛАНШЕТ</span></div>
+        <div class="controls-grid help-touch-grid">
+          <div><kbd>Тап</kbd><span>выбрать или отдать приказ</span></div>
+          <div><kbd>Двойной тап</kbd><span>все объекты этого типа на экране</span></div>
+          <div><kbd>Один палец</kbd><span>панорама камеры</span></div>
+          <div><kbd>Два пальца</kbd><span>рамка выбора</span></div>
+          <div><kbd>Щипок</kbd><span>зум</span></div>
+          <div><kbd>Слот отряда</kbd><span>tap — вызвать, удержание — запомнить</span></div>
+          <div><kbd>Кнопки справа</kbd><span>камера, зум, поворот, «База», отмена</span></div>
+          <div><kbd>Миникарта</kbd><span>тап — переместить камеру</span></div>
+        </div>
+      </div>
+      <div class="controls-block">
+        <div class="controls-title">ГЕЙМПАД <span>ПОДКЛЮЧАЕТСЯ АВТОМАТИЧЕСКИ</span></div>
+        <div class="controls-grid">
+          <div><kbd>Левый стик</kbd><span>камера</span></div>
+          <div><kbd>Правый стик</kbd><span>прицел</span></div>
+          <div><kbd>A</kbd><span>выбрать / нажать кнопку</span></div>
+          <div><kbd>X</kbd><span>приказ / атака</span></div>
+          <div><kbd>Y</kbd><span>атака по площади</span></div>
+          <div><kbd>B</kbd><span>отмена / снять выделение</span></div>
+          <div><kbd>LB / RB</kbd><span>поворот камеры</span></div>
+          <div><kbd>LT / RT</kbd><span>зум</span></div>
+          <div><kbd>Крестовина</kbd><span>камера и навигация в меню</span></div>
+          <div><kbd>Start</kbd><span>пауза / меню</span></div>
+          <div><kbd>Back</kbd><span>вернуться на базу</span></div>
+          <div><kbd>R3</kbd><span>снять выделение</span></div>
+        </div>
+        <p class="help-note">Наведите прицел на кнопку командной панели и нажмите A. В меню: крестовина или левый стик — навигация, A — выбор, B — назад. Если геймпад не реагирует, нажмите любую его кнопку — браузер выдаст устройство только после действия.</p>
       </div>
       <div class="overlay-actions">
         <button class="btn-primary" data-action="back">НАЗАД <span>→</span></button>
