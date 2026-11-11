@@ -1327,7 +1327,7 @@ export class UI {
           <div><kbd>Один палец</kbd><span>панорама камеры</span></div>
           <div><kbd>Два пальца</kbd><span>рамка выбора</span></div>
           <div><kbd>Щипок</kbd><span>зум</span></div>
-          <div><kbd>Слот отряда</kbd><span>tap — вызвать, удержание — запомнить</span></div>
+          <div><kbd>Слот отряда</kbd><span>тап — вызвать, удержание — запомнить</span></div>
           <div><kbd>Кнопки справа</kbd><span>камера, зум, поворот, «База», отмена</span></div>
           <div><kbd>Миникарта</kbd><span>тап — переместить камеру</span></div>
         </div>
