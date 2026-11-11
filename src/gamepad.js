@@ -1,9 +1,9 @@
 // Управление с геймпада: камера, виртуальный курсор и навигация по меню.
 
-import { CAMERA } from './config.js';
-
 const DEADZONE = 0.22;
 const CURSOR_SPEED = 900;
+const PAN_BOOST = 2.5;
+const MARQUEE_SLOP = 8;
 const MENU_STICK = 0.62;
 const MENU_REPEAT_DELAY = 0.36;
 const MENU_REPEAT_RATE = 0.12;
@@ -57,6 +57,10 @@ export class GamepadInput {
       repeatAt: 0,
       stickLatch: false,
     };
+    // Рамка выделения левым триггером и режим навигации по командной панели.
+    this.marquee = null;
+    this.panelMode = false;
+    this.panel = { focusId: null, repeatAt: 0 };
     this.activityAt = 0;
     this.bind();
     this.scan();
@@ -100,6 +104,8 @@ export class GamepadInput {
     this.index = null;
     this.connected = false;
     this.prev = [];
+    this.cancelMarquee();
+    this.exitPanelMode();
     document.body.classList.remove('has-gamepad', 'using-gamepad');
     this.hideCursor();
   }
@@ -123,6 +129,8 @@ export class GamepadInput {
   usePointer() {
     if (this.mode === 'pointer') return;
     this.mode = 'pointer';
+    this.cancelMarquee();
+    this.exitPanelMode();
     document.body.classList.remove('using-gamepad');
     this.hideCursor();
   }
@@ -158,29 +166,30 @@ export class GamepadInput {
 
     if (this.ui?.overlayOpen) {
       this.hideCursor();
+      this.cancelMarquee();
+      this.exitPanelMode();
       this.updateMenu(dt, pad, states, just);
       return;
     }
 
     if (!this.game.started || this.game.over || this.game.paused) {
       this.hideCursor();
+      this.cancelMarquee();
+      this.exitPanelMode();
       return;
     }
 
-    this.updateCamera(dt, pad, states);
+    this.updateCamera(dt, pad, states, just);
     this.updateCursor(dt, pad);
     this.updateActions(states, just);
+    this.updateMarquee(states, just);
   }
 
   // ------------------------------------------------------------------ camera
-  updateCamera(dt, pad, states) {
+  updateCamera(dt, pad, states, just) {
     const input = this.input;
     let mx = axis(pad.axes?.[0]);
     let mz = -axis(pad.axes?.[1]);
-    if (states[BUTTON.LEFT]) mx -= 1;
-    if (states[BUTTON.RIGHT]) mx += 1;
-    if (states[BUTTON.UP]) mz += 1;
-    if (states[BUTTON.DOWN]) mz -= 1;
 
     if (mx || mz) {
       const length = Math.hypot(mx, mz);
@@ -189,31 +198,28 @@ export class GamepadInput {
         mz /= length;
       }
       const { forward, right } = input.cameraBasis();
-      const speed = (input.desired.radius / 52) * 30 * dt;
+      // RT ускоряет перемещение; на цифровых курках значение равно 0 или 1.
+      const rt = Math.max(0, Math.min(1, pad.buttons?.[BUTTON.RT]?.value ?? 0));
+      const boost = 1 + rt * (PAN_BOOST - 1);
+      const speed = (input.desired.radius / 52) * 30 * boost * dt;
       input.desired.target.x += (forward.x * mz + right.x * mx) * speed;
       input.desired.target.z += (forward.z * mz + right.z * mx) * speed;
       input.clampTarget();
     }
 
-    if (states[BUTTON.LB]) input.desired.alpha += dt * 1.25;
-    if (states[BUTTON.RB]) input.desired.alpha -= dt * 1.25;
+    // В режиме командной панели крестовина листает плитки, а не камеру.
+    if (this.panelMode) return;
 
-    const lt = pad.buttons?.[BUTTON.LT]?.value ?? 0;
-    const rt = pad.buttons?.[BUTTON.RT]?.value ?? 0;
-    if (lt > 0.08) {
-      input.desired.radius = clamp(
-        input.desired.radius * (1 - dt * 1.6 * lt),
-        CAMERA.minRadius,
-        CAMERA.maxRadius,
-      );
+    // Крестовина: вверх/вниз — зум, влево/вправо — поворот камеры.
+    const zoomIn = states[BUTTON.UP];
+    const zoomOut = states[BUTTON.DOWN];
+    if (zoomIn || zoomOut) {
+      const dir = zoomIn ? -1 : 1;
+      const step = just[BUTTON.UP] || just[BUTTON.DOWN] ? 0.12 : 0;
+      input.zoomBy(dir * (step + dt * 1.6));
     }
-    if (rt > 0.08) {
-      input.desired.radius = clamp(
-        input.desired.radius * (1 + dt * 1.6 * rt),
-        CAMERA.minRadius,
-        CAMERA.maxRadius,
-      );
-    }
+    if (states[BUTTON.LEFT]) input.desired.alpha += dt * 1.25;
+    if (states[BUTTON.RIGHT]) input.desired.alpha -= dt * 1.25;
   }
 
   // ------------------------------------------------------------------ cursor
@@ -294,6 +300,23 @@ export class GamepadInput {
       input.focusBase();
       return;
     }
+    if (just[BUTTON.RS]) {
+      this.togglePanelMode();
+      return;
+    }
+    if (this.panelMode) {
+      this.updatePanel(just, states);
+      if (just[BUTTON.B]) {
+        this.exitPanelMode();
+        return;
+      }
+      if (just[BUTTON.A]) {
+        this.activateCommand();
+        return;
+      }
+      if (just[BUTTON.X]) this.orderAtCursor();
+      return;
+    }
     if (just[BUTTON.B]) {
       if (input.placement) input.cancelPlacement();
       else if (input.attackMode) input.setAttackMove(false);
@@ -305,15 +328,160 @@ export class GamepadInput {
       input.setAttackMove(!input.attackMode);
       return;
     }
-    if (just[BUTTON.RS]) {
-      this.game.clearSelection();
-      return;
-    }
     if (just[BUTTON.A]) {
       this.activateCursor();
       return;
     }
     if (just[BUTTON.X]) this.orderAtCursor();
+  }
+
+  // --------------------------------------------------------------- selection
+  /** LT: рамка выделения растягивается от прицела, отпускание — выбор. */
+  updateMarquee(states, just) {
+    if (just[BUTTON.LT]) {
+      if (this.panelMode) return;
+      this.marquee = {
+        x0: this.cursor.x,
+        y0: this.cursor.y,
+        x1: this.cursor.x,
+        y1: this.cursor.y,
+        open: false,
+      };
+      return;
+    }
+
+    const box = this.marquee;
+    if (!box) return;
+
+    if (states[BUTTON.LT]) {
+      box.x1 = this.cursor.x;
+      box.y1 = this.cursor.y;
+      if (!box.open && Math.hypot(box.x1 - box.x0, box.y1 - box.y0) > MARQUEE_SLOP) {
+        box.open = true;
+      }
+      if (box.open) this.input.showSelectBox(box.x0, box.y0, box.x1, box.y1);
+      return;
+    }
+
+    this.marquee = null;
+    this.input.hideSelectBox();
+    if (box.open) this.input.selectInBox(box, false);
+  }
+
+  cancelMarquee() {
+    if (!this.marquee) return;
+    this.marquee = null;
+    this.input.hideSelectBox();
+  }
+
+  // ----------------------------------------------------------- command panel
+  togglePanelMode() {
+    if (this.panelMode) this.exitPanelMode();
+    else this.enterPanelMode();
+  }
+
+  enterPanelMode() {
+    if (!this.commandFocusables().length) return;
+    this.panelMode = true;
+    this.panel.repeatAt = 0;
+    this.cancelMarquee();
+    this.ensureCommandFocus();
+  }
+
+  exitPanelMode() {
+    if (!this.panelMode) return;
+    this.panelMode = false;
+    const container = this.ui?.el?.commands;
+    container?.querySelectorAll('.is-gamepad-focus')
+      .forEach((node) => node.classList.remove('is-gamepad-focus'));
+    if (container?.contains(document.activeElement)) document.activeElement.blur();
+  }
+
+  commandFocusables() {
+    const container = this.ui?.el?.commands;
+    if (!container) return [];
+    return [...container.querySelectorAll('button.cmd[data-cmd-id]')].filter(visible);
+  }
+
+  ensureCommandFocus() {
+    if (!this.panelMode) return false;
+    const list = this.commandFocusables();
+    if (!list.length) {
+      this.exitPanelMode();
+      return false;
+    }
+    const active = document.activeElement;
+    if (list.includes(active) && visible(active)) return true;
+    // Панель пересобирается после каждого приказа — возвращаем подсветку
+    // на ту же команду, а если её больше нет, то на первую.
+    const remembered = list.find((btn) => btn.dataset.cmdId === this.panel.focusId);
+    this.focusCommand(remembered || list[0]);
+    return true;
+  }
+
+  focusCommand(button) {
+    const container = this.ui?.el?.commands;
+    container?.querySelectorAll('.is-gamepad-focus')
+      .forEach((node) => node.classList.remove('is-gamepad-focus'));
+    button.classList.add('is-gamepad-focus');
+    this.panel.focusId = button.dataset.cmdId ?? null;
+    button.focus({ preventScroll: true });
+    button.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }
+
+  updatePanel(just, states) {
+    if (!this.ensureCommandFocus()) return;
+    // Включился режим размещения или атаки — крестовина снова камера.
+    if (this.input.placement || this.input.attackMode || this.input.patrolMode) {
+      this.exitPanelMode();
+      return;
+    }
+    const direction = this.dpadDirection(states, just);
+    if (direction.x || direction.y) {
+      this.moveFocusIn(
+        this.commandFocusables(),
+        direction.x,
+        direction.y,
+        (button) => this.focusCommand(button),
+      );
+    }
+  }
+
+  activateCommand() {
+    if (!this.ensureCommandFocus()) return;
+    const active = document.activeElement;
+    if (!active?.dataset?.cmdId) return;
+    active.click();
+    if (this.input.placement || this.input.attackMode || this.input.patrolMode) {
+      this.exitPanelMode();
+      return;
+    }
+    this.ensureCommandFocus();
+  }
+
+  dpadDirection(states, just) {
+    const now = performance.now();
+    let x = 0;
+    let y = 0;
+    if (states[BUTTON.LEFT]) x -= 1;
+    if (states[BUTTON.RIGHT]) x += 1;
+    if (states[BUTTON.UP]) y -= 1;
+    if (states[BUTTON.DOWN]) y += 1;
+    if (!x && !y) {
+      this.panel.repeatAt = 0;
+      return { x: 0, y: 0 };
+    }
+    const pressed = just[BUTTON.LEFT] || just[BUTTON.RIGHT]
+      || just[BUTTON.UP] || just[BUTTON.DOWN];
+    if (pressed) {
+      this.panel.repeatAt = now + MENU_REPEAT_DELAY * 1000;
+      return { x, y };
+    }
+    if (now >= this.panel.repeatAt) {
+      this.panel.repeatAt = now + MENU_REPEAT_RATE * 1000;
+      return { x, y };
+    }
+    return { x: 0, y: 0 };
   }
 
   // -------------------------------------------------------------------- menu
@@ -377,11 +545,15 @@ export class GamepadInput {
   }
 
   moveFocus(dx, dy) {
-    const list = this.focusables();
+    this.moveFocusIn(this.focusables(), dx, dy, (element) => this.focus(element));
+  }
+
+  /** Геометрическая навигация по сетке элементов: ближайший в направлении. */
+  moveFocusIn(list, dx, dy, applyFocus) {
     if (!list.length) return;
     const current = list.includes(document.activeElement) ? document.activeElement : null;
     if (!current) {
-      this.focus(list[0]);
+      applyFocus(list[0]);
       return;
     }
 
@@ -406,7 +578,7 @@ export class GamepadInput {
       }
     }
 
-    if (best) this.focus(best);
+    if (best) applyFocus(best);
   }
 
   menuDirection(pad, states, just) {

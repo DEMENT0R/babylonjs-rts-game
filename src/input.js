@@ -815,8 +815,16 @@ export class Input {
     if (!this.game.started || this.game.paused || this.game.over) return;
     if (this.game.ui?.overlayOpen) return;
     e.preventDefault();
-    const dir = Math.sign(e.deltaY);
-    this.desired.radius = clamp(this.desired.radius * (1 + dir * 0.12), CAMERA.minRadius, CAMERA.maxRadius);
+    this.zoomBy(Math.sign(e.deltaY) * 0.12);
+  }
+
+  /** Изменение зума: delta — доля радиуса (шаг или скорость удержания). */
+  zoomBy(delta) {
+    this.desired.radius = clamp(
+      this.desired.radius * (1 + delta),
+      CAMERA.minRadius,
+      CAMERA.maxRadius,
+    );
   }
 
   clampTarget() {
