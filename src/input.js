@@ -397,9 +397,8 @@ export class Input {
   // ------------------------------------------------------------- touch
   /**
    * Касания: один палец — тап или панорама, два пальца — рамка выделения.
-   * Щипок двумя пальцами по-прежнему меняет зум и не мешает рамке: рамка
-   * растягивается от средней точки касания, а расстояние между пальцами
-   * управляет приближением.
+   * Пока пальцы только расходятся или сходятся, щипок меняет зум; стоило
+   * сместить их общую середину — включается рамка по крайним точкам пальцев.
    */
   onTouchDown(e) {
     e.preventDefault();
@@ -500,7 +499,12 @@ export class Input {
     this.hideSelectBox();
   }
 
-  /** Два пальца: растягивают рамку от точки касания; щипок меняет зум. */
+  /**
+   * Два пальца: рамка проходит по самим пальцам, а щипок меняет зум.
+   * Пока общая середина пальцев не сместилась, жест считается щипком; как
+   * только началась рамка, зум замирает, чтобы выделение не уезжало вместе
+   * с камерой.
+   */
   updateTouchBox(a, b) {
     const gesture = this.touchGesture;
     if (!gesture || gesture.mode !== 'box') return;
@@ -508,8 +512,6 @@ export class Input {
     const midX = (a.x + b.x) / 2;
     const midY = (a.y + b.y) / 2;
 
-    // Пока пальцы не сдвинулись, щипок просто меняет зум. Как только началась
-    // рамка, зум замирает, чтобы выделение не уезжало вместе с камерой.
     if (!gesture.box) {
       if (Math.hypot(midX - gesture.anchor.x, midY - gesture.anchor.y) < TOUCH_BOX_SLOP) {
         const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
@@ -523,11 +525,13 @@ export class Input {
       this.lastTap = { time: 0, type: null, x: 0, y: 0 };
     }
 
+    // Прямоугольник по крайним точкам пальцев: рамка совпадает с ними при
+    // любом разведении, а не с крошечным смещением их середины.
     gesture.box = {
-      x0: gesture.anchor.x,
-      y0: gesture.anchor.y,
-      x1: midX,
-      y1: midY,
+      x0: Math.min(a.x, b.x),
+      y0: Math.min(a.y, b.y),
+      x1: Math.max(a.x, b.x),
+      y1: Math.max(a.y, b.y),
     };
     this.showSelectBox(gesture.box.x0, gesture.box.y0, gesture.box.x1, gesture.box.y1);
   }
