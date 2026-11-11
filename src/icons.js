@@ -172,6 +172,8 @@ export const ICONS = {
   `),
   pause: stroke(`<rect x="14" y="10" width="7" height="28" rx="1"/><rect x="27" y="10" width="7" height="28" rx="1"/>`),
   play: stroke(`<path d="M16 10 38 24 16 38Z" fill="currentColor" stroke="none"/>`),
+  expand: stroke(`<path d="M10 18v-8h8M38 18v-8h-8M10 30v8h8M38 30v8h-8"/>`),
+  compress: stroke(`<path d="M18 10v8h-8M30 10v8h8M18 38v-8h-8M30 38v-8h8"/>`),
   restart: stroke(`
     <path d="M40 24a16 16 0 1 1-4.7-11.3"/>
     <path d="M40 7v11H29"/>

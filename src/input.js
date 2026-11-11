@@ -829,6 +829,9 @@ export class Input {
 
   onKeyDown(e) {
     if (e.code === 'Escape') {
+      // В полноэкранном режиме Esc забирает браузер на выход. Если событие
+      // всё же дошло до страницы, пауза не должна открываться «из ниоткуда».
+      if (document.fullscreenElement || document.webkitFullscreenElement) return;
       if (this.placement) {
         this.cancelPlacement();
         return;

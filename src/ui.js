@@ -117,6 +117,7 @@ export class UI {
       overlay: this.$('#overlay'),
       overlayCard: this.$('#overlayCard'),
       pauseBtn: this.$('#btnPause'),
+      fullscreenBtn: this.$('#btnFullscreen'),
       alert: this.$('#alertFlash'),
       minimap: this.$('#minimap'),
       mmPing: this.$('#mmPing'),
@@ -141,6 +142,17 @@ export class UI {
 
   bindStatic() {
     this.el.pauseBtn.addEventListener('click', () => this.togglePause());
+    if (this.el.fullscreenBtn) {
+      // На iPhone элементный полноэкранный режим недоступен — кнопка-пустышка
+      // только путает, поэтому убираем её.
+      if (this.supportsFullscreen()) {
+        this.el.fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
+        document.addEventListener('fullscreenchange', () => this.syncFullscreenBtn());
+        document.addEventListener('webkitfullscreenchange', () => this.syncFullscreenBtn());
+      } else {
+        this.el.fullscreenBtn.hidden = true;
+      }
+    }
     this.el.overlay.addEventListener('click', (e) => {
       const tab = e.target.closest('[data-settings-tab]');
       if (tab) {
@@ -1078,6 +1090,42 @@ export class UI {
       </div>
     `;
     this.setOverlay(html, `overlay--end ${victory ? 'is-win' : 'is-lose'}`);
+  }
+
+  supportsFullscreen() {
+    const el = document.documentElement;
+    return !!(el.requestFullscreen || el.webkitRequestFullscreen);
+  }
+
+  fullscreenActive() {
+    return !!(document.fullscreenElement || document.webkitFullscreenElement);
+  }
+
+  toggleFullscreen() {
+    if (!this.supportsFullscreen()) return;
+    if (this.fullscreenActive()) {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      exit?.call(document);
+      return;
+    }
+    const el = document.documentElement;
+    const request = el.requestFullscreen || el.webkitRequestFullscreen;
+    // Браузер вправе отказать (например, внутри iframe) — это не ошибка игры.
+    const result = request.call(el);
+    result?.catch?.(() => {});
+  }
+
+  /** Иконка и подписи кнопки следуют реальному состоянию браузера: режим
+   *  можно выйти клавишей Esc или системным жестом, без клика по кнопке. */
+  syncFullscreenBtn() {
+    const btn = this.el.fullscreenBtn;
+    if (!btn) return;
+    const active = this.fullscreenActive();
+    const span = btn.querySelector('span');
+    if (span) span.innerHTML = icon(active ? 'compress' : 'expand');
+    btn.title = active ? 'Выйти из полноэкранного режима' : 'Полноэкранный режим';
+    btn.setAttribute('aria-label', btn.title);
+    btn.setAttribute('aria-pressed', String(active));
   }
 
   togglePause() {

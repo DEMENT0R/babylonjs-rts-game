@@ -299,6 +299,23 @@ body.mode-patrol #scene {
   box-shadow: 0 0 18px rgba(79, 210, 255, 0.2);
 }
 
+/* Полноэкранный режим: кнопка приглушена, чтобы не отвлекать от боя, и
+   проявляется при наведении. На устройствах без Element Fullscreen
+   (iPhone Safari) скрывается из разметки. */
+#btnFullscreen {
+  opacity: 0.6;
+  transition: opacity 0.15s, border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+#btnFullscreen:hover,
+#btnFullscreen:focus-visible {
+  opacity: 1;
+}
+
+#btnFullscreen[hidden] {
+  display: none;
+}
+
 /* ------------------------------------------------------------------ BOTTOM HUD */
 #hud-bottom {
   position: absolute;
