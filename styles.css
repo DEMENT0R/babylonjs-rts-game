@@ -2798,6 +2798,105 @@ body.using-gamepad .is-gamepad-focus {
   box-shadow: 0 0 6px rgba(79, 210, 255, 0.6);
 }
 
+/* Авторы */
+.overlay--credits .overlay-card {
+  width: min(620px, 94vw);
+}
+
+.credits-title {
+  font-size: clamp(30px, 4.6vw, 44px) !important;
+  letter-spacing: 0.14em !important;
+}
+
+.credits-block {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.credits-label {
+  margin-bottom: 8px;
+  font-size: 8px;
+  letter-spacing: 0.2em;
+  color: var(--dim);
+  text-transform: uppercase;
+}
+
+.credits-author {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.credits-author b {
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: #dff4fb;
+}
+
+.credits-author span {
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+}
+
+.credits-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.credits-people li {
+  position: relative;
+  padding-left: 12px;
+  font-size: 10px;
+  color: #c8e4ee;
+}
+
+.credits-people li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  width: 4px;
+  height: 4px;
+  background: var(--cyan);
+  box-shadow: 0 0 6px rgba(79, 210, 255, 0.6);
+}
+
+.credits-note {
+  margin: 8px 0 0;
+  padding-left: 10px;
+  border-left: 1px solid var(--line-soft);
+  font-size: 8px;
+  line-height: 1.55;
+  color: var(--dim);
+}
+
+.credits-links {
+  margin-top: 8px;
+}
+
+.credits-link {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  letter-spacing: 0.08em;
+  color: var(--cyan-soft);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(79, 210, 255, 0.3);
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.credits-link:hover,
+.credits-link:focus-visible {
+  color: #eaffff;
+  border-color: var(--cyan);
+}
+
 /* Boot */
 .boot {
   min-height: 240px;
@@ -3578,7 +3677,7 @@ body.mode-patrol .tc-cancel {
     width: 100%;
   }
 
-  .menu-links .btn-ghost:last-child {
+  .menu-links .btn-ghost:last-child:nth-child(odd) {
     grid-column: 1 / -1;
   }
 

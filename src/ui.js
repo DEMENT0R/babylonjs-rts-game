@@ -207,6 +207,7 @@ export class UI {
       else if (action === 'settings') this.openSettings();
       else if (action === 'help') this.openHelp();
       else if (action === 'changelog') this.openChangelog();
+      else if (action === 'credits') this.openCredits();
       else if (action === 'back') this.backFromOverlay();
       else if (action === 'close') this.closeOverlay();
     });
@@ -372,6 +373,7 @@ export class UI {
           <button class="btn-ghost" data-action="help">КАК ИГРАТЬ</button>
           <button class="btn-ghost" data-action="settings">НАСТРОЙКИ</button>
           <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
+          <button class="btn-ghost" data-action="credits">АВТОРЫ</button>
         </div>
       </div>
       <p class="overlay-note start-note">Кампания открывает технику за победы, испытания не связаны с сюжетом. Свободная партия настраивается в лобби.</p>
@@ -453,6 +455,7 @@ export class UI {
           <button class="btn-ghost" data-action="help">КАК ИГРАТЬ</button>
           <button class="btn-ghost" data-action="settings">НАСТРОЙКИ</button>
           <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
+          <button class="btn-ghost" data-action="credits">АВТОРЫ</button>
         </div>
       </div>
       <p class="overlay-note start-note">${isCampaign
@@ -598,6 +601,7 @@ export class UI {
           <button class="btn-ghost" data-action="help">КАК ИГРАТЬ</button>
           <button class="btn-ghost" data-action="settings">НАСТРОЙКИ</button>
           <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
+          <button class="btn-ghost" data-action="credits">АВТОРЫ</button>
         </div>
       </div>
       <div class="brief-grid">
@@ -1172,6 +1176,7 @@ export class UI {
           <button class="btn-ghost" data-action="settings">НАСТРОЙКИ</button>
           <button class="btn-ghost" data-action="help">КАК ИГРАТЬ</button>
           <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
+          <button class="btn-ghost" data-action="credits">АВТОРЫ</button>
         </div>
       </div>
       <div class="overlay-actions overlay-actions--minor">
@@ -1471,6 +1476,59 @@ export class UI {
       </div>
     `;
     this.setOverlay(html, 'overlay--changelog');
+  }
+
+  // ---------------------------------------------------------------- credits
+  /** Открывает досье авторства, запоминая, куда вернуться по кнопке «Назад». */
+  openCredits() {
+    if (this.game.started && !this.game.over) this.game.setPaused(true);
+    this.overlayBack = this.backTarget();
+    this.showCredits();
+  }
+
+  showCredits() {
+    const html = `
+      <div class="overlay-top">
+        <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // ДОСЬЕ АВТОРСТВА</div>
+        <h1 class="credits-title">АВТОРЫ</h1>
+        <p class="tagline">Кто сделал «Гелиос-7»: автор проекта, тестеры и основа, на которой держится игра.</p>
+      </div>
+      <div class="credits-block">
+        <div class="credits-label">АВТОР ПРОЕКТА</div>
+        <div class="credits-author">
+          <b>Максим Безрукавников</b>
+          <span>дизайн · код · интерфейс · баланс · тексты</span>
+        </div>
+        <div class="credits-links">
+          <a class="credits-link" href="https://github.com/DEMENT0R" target="_blank" rel="noopener noreferrer">github.com/DEMENT0R</a>
+        </div>
+      </div>
+      <div class="credits-block">
+        <div class="credits-label">ТЕСТИРОВАНИЕ</div>
+        <ul class="credits-people">
+          <li>Павел Захаренко</li>
+          <li>Михаил Пелагеин</li>
+          <li>Арсений Лысенко</li>
+        </ul>
+        <p class="credits-note">Тестирование и обратная связь по балансу.</p>
+      </div>
+      <div class="credits-block">
+        <div class="credits-label">КАК СДЕЛАНО</div>
+        <p class="credits-note">Игра написана Максимом Безрукавниковым в паре с ИИ-ассистентом DeepSeek: ассистент помогал с кодом, рефакторингом и текстами, все решения и приёмка — на авторе.</p>
+      </div>
+      <div class="credits-block">
+        <div class="credits-label">ОСНОВА</div>
+        <p class="credits-note">Движок — <a class="credits-link" href="https://github.com/BabylonJS/Babylon.js" target="_blank" rel="noopener noreferrer">Babylon.js</a> под лицензией Apache 2.0 (<a class="credits-link" href="vendor/LICENSE-babylon.md" target="_blank" rel="noopener noreferrer">текст лицензии</a>). Модели, звук и карты генерируются кодом: внешних ассетов нет.</p>
+      </div>
+      <div class="overlay-actions">
+        <button class="btn-primary" data-action="back">НАЗАД <span>→</span></button>
+      </div>
+      <div class="overlay-footer">
+        <span>ГЕЛИОС-7 // ДОСЬЕ АВТОРСТВА</span>
+        <span>ВЕРСИЯ ${esc(GAME_VERSION)} · <a class="credits-link" href="https://github.com/DEMENT0R/babylonjs-rts-game" target="_blank" rel="noopener noreferrer">РЕПОЗИТОРИЙ</a></span>
+      </div>
+    `;
+    this.setOverlay(html, 'overlay--credits');
   }
 
   hideOverlay() {
