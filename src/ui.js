@@ -1799,8 +1799,7 @@ export class UI {
     const def = BUILDINGS[type];
     const freePatch = type === 'derrick' && !game.world.oilPatches.some((p) => !p.derrick || !p.derrick.alive);
     const missing = game.missingBuildingRequirements('player', type);
-    const baseDisabled = freePatch || missing.length > 0;
-    const disabled = baseDisabled || game.credits < def.cost;
+    const disabled = freePatch || missing.length > 0 || game.credits < def.cost;
     const missingNames = missing.map((req) => BUILDINGS[req]?.name ?? req).join(', ');
     return {
       id: `build:${type}`,
@@ -1812,7 +1811,6 @@ export class UI {
       desc: def.desc,
       kind: 'build',
       disabled,
-      baseDisabled,
       reason: missing.length
         ? `Требуется: ${missingNames}.`
         : freePatch
@@ -1834,8 +1832,7 @@ export class UI {
       > game.getArmyCap('player');
     const ready = list.filter((b) => b.complete);
     const locked = def.requires && !game.upgrades.player.has(def.requires);
-    const baseDisabled = locked || ready.length === 0 || capReached;
-    const disabled = baseDisabled || game.credits < def.cost;
+    const disabled = locked || ready.length === 0 || capReached || game.credits < def.cost;
     const reason = locked
       ? `Требуется исследование «${UPGRADES[def.requires]?.name ?? def.requires}».`
       : list.length === 0 || ready.length === 0 ? MESSAGES.notReady
@@ -1852,7 +1849,6 @@ export class UI {
       desc: def.desc,
       kind: 'train',
       disabled,
-      baseDisabled,
       reason,
       // batch = 5 при Shift+клике: пятёрка раскладывается по выбранным
       // казармам по кругу, поэтому очередь одной постройки не разрастается.
@@ -1898,8 +1894,7 @@ export class UI {
     const def = UPGRADES[nextKey ?? lineKeys[lineKeys.length - 1]];
     const done = !nextKey;
     const queued = nextKey ? game.hasPendingUpgrade('player', nextKey) : false;
-    const baseDisabled = !building.complete || done || queued;
-    const disabled = baseDisabled || game.credits < def.cost;
+    const disabled = !building.complete || done || queued || game.credits < def.cost;
     const reason = !building.complete ? MESSAGES.notReady
       : done ? 'Улучшение уже изучено.'
         : queued ? 'Улучшение уже исследуется.'
@@ -1914,7 +1909,6 @@ export class UI {
       desc: def.desc,
       kind: 'research',
       disabled,
-      baseDisabled,
       reason,
       action: () => {
         if (nextKey && game.startUpgrade(building, nextKey)) {
@@ -2569,29 +2563,12 @@ export class UI {
       if (this.selectionAcc > 0.5) {
         this.selectionAcc = 0;
         this.renderSelection();
-        this.renderCommands();
       }
     }
-    this.updateCommandAvailability();
-  }
-
-  updateCommandAvailability() {
-    const credits = this.game.credits;
-    const buttons = this.el.commands.querySelectorAll('.cmd[data-cmd-id]');
-    buttons.forEach((btn) => {
-      const cmd = this.commandMap.get(btn.dataset.cmdId);
-      if (!cmd) return;
-      // Стоимость проверяем здесь, а не только при сборке панели: доход
-      // приходит постоянно, и команда должна открываться без перезахода.
-      let disabled = !!cmd.baseDisabled;
-      if (!disabled && cmd.cost) {
-        disabled = credits < cmd.cost;
-        if (disabled) cmd.reason = `Недостаточно кредитов. Нужно ${cmd.cost}.`;
-      }
-      cmd.disabled = disabled;
-      btn.classList.toggle('is-disabled', disabled);
-      btn.setAttribute('aria-disabled', disabled ? 'true' : 'false');
-    });
+    // Панель пересобираем каждый тик: кредиты, завершение построек,
+    // исследования и лимит армии меняются независимо от выделения, а
+    // renderCommands пишет DOM только когда разметка действительно изменилась.
+    this.renderCommands();
   }
 
   // --------------------------------------------------------------- tooltip
