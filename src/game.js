@@ -248,8 +248,10 @@ export class Game {
         };
       }
       case 'derricks': {
+        // Засчитываем только достроенную вышку: заложенный фундамент ещё не
+        // качает нефть и не должен закрывать задачу.
         const have = this.buildings.filter(
-          (b) => b.alive && b.faction === 'player' && b.type === 'derrick',
+          (b) => b.alive && b.complete && b.faction === 'player' && b.type === 'derrick',
         ).length;
         return { progress: count(have / (objective.count || 1)), text: `${have} / ${objective.count}` };
       }
