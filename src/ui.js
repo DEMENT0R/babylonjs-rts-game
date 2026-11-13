@@ -57,6 +57,8 @@ export class UI {
     this.bindStatic();
     this.commands = [];
     this.commandMap = new Map();
+    // Состав панели приказов: по нему решаем, нужна ли пересборка DOM.
+    this.commandStructure = '';
     this.tickAcc = 0;
     this.selectionAcc = 0;
     this.lastSignature = '';
@@ -2066,7 +2068,6 @@ export class UI {
   }
 
   renderCommands() {
-    const old = this.el.commands.innerHTML;
     this.commands = this.buildCommands();
     this.commandMap = new Map(this.commands.map((c) => [c.id, c]));
     const dense = this.commands.length > 8;
@@ -2074,35 +2075,64 @@ export class UI {
     // В плотном режиме на ПК помещаются пять колонок, на мобильных — четыре.
     const columns = dense ? 5 : 4;
     const slots = Math.max(8, Math.ceil(this.commands.length / columns) * columns);
-    let html = '';
-    for (let i = 0; i < slots; i++) {
+
+    // Пересобираем DOM только при смене состава команд. Доступность меняется
+    // постоянно (доход, очереди), но её выставляем точечно: иначе кнопка под
+    // курсором пересоздаётся каждый тик и наведение сбрасывается.
+    const labels = [];
+    for (let i = 0; i < slots; i += 1) {
       const cmd = this.commands[i];
-      if (cmd) {
-        const label = dense && cmd.short ? cmd.short : cmd.label;
-        html += `
+      if (!cmd) {
+        labels.push('empty');
+        continue;
+      }
+      labels.push([
+        cmd.id, cmd.hotkey, cmd.icon, cmd.kind, cmd.cost ?? '',
+        dense && cmd.short ? cmd.short : cmd.label,
+      ].join('\u0001'));
+    }
+    const structure = `${dense}\u0002${labels.join('\u0002')}`;
+    if (structure !== this.commandStructure) {
+      this.commandStructure = structure;
+      let html = '';
+      for (let i = 0; i < slots; i++) {
+        const cmd = this.commands[i];
+        if (cmd) {
+          const label = dense && cmd.short ? cmd.short : cmd.label;
+          html += `
           <button class="cmd ${cmd.disabled ? 'is-disabled' : ''}" data-cmd-id="${cmd.id}" aria-disabled="${cmd.disabled ? 'true' : 'false'}">
             <span class="cmd-key">${cmd.hotkey}</span>
             <span class="cmd-icon">${icon(cmd.icon)}</span>
             <span class="cmd-label">${label}</span>
             ${cmd.cost ? `<span class="cmd-cost">${icon('credits')} ${cmd.cost}</span>` : `<span class="cmd-cost cmd-cost--free">${cmd.kind === 'train' ? 'НАЁМ' : 'ПРИКАЗ'}</span>`}
           </button>`;
-      } else {
-        html += `<div class="cmd cmd--empty" aria-hidden="true"><span class="cmd-empty-mark">+</span></div>`;
+        } else {
+          html += `<div class="cmd cmd--empty" aria-hidden="true"><span class="cmd-empty-mark">+</span></div>`;
+        }
       }
+      if (!this.commands.length) {
+        html = `<div class="cmd-empty-state"><span class="ce-icon">${icon('target')}</span><b>НЕТ ДОСТУПНЫХ КОМАНД</b><small>Выберите командный центр или казармы,<br>либо группу юнитов.</small></div>`;
+      }
+      this.el.commands.innerHTML = html;
+      this.hideTooltip();
     }
-    if (!this.commands.length) {
-      html = `<div class="cmd-empty-state"><span class="ce-icon">${icon('target')}</span><b>НЕТ ДОСТУПНЫХ КОМАНД</b><small>Выберите командный центр или казармы,<br>либо группу юнитов.</small></div>`;
-    }
-    if (html !== old) this.el.commands.innerHTML = html;
-    if (html !== old) this.hideTooltip();
 
-    const selTag = this.game.selectionSummary?.() ?? '';
-    this.el.cmdStatus.textContent = this.commands.length
+    // Стоимость проверяем каждый тик: доход приходит постоянно, и команда
+    // должна открываться без перезахода в панель.
+    this.el.commands.querySelectorAll('.cmd[data-cmd-id]').forEach((btn) => {
+      const cmd = this.commandMap.get(btn.dataset.cmdId);
+      if (!cmd) return;
+      btn.classList.toggle('is-disabled', !!cmd.disabled);
+      btn.setAttribute('aria-disabled', cmd.disabled ? 'true' : 'false');
+    });
+
+    const status = this.commands.length
       ? (this.commands[0].kind === 'train' ? 'ПРОИЗВОДСТВО'
         : this.commands[0].kind === 'build' ? 'СТРОИТЕЛЬСТВО'
           : this.commands[0].kind === 'research' ? 'ИССЛЕДОВАНИЯ'
             : 'ПРИКАЗЫ')
       : 'ОЖИДАНИЕ';
+    if (this.el.cmdStatus.textContent !== status) this.el.cmdStatus.textContent = status;
   }
 
   triggerHotkey(key) {
