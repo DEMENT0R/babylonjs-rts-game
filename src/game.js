@@ -830,6 +830,18 @@ export class Game {
     return assigned;
   }
 
+  /**
+   * Свободные инженеры переходят к оставшимся стройплощадкам. Вызывается
+   * после завершения стройки: при заказе нескольких зданий с Shift инженер
+   * не стоит без дела, а идёт к следующей точке в порядке закладки.
+   */
+  assignIdleBuildersToPending() {
+    const pending = this.buildings
+      .filter((b) => b.alive && b.faction === 'player' && !b.complete)
+      .sort((a, b) => a.id - b.id);
+    for (const b of pending) this.assignBuilders(b);
+  }
+
   sendBuilderTo(unit, building, index = 0) {
     unit.assistBuilding = building;
     const angle = Math.atan2(
@@ -1092,7 +1104,7 @@ export class Game {
   }
 
   // ------------------------------------------------------------- orders
-  issueFormationMove(units, point, mode = 'move') {
+  issueFormationMove(units, point, mode = 'move', queue = false) {
     if (!units.length) return;
     const alive = units.filter((u) => u.alive);
     if (!alive.length) return;
@@ -1115,24 +1127,25 @@ export class Game {
       let tz = point.z - lx * sin + lz * cos;
       tx = clamp(tx, -MAP.clamp + 1, MAP.clamp - 1);
       tz = clamp(tz, -MAP.clamp + 1, MAP.clamp - 1);
-      if (mode === 'attackMove') unit.issueAttackMove(tx, tz);
+      if (queue) unit.enqueueOrder({ type: mode, x: tx, z: tz });
+      else if (mode === 'attackMove') unit.issueAttackMove(tx, tz);
       else if (mode === 'patrol') unit.issuePatrol(tx, tz);
       else unit.issueMove(tx, tz);
     });
     this.fx.orderMarker(point, mode === 'attackMove' ? 'attack' : 'move');
   }
 
-  commandMove(point) {
+  commandMove(point, queue = false) {
     const units = this.selectedUnits();
     if (!units.length) return;
-    this.issueFormationMove(units, point, 'move');
+    this.issueFormationMove(units, point, 'move', queue);
     this.audio?.order('move');
   }
 
-  commandAttackMove(point) {
+  commandAttackMove(point, queue = false) {
     const units = this.selectedUnits();
     if (!units.length) return;
-    this.issueFormationMove(units, point, 'attackMove');
+    this.issueFormationMove(units, point, 'attackMove', queue);
     this.audio?.order('attack');
   }
 
@@ -1151,10 +1164,13 @@ export class Game {
     this.audio?.order('move');
   }
 
-  commandAttack(target) {
+  commandAttack(target, queue = false) {
     const units = this.selectedUnits();
     if (!units.length || !target || !target.alive) return;
-    for (const u of units) u.issueAttack(target);
+    for (const u of units) {
+      if (queue) u.enqueueOrder({ type: 'attack', target });
+      else u.issueAttack(target);
+    }
     this.fx.orderMarker(target.position, 'attack');
     this.audio?.order('attack');
   }

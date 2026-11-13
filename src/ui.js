@@ -1365,6 +1365,8 @@ export class UI {
           <div><kbd>K</kbd><span>продать здание</span></div>
           <div><kbd>R</kbd><span>ремонт здания</span></div>
           <div><kbd>Shift</kbd><span>добавить к выбору</span></div>
+          <div><kbd>Shift + ПКМ</kbd><span>точка маршрута в очередь</span></div>
+          <div><kbd>Shift + ЛКМ</kbd><span>несколько построек подряд</span></div>
           <div><kbd>Shift + 1…9</kbd><span>запомнить отряд</span></div>
           <div><kbd>1…9</kbd><span>вызвать отряд</span></div>
           <div><kbd>Пробел</kbd><span>на базу</span></div>

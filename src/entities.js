@@ -19,6 +19,9 @@ let nextId = 1;
 
 const yawTo = (dx, dz) => Math.atan2(dx, dz);
 
+// Очередь приказов с Shift: больше — уже не маршрут, а случайные клики.
+const MAX_QUEUED_ORDERS = 24;
+
 function createBar(factory, faction, width) {
   const scene = factory.scene;
   const group = new TransformNode('healthbar', scene);
@@ -264,6 +267,8 @@ export class Unit extends Entity {
     this.xp = 0;
     this.rank = 0;
     this.order = null;
+    // Приказы, отложенные Shift-кликом: выполняются по одному после текущего.
+    this.orderQueue = [];
     this.target = null;
     this.attackCd = 0.25 + Math.random() * 0.3;
     this.moving = false;
@@ -502,7 +507,55 @@ export class Unit extends Entity {
     this.repathDelay = 0;
   }
 
+  /** Shift-клик: приказ встаёт в очередь после текущего. */
+  enqueueOrder(order) {
+    if (!order) return;
+    if (this.orderQueue.length >= MAX_QUEUED_ORDERS) this.orderQueue.shift();
+    this.orderQueue.push(order);
+  }
+
+  clearOrderQueue() {
+    this.orderQueue.length = 0;
+  }
+
+  /**
+   * Берёт следующий приказ из очереди. Проставляется напрямую, без
+   * issue-методов: те очищают очередь, а оставшиеся точки маршрута нужны.
+   */
+  applyQueuedOrder() {
+    while (this.orderQueue.length) {
+      const next = this.orderQueue.shift();
+      if (next.type === 'attack') {
+        if (!next.target || !next.target.alive) continue;
+        this.order = { type: 'attack', target: next.target };
+        this.target = next.target;
+      } else if (next.type === 'patrol') {
+        this.order = {
+          type: 'patrol',
+          ax: this.position.x,
+          az: this.position.z,
+          bx: next.x,
+          bz: next.z,
+          leg: 'b',
+        };
+        this.target = null;
+      } else {
+        this.order = {
+          type: next.type === 'attackMove' ? 'attackMove' : 'move',
+          x: next.x,
+          z: next.z,
+        };
+        this.target = null;
+      }
+      this.stuckTime = 0;
+      this.resetPath();
+      this.moving = false;
+      return;
+    }
+  }
+
   issueMove(x, z) {
+    this.clearOrderQueue();
     this.order = { type: 'move', x, z };
     this.target = null;
     this.stuckTime = 0;
@@ -517,6 +570,7 @@ export class Unit extends Entity {
       this.issueHold();
       return;
     }
+    this.clearOrderQueue();
     this.order = { type: 'attack', target };
     this.target = target;
     this.stuckTime = 0;
@@ -524,6 +578,7 @@ export class Unit extends Entity {
   }
 
   issueAttackMove(x, z) {
+    this.clearOrderQueue();
     this.order = { type: 'attackMove', x, z };
     this.target = null;
     this.stuckTime = 0;
@@ -535,6 +590,7 @@ export class Unit extends Entity {
    * встреченных врагов, но не уходя за ними с маршрута.
    */
   issuePatrol(x, z) {
+    this.clearOrderQueue();
     this.order = {
       type: 'patrol',
       ax: this.position.x,
@@ -554,6 +610,7 @@ export class Unit extends Entity {
    * дистанции: догонять его поддержка не должна.
    */
   issueEscort(x, z) {
+    this.clearOrderQueue();
     this.order = { type: 'escort', x, z };
     this.target = null;
     this.stuckTime = 0;
@@ -566,6 +623,7 @@ export class Unit extends Entity {
    * к указанной точке, а потом уже держит её.
    */
   issueHold(x = null, z = null) {
+    this.clearOrderQueue();
     this.order = { type: 'hold', x, z };
     this.target = null;
     this.moving = false;
@@ -575,6 +633,7 @@ export class Unit extends Entity {
 
   stop() {
     this.order = null;
+    this.clearOrderQueue();
     this.target = null;
     this.moving = false;
     this.resetPath();
@@ -613,6 +672,8 @@ export class Unit extends Entity {
 
   update(dt) {
     if (!this.alive) return;
+    // Предыдущий приказ выполнен — берём следующую точку маршрута.
+    if (!this.order && this.orderQueue.length) this.applyQueuedOrder();
     this.attackCd = Math.max(0, this.attackCd - dt);
     this.updateVolley(dt);
     this.updateReloadFx(dt);
@@ -1535,6 +1596,8 @@ export class Building extends Entity {
     this.builderCount = 0;
     this.game.recomputePower();
     this.updateBar();
+    // Инженеры, освободившиеся после стройки, идут к следующей площадке.
+    if (this.faction === 'player') this.game.assignIdleBuildersToPending();
   }
 
   cancelConstruction(refund = true) {

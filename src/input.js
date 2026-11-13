@@ -295,8 +295,8 @@ export class Input {
     if (this.attackMode) {
       const point = this.groundPoint(e.clientX, e.clientY);
       if (point) {
-        this.game.commandAttackMove(new Vector3(point.x, 0, point.z));
-        this.setAttackMove(false);
+        this.game.commandAttackMove(new Vector3(point.x, 0, point.z), e.shiftKey);
+        if (!e.shiftKey) this.setAttackMove(false);
       }
       return;
     }
@@ -416,8 +416,8 @@ export class Input {
     if (this.attackMode) {
       const point = this.groundPoint(e.clientX, e.clientY);
       if (point) {
-        this.game.commandAttackMove(new Vector3(point.x, 0, point.z));
-        this.setAttackMove(false);
+        this.game.commandAttackMove(new Vector3(point.x, 0, point.z), e.shiftKey);
+        if (!e.shiftKey) this.setAttackMove(false);
       }
       return;
     }
@@ -759,7 +759,7 @@ export class Input {
     if (picked.ghost) {
       if (units.length) {
         const { x, z } = picked.ghost.position;
-        this.game.commandAttackMove(new Vector3(x, 0, z));
+        this.game.commandAttackMove(new Vector3(x, 0, z), e.shiftKey);
       }
       return;
     }
@@ -777,11 +777,11 @@ export class Input {
 
     if (units.length) {
       if (picked.entity && picked.entity.faction !== 'player') {
-        this.game.commandAttack(picked.entity);
+        this.game.commandAttack(picked.entity, e.shiftKey);
         return;
       }
       if (point) {
-        this.game.commandMove(new Vector3(point.x, 0, point.z));
+        this.game.commandMove(new Vector3(point.x, 0, point.z), e.shiftKey);
       }
       return;
     }
@@ -1134,7 +1134,7 @@ export class Input {
     };
     document.body.classList.add('mode-place');
     this.game.notify(
-      `Разместите: ${BUILDINGS[type].name}. ЛКМ — построить, ПКМ — отмена, R — повернуть.`,
+      `Разместите: ${BUILDINGS[type].name}. ЛКМ — построить, Shift+ЛКМ — ещё одно, ПКМ — отмена, R — повернуть.`,
       'hint',
       'placing',
       0,
