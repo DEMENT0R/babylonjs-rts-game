@@ -71,7 +71,7 @@ export const CAMPAIGN = [
     seed: 0x2B4F91A3,
     map: mapOf('axis-x', 'basalt'),
     difficulty: 'normal',
-    ai: { firstWave: 180, waveInterval: 85, income: 1 },
+    ai: { firstWave: 150, waveInterval: 75, income: 1.05 },
     buildings: ['power', 'barracks', 'derrick', 'turret'],
     units: UNITS_EARLY,
     briefing: [
@@ -82,9 +82,9 @@ export const CAMPAIGN = [
     objectives: [
       {
         type: 'derricks',
-        count: 4,
+        count: 5,
         title: 'Занять месторождения',
-        desc: 'Постройте вышки так, чтобы под вашим контролем было четыре нефтяных месторождения.',
+        desc: 'Постройте вышки так, чтобы под вашим контролем было пять нефтяных месторождений.',
       },
     ],
   },
@@ -229,16 +229,18 @@ export const TRIALS = [
     kind: 'trial',
     index: 3,
     title: 'Нефтяная блокада',
-    subtitle: 'Шесть месторождений под контролем, пока противник давит на вышки.',
+    subtitle: 'Шесть месторождений под контролем, но две нейтральные точки уже заняты «Бетой».',
     seed: 0x3E81D207,
     map: mapOf('diagonal', 'ochre'),
     difficulty: 'normal',
-    ai: { firstWave: 150, waveInterval: 70, income: 1.05 },
+    ai: { firstWave: 120, waveInterval: 60, income: 1.1 },
     buildings: ['power', 'barracks', 'factory', 'derrick', 'turret', 'depot'],
     units: UNITS_ARMOR,
     briefing: [
       'Техцентра нет, танки и скауты есть. Захватите шесть месторождений: каждая вышка — это и доход, и цель для противника.',
+      'Две нейтральные точки «Бета» уже застроила своими вышками. Их придётся снести, а место — занять.',
     ],
+    setup: (game) => addEnemyDerricks(game, 2),
     objectives: [
       {
         type: 'derricks',
@@ -276,23 +278,23 @@ export const TRIALS = [
     kind: 'trial',
     index: 5,
     title: 'Турельная линия',
-    subtitle: 'Три турели прикрывают базу. Сначала огневые точки, потом КП.',
+    subtitle: 'Четыре турели прикрывают базу. Сначала огневые точки, потом КП.',
     seed: 0x09C6F3B1,
     map: mapOf('anti-diagonal', 'basalt'),
     difficulty: 'hard',
-    ai: { firstWave: 180, waveInterval: 75, income: 1.1 },
+    ai: { firstWave: 120, waveInterval: 60, income: 1.15 },
     buildings: BUILDINGS_ALL,
     units: UNITS_ALL,
     briefing: [
-      'Противник выставил перед базой три турели «Страж» и держит сложный темп. Сначала подавите огневые точки, затем берите КП.',
+      'Противник выставил перед базой четыре турели «Страж» и держит сложный темп. Сначала подавите огневые точки, затем берите КП.',
     ],
-    setup: (game) => addEnemyTurrets(game, 3),
+    setup: (game) => addEnemyTurrets(game, 4),
     objectives: [
       {
         type: 'destroyBuilding',
         building: 'turret',
-        count: 3,
-        title: 'Подавить три турели',
+        count: 4,
+        title: 'Подавить четыре турели',
         desc: 'Уничтожьте турельную линию перед базой.',
       },
       {
@@ -469,6 +471,25 @@ export function recordMissionResult(mission, result, stats) {
 }
 
 // ------------------------------------------------------------- расстановка
+
+/**
+ * Предразмещённые вышки противника на нейтральных месторождениях. Берём точки
+ * ближе к базе «Беты», чтобы спор за нефть начинался на её половине карты.
+ */
+function addEnemyDerricks(game, count) {
+  const hq = game.map.spawn.enemy.hq;
+  const patches = game.world.oilPatches
+    .filter((patch) => patch.owner == null && !patch.derrick)
+    .sort((a, b) => Math.hypot(a.x - hq.x, a.z - hq.z) - Math.hypot(b.x - hq.x, b.z - hq.z))
+    .slice(0, count);
+  for (const patch of patches) {
+    game.createBuilding('enemy', 'derrick', patch.x, patch.z, {
+      complete: true,
+      silent: true,
+      patch,
+    });
+  }
+}
 
 /**
  * Предразмещённые турели у базы противника. Точки подбираются кольцом вокруг
