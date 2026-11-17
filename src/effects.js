@@ -121,6 +121,10 @@ function makeScorchTexture(scene) {
 export class Effects {
   constructor(scene) {
     this.scene = scene;
+    // Туман войны создаётся позже, чем эффекты. Пока ссылки нет, эффекты
+    // видны везде; после подключения всё, что попало в невидимую клетку,
+    // не рисуется — иначе дым и гильзы выдавали бы позицию противника.
+    this.fog = null;
     this.texSoft = makeSoftTexture(scene);
     this.texSpark = makeSparkTexture(scene);
     this.texFlare = makeFlareTexture(scene);
@@ -305,6 +309,16 @@ export class Effects {
     this.excludeFromGlow();
   }
 
+  /** Подключает туман войны: без него эффекты видны по всей карте. */
+  setFog(fog) {
+    this.fog = fog;
+  }
+
+  /** Попадает ли точка эффекта в текущий обзор игрока. */
+  _fogVisible(x, z) {
+    return !this.fog || this.fog.isVisible('player', x, z);
+  }
+
   excludeFromGlow() {
     const glow = this.scene.getGlowLayerByName?.('glow');
     if (!glow?.addExcludedMesh) return;
@@ -360,7 +374,7 @@ export class Effects {
     const mat = this.mats[kind] ?? this.mats.smoke;
     p.mesh.material = mat;
     p.mesh.position.copyFrom(position);
-    p.mesh.isVisible = true;
+    p.mesh.isVisible = this._fogVisible(position.x, position.z);
     p.mesh.visibility = 1;
     p.age = 0;
     p.life = opts.life ?? 1;
@@ -416,7 +430,11 @@ export class Effects {
     const f = FACTIONS[faction] ?? FACTIONS.player;
     slot.mesh.color = color(f.accent);
     slot.mesh.alpha = 1;
-    slot.mesh.isVisible = true;
+    // Линия задаётся мировыми координатами, поэтому для тумана запоминаем
+    // её середину отдельно.
+    slot.x = (a.x + b.x) * 0.5;
+    slot.z = (a.z + b.z) * 0.5;
+    slot.mesh.isVisible = this._fogVisible(slot.x, slot.z);
     slot.active = true;
     slot.age = 0;
     slot.life = 0.11 + Math.random() * 0.05;
@@ -465,7 +483,7 @@ export class Effects {
     slot.mesh.material = mat;
     slot.mesh.scaling.set(spec.scale[0], spec.scale[1], spec.scale[2]);
     slot.mesh.position.copyFrom(from);
-    slot.mesh.isVisible = true;
+    slot.mesh.isVisible = this._fogVisible(from.x, from.z);
     const dir = this.projectileDir.copyFrom(to).subtractInPlace(from);
     if (dir.lengthSquared() > 1e-6) {
       dir.normalize();
@@ -560,6 +578,8 @@ export class Effects {
   }
 
   flash(position, intensity = 4) {
+    // Свет от взрыва в тумане подсветил бы невидимую местность.
+    if (!this._fogVisible(position.x, position.z)) return;
     this.light.position.set(position.x, Math.max(2, position.y + 2), position.z);
     this.light.intensity = Math.max(this.light.intensity, intensity);
   }
@@ -579,7 +599,7 @@ export class Effects {
       this.decalCursor = (this.decalCursor + 1) % this.decals.length;
     }
     slot.active = true;
-    slot.mesh.isVisible = true;
+    slot.mesh.isVisible = this._fogVisible(position.x, position.z);
     slot.mesh.position.set(position.x, 0.028, position.z);
     slot.mesh.rotation.x = Math.PI / 2;
     slot.mesh.rotation.z = Math.random() * Math.PI * 2;
@@ -793,7 +813,10 @@ export class Effects {
           c.sy *= 0.45;
           c.sz *= 0.45;
           c.bounces++;
-          if (c.bounces === 1) this.onCasingLand?.({ x: c.x, y: c.y, z: c.z });
+          // Звук упавшей гильзы тоже не должен выдавать противника в тумане.
+          if (c.bounces === 1 && this._fogVisible(c.x, c.z)) {
+            this.onCasingLand?.({ x: c.x, y: c.y, z: c.z });
+          }
           // Мелкая гильза быстро успокаивается, тяжёлая ещё катится.
           if (Math.abs(c.vy) < 0.6 || c.bounces > 4) {
             c.settled = true;
@@ -802,6 +825,8 @@ export class Effects {
           }
         }
       }
+      // Гильза в невидимой клетке не попадает в буфер thin instances.
+      if (!this._fogVisible(c.x, c.z)) continue;
       const fade = Math.min(1, (c.life - c.age) / 0.9);
       const shrink = 0.55 + 0.45 * fade;
       const s = c.size * shrink;
@@ -829,6 +854,9 @@ export class Effects {
       p.vel.y += p.buoyancy * dt;
       p.vel.scaleInPlace(Math.max(0, 1 - p.drag * dt));
       p.mesh.position.addInPlace(p.vel.scale(dt));
+      // Дым дрейфует между клетками: видимость пересчитывается каждый кадр,
+      // поэтому он появляется, когда туман отступает, и снова скрывается.
+      p.mesh.isVisible = this._fogVisible(p.mesh.position.x, p.mesh.position.z);
       const size = p.size0 + (p.size1 - p.size0) * Math.min(1, t * 1.4);
       p.mesh.scaling.setAll(size);
       if (p.spin) p.mesh.rotation.z += p.spin * dt;
@@ -845,6 +873,7 @@ export class Effects {
         continue;
       }
       t.mesh.alpha = t.alpha * (1 - t.age / t.life);
+      t.mesh.isVisible = this._fogVisible(t.x, t.z);
     }
 
     for (const s of this.projectiles) {
@@ -862,13 +891,16 @@ export class Effects {
       const pos = Vector3.Lerp(s.from, s.to, s.t);
       if (s.arc) pos.y += Math.sin(Math.PI * s.t) * s.arc;
       s.mesh.position.copyFrom(pos);
+      const visible = this._fogVisible(pos.x, pos.z);
+      s.mesh.isVisible = visible;
 
       const spec = this.projectileKinds[s.kind] ?? this.projectileKinds.bullet;
       s.trailAcc += dt;
       const interval = s.kind === 'rocket' ? 0.035 : s.kind === 'shell' ? 0.07 : 0.14;
       if (s.trailAcc >= interval) {
         s.trailAcc = 0;
-        if (Math.random() < spec.trailChance) {
+        // След снаряда в тумане не создаём вовсе: он выдал бы траекторию.
+        if (visible && Math.random() < spec.trailChance) {
           this.puff(spec.trail, pos, {
             life: s.kind === 'rocket' ? 0.55 : 0.26,
             size0: s.kind === 'rocket' ? 0.22 : 0.1,
@@ -881,7 +913,7 @@ export class Effects {
             buoyancy: 0.2,
           });
         }
-        if (s.kind === 'rocket') {
+        if (visible && s.kind === 'rocket') {
           this.puff('fire', pos, {
             life: 0.14,
             size0: 0.28,
@@ -906,6 +938,14 @@ export class Effects {
       const s = 0.35 + (r.maxScale - 0.35) * (1 - Math.pow(1 - t, 3));
       r.mesh.scaling.set(s, s, s);
       r.mesh.visibility = (1 - t) * 0.8;
+      r.mesh.isVisible = this._fogVisible(r.mesh.position.x, r.mesh.position.z);
+    }
+
+    // Подпалины долговечнее дыма, поэтому их видимость тоже обновляется:
+    // разведанная область может снова закрыться туманом без обзора.
+    for (const d of this.decals) {
+      if (!d.active) continue;
+      d.mesh.isVisible = this._fogVisible(d.mesh.position.x, d.mesh.position.z);
     }
 
     for (let i = this.markers.length - 1; i >= 0; i--) {

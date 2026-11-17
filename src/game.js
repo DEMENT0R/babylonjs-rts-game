@@ -111,6 +111,9 @@ export class Game {
     this.setupBases();
     this.setupMission();
     this.fog = new FogOfWar(this, { enabled: this.fogEnabled });
+    // Эффекты создаются раньше игры, поэтому туман подключается сюда.
+    // После этого дым, гильзы, трассеры и снаряды вне обзора не рисуются.
+    this.fx?.setFog?.(this.fog);
     this.refreshNav();
     this.recomputePower();
     this.refreshArmyCap();
