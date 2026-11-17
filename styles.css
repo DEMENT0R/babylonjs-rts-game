@@ -2841,33 +2841,6 @@ body.using-gamepad .is-gamepad-focus {
   color: var(--dim);
 }
 
-.credits-people {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 20px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.credits-people li {
-  position: relative;
-  padding-left: 12px;
-  font-size: 10px;
-  color: #c8e4ee;
-}
-
-.credits-people li::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0.5em;
-  width: 4px;
-  height: 4px;
-  background: var(--cyan);
-  box-shadow: 0 0 6px rgba(79, 210, 255, 0.6);
-}
-
 .credits-note {
   margin: 8px 0 0;
   padding-left: 10px;

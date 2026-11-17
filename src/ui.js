@@ -1495,7 +1495,7 @@ export class UI {
       <div class="overlay-top">
         <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // ДОСЬЕ АВТОРСТВА</div>
         <h1 class="credits-title">АВТОРЫ</h1>
-        <p class="tagline">Кто сделал «Гелиос-7»: автор проекта, тестеры и основа, на которой держится игра.</p>
+        <p class="tagline">Кто сделал «Гелиос-7»: автор проекта и основа, на которой держится игра.</p>
       </div>
       <div class="credits-block">
         <div class="credits-label">АВТОР ПРОЕКТА</div>
@@ -1506,15 +1506,6 @@ export class UI {
         <div class="credits-links">
           <a class="credits-link" href="https://github.com/DEMENT0R" target="_blank" rel="noopener noreferrer">github.com/DEMENT0R</a>
         </div>
-      </div>
-      <div class="credits-block">
-        <div class="credits-label">ТЕСТИРОВАНИЕ</div>
-        <ul class="credits-people">
-          <li>Павел Захаренко</li>
-          <li>Михаил Пелагеин</li>
-          <li>Арсений Лысенко</li>
-        </ul>
-        <p class="credits-note">Тестирование и обратная связь по балансу.</p>
       </div>
       <div class="credits-block">
         <div class="credits-label">КАК СДЕЛАНО</div>
