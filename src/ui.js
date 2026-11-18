@@ -44,6 +44,7 @@ import {
   trialBest,
   trialDoneCount,
 } from './missions.js';
+import { LANGS, getLang, setLang, t } from './i18n/index.js';
 import { GRAPHICS_LABELS, GRAPHICS_OPTIONS, AUDIO_LABELS } from './settings.js';
 import { clamp, formatTime, plural, mulberry32, esc } from './utils.js';
 
@@ -173,6 +174,12 @@ export class UI {
         this.refreshDifficultyControls();
         return;
       }
+      const lang = e.target.closest('[data-lang]');
+      if (lang) {
+        // Строки уже вшиты в открытые экраны — применяем язык перезагрузкой.
+        if (setLang(lang.dataset.lang)) window.location.reload();
+        return;
+      }
       const fog = e.target.closest('[data-fog]');
       if (fog) {
         this.game.setFog(fog.dataset.fog);
@@ -235,7 +242,8 @@ export class UI {
       const tab = e.target.closest('[data-settings-tab]');
       if (!tab) return;
       e.preventDefault();
-      const next = this.settingsTab === 'graphics' ? 'audio' : 'graphics';
+      const order = ['graphics', 'audio', 'lang'];
+      const next = order[(order.indexOf(this.settingsTab) + 1) % order.length];
       this.setSettingsTab(next);
       this.el.overlay.querySelector(`[data-settings-tab="${next}"]`)?.focus();
     });
@@ -1290,39 +1298,39 @@ export class UI {
   }
 
   showSettings() {
-    const active = this.settingsTab === 'audio' ? 'audio' : 'graphics';
-    const isGraphics = active === 'graphics';
+    const order = ['graphics', 'audio', 'lang'];
+    const active = order.includes(this.settingsTab) ? this.settingsTab : 'graphics';
+    const paneId = (key) => `settingsPane${key[0].toUpperCase()}${key.slice(1)}`;
+    const tabs = order.map((key) => `
+        <button type="button" class="settings-tab${active === key ? ' is-active' : ''}" id="settingsTab${key[0].toUpperCase()}${key.slice(1)}" role="tab" aria-selected="${active === key}" aria-controls="${paneId(key)}" tabindex="${active === key ? 0 : -1}" data-settings-tab="${key}">${t(`settings.tab.${key}`)}</button>`).join('');
+    const panes = order.map((key) => `
+      <div class="settings-pane" id="${paneId(key)}" role="tabpanel" aria-labelledby="settingsTab${key[0].toUpperCase()}${key.slice(1)}" data-settings-pane="${key}"${active === key ? '' : ' hidden'}>
+        ${key === 'graphics' ? this.graphicsBlock() : key === 'audio' ? this.audioBlock() : this.langBlock()}
+        <p class="settings-hint">${t(`settings.${key}Hint`)}</p>
+      </div>`).join('');
     const html = `
       <div class="overlay-top">
-        <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // НАСТРОЙКИ</div>
-        <h1 class="settings-title">НАСТРОЙКИ</h1>
-        <p class="tagline">Графика и звук. Изменения применяются сразу и сохраняются в браузере.</p>
+        <div class="eyebrow"><i></i> ${t('settings.network')}</div>
+        <h1 class="settings-title">${t('settings.title')}</h1>
+        <p class="tagline">${t('settings.tagline')}</p>
       </div>
-      <div class="settings-tabs" role="tablist" aria-label="Разделы настроек">
-        <button type="button" class="settings-tab${isGraphics ? ' is-active' : ''}" id="settingsTabGraphics" role="tab" aria-selected="${isGraphics}" aria-controls="settingsPaneGraphics" tabindex="${isGraphics ? 0 : -1}" data-settings-tab="graphics">ГРАФИКА</button>
-        <button type="button" class="settings-tab${isGraphics ? '' : ' is-active'}" id="settingsTabAudio" role="tab" aria-selected="${!isGraphics}" aria-controls="settingsPaneAudio" tabindex="${isGraphics ? -1 : 0}" data-settings-tab="audio">ЗВУК</button>
+      <div class="settings-tabs" role="tablist" aria-label="${t('settings.tabsAria')}">${tabs}
       </div>
-      <div class="settings-pane" id="settingsPaneGraphics" role="tabpanel" aria-labelledby="settingsTabGraphics" data-settings-pane="graphics"${isGraphics ? '' : ' hidden'}>
-        ${this.graphicsBlock()}
-        <p class="settings-hint">Разрешение ниже помогает на слабых устройствах. Тени и свечение влияют на нагрузку сильнее всего.</p>
-      </div>
-      <div class="settings-pane" id="settingsPaneAudio" role="tabpanel" aria-labelledby="settingsTabAudio" data-settings-pane="audio"${isGraphics ? ' hidden' : ''}>
-        ${this.audioBlock()}
-        <p class="settings-hint">Весь звук синтезируется в браузере. На нуле движок не тратит ресурсы на воспроизведение.</p>
-      </div>
+      ${panes}
       <div class="overlay-actions">
-        <button class="btn-primary" data-action="back">НАЗАД <span>→</span></button>
+        <button class="btn-primary" data-action="back">${t('settings.back')} <span>→</span></button>
       </div>
       <div class="overlay-footer">
-        <span>ГЕЛИОС-7 // НАСТРОЙКИ</span>
-        <span>СОХРАНЯЕТСЯ В БРАУЗЕРЕ</span>
+        <span>${t('settings.footer.title')}</span>
+        <span>${t('settings.footer.saved')}</span>
       </div>
     `;
     this.setOverlay(html, 'overlay--settings');
   }
 
   setSettingsTab(tab) {
-    this.settingsTab = tab === 'audio' ? 'audio' : 'graphics';
+    const order = ['graphics', 'audio', 'lang'];
+    this.settingsTab = order.includes(tab) ? tab : 'graphics';
     const card = this.el.overlayCard;
     card.querySelectorAll('[data-settings-tab]').forEach((btn) => {
       const active = btn.dataset.settingsTab === this.settingsTab;
@@ -1333,6 +1341,14 @@ export class UI {
     card.querySelectorAll('[data-settings-pane]').forEach((pane) => {
       pane.hidden = pane.dataset.settingsPane !== this.settingsTab;
     });
+  }
+
+  // Язык применяем перезагрузкой страницы, поэтому кнопки живут в этом блоке.
+  langBlock() {
+    const current = getLang();
+    const buttons = LANGS.map(({ value, label }) =>
+      `<button type="button" class="graphics-opt${current === value ? ' is-active' : ''}" data-lang="${value}" aria-pressed="${current === value}">${label}</button>`).join('');
+    return `<div class="graphics-grid">${buttons}</div>`;
   }
 
   // ------------------------------------------------------------------ help
@@ -1535,7 +1551,7 @@ export class UI {
   setOverlay(html, variant) {
     const closable = Boolean(this.overlayBack) || (this.game.started && !this.game.over);
     const close = closable
-      ? '<button type="button" class="overlay-close" data-action="close" aria-label="Закрыть" title="Закрыть (Esc)">✕</button>'
+      ? `<button type="button" class="overlay-close" data-action="close" aria-label="${t('settings.close')}" title="${t('settings.closeTitle')}">✕</button>`
       : '';
     this.el.overlayCard.className = `overlay-card ${variant ?? ''}`;
     this.el.overlayCard.innerHTML = `${close}${html}`;

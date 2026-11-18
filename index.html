@@ -14,7 +14,7 @@
     <canvas id="scene" touch-action="none"></canvas>
     <div class="scanlines" aria-hidden="true"></div>
     <div id="alertFlash" aria-hidden="true"></div>
-    <div id="attractHint" class="attract-hint" aria-hidden="true">ЛЮБОЕ ДЕЙСТВИЕ — МЕНЮ</div>
+    <div id="attractHint" class="attract-hint" aria-hidden="true" data-i18n="static.attractHint">ЛЮБОЕ ДЕЙСТВИЕ — МЕНЮ</div>
 
     <header id="hud-top">
       <div class="brand">
@@ -22,36 +22,36 @@
           <svg viewBox="0 0 48 48"><path d="M24 3 43 14v20L24 45 5 34V14Z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M24 10 36 17v14L24 38 12 31V17Z" fill="none" stroke="currentColor" stroke-width="1.1" opacity=".55"/><path d="M24 17 31 21v8l-7 4-7-4v-8Z" fill="currentColor" opacity=".9"/></svg>
         </div>
         <div class="brand-text">
-          <strong>ГЕЛИОС-7</strong>
-          <span id="brandSector">КОЛОНИАЛЬНАЯ СЕТЬ / СЕКТОР 7Г</span>
+          <strong data-i18n="static.brand">ГЕЛИОС-7</strong>
+          <span id="brandSector" data-i18n="static.brandSector">КОЛОНИАЛЬНАЯ СЕТЬ / СЕКТОР 7Г</span>
         </div>
       </div>
 
       <div class="resources">
         <div class="res" id="resCredits">
           <span class="res-ico" data-icon="credits"></span>
-          <div class="res-copy"><b id="credits">0</b><small>КРЕДИТЫ</small></div>
+          <div class="res-copy"><b id="credits">0</b><small data-i18n="static.credits">КРЕДИТЫ</small></div>
         </div>
         <div class="res" id="resPower">
           <span class="res-ico" data-icon="bolt"></span>
-          <div class="res-copy"><b id="power">0 / 0</b><small>ЭНЕРГИЯ</small></div>
+          <div class="res-copy"><b id="power">0 / 0</b><small data-i18n="static.power">ЭНЕРГИЯ</small></div>
         </div>
         <div class="res" id="resArmy">
           <span class="res-ico" data-icon="army"></span>
-          <div class="res-copy"><b id="army">0 / 10</b><small>ЛИМИТ</small></div>
+          <div class="res-copy"><b id="army">0 / 10</b><small data-i18n="static.army">ЛИМИТ</small></div>
         </div>
       </div>
 
       <div class="top-right">
         <div class="mission">
-          <span>ЗАДАЧА</span>
-          <b>Уничтожить командный центр противника</b>
+          <span data-i18n="static.missionLabel">ЗАДАЧА</span>
+          <b data-i18n="static.missionDefault">Уничтожить командный центр противника</b>
         </div>
         <div class="clock" id="clock">00:00</div>
-        <button id="btnPause" class="icon-btn" title="Пауза (Esc)" aria-label="Пауза">
+        <button id="btnPause" class="icon-btn" data-i18n-title="static.pauseTitle" data-i18n-aria="static.pause" title="Пауза (Esc)" aria-label="Пауза">
           <span data-icon="pause"></span>
         </button>
-        <button id="btnFullscreen" class="icon-btn" title="Полноэкранный режим" aria-label="Полноэкранный режим" aria-pressed="false">
+        <button id="btnFullscreen" class="icon-btn" data-i18n-title="static.fullscreenTitle" data-i18n-aria="static.fullscreen" title="Полноэкранный режим" aria-label="Полноэкранный режим" aria-pressed="false">
           <span data-icon="expand"></span>
         </button>
       </div>
@@ -59,12 +59,12 @@
 
     <div id="feed" aria-live="polite"></div>
 
-    <div id="squad-rail" class="squad-rail" aria-label="Отряды"></div>
+    <div id="squad-rail" class="squad-rail" aria-label="Отряды" data-i18n-aria="static.squadRail"></div>
 
     <main id="hud-bottom">
       <section id="minimap-panel" class="panel">
         <div class="panel-head">
-          <span>ТАКТИЧЕСКАЯ КАРТА</span>
+          <span data-i18n="static.tacticalMap">ТАКТИЧЕСКАЯ КАРТА</span>
           <span class="panel-tag" id="mmSector">—</span>
         </div>
         <div class="minimap-frame">
@@ -73,14 +73,14 @@
           <div class="mm-ping" id="mmPing"></div>
         </div>
         <div class="minimap-foot">
-          <span>ЛКМ — камера</span>
-          <span id="gridStatus">СЕТЬ В НОРМЕ</span>
+          <span data-i18n="static.minimapHint">ЛКМ — камера</span>
+          <span id="gridStatus" data-i18n="static.gridStatus">СЕТЬ В НОРМЕ</span>
         </div>
       </section>
 
       <section id="selection-panel" class="panel">
         <div class="panel-head">
-          <span id="selTitle">НЕТ ВЫБОРА</span>
+          <span id="selTitle" data-i18n="static.noSelection">НЕТ ВЫБОРА</span>
           <span class="panel-tag" id="selTag">—</span>
         </div>
         <div id="selectionBody" class="sel-body"></div>
@@ -88,16 +88,16 @@
 
       <section id="command-panel" class="panel">
         <div class="panel-head">
-          <span>КОМАНДЫ</span>
+          <span data-i18n="static.commands">КОМАНДЫ</span>
           <span class="panel-tag" id="cmdStatus">—</span>
         </div>
         <div id="commands" class="cmd-grid"></div>
         <div class="hint-line">
-          <span><kbd>ЛКМ</kbd> выбор</span>
-          <span><kbd>ПКМ</kbd> приказ</span>
-          <span><kbd>F</kbd> атака</span>
-          <span><kbd>Shift</kbd> добавить</span>
-          <span><kbd>Shift</kbd>+<kbd>1…9</kbd> отряд</span>
+          <span><kbd data-i18n="static.kbd.lmb">ЛКМ</kbd> <span data-i18n="static.hint.select">выбор</span></span>
+          <span><kbd data-i18n="static.kbd.rmb">ПКМ</kbd> <span data-i18n="static.hint.order">приказ</span></span>
+          <span><kbd>F</kbd> <span data-i18n="static.hint.attack">атака</span></span>
+          <span><kbd>Shift</kbd> <span data-i18n="static.hint.add">добавить</span></span>
+          <span><kbd>Shift</kbd>+<kbd>1…9</kbd> <span data-i18n="static.hint.group">отряд</span></span>
         </div>
       </section>
     </main>
@@ -106,28 +106,28 @@
     <div id="gamepadCursor" aria-hidden="true"></div>
     <div id="tooltip" role="tooltip"></div>
     <div id="placeHint" aria-live="polite"></div>
-    <div id="pauseBadge">ПАУЗА</div>
+    <div id="pauseBadge" data-i18n="static.pauseBadge">ПАУЗА</div>
 
-    <div id="touch-controls" aria-label="Сенсорное управление камерой">
+    <div id="touch-controls" aria-label="Сенсорное управление камерой" data-i18n-aria="static.touchAria">
       <div class="tc-pad">
-        <button class="tc-btn tc-up" data-touch="up" aria-label="Камера вверх">▲</button>
-        <button class="tc-btn tc-left" data-touch="left" aria-label="Камера влево">◀</button>
-        <button class="tc-btn tc-home" data-touch="base" aria-label="К базе">БАЗА</button>
-        <button class="tc-btn tc-right" data-touch="right" aria-label="Камера вправо">▶</button>
-        <button class="tc-btn tc-down" data-touch="down" aria-label="Камера вниз">▼</button>
+        <button class="tc-btn tc-up" data-touch="up" aria-label="Камера вверх" data-i18n-aria="static.touch.up">▲</button>
+        <button class="tc-btn tc-left" data-touch="left" aria-label="Камера влево" data-i18n-aria="static.touch.left">◀</button>
+        <button class="tc-btn tc-home" data-touch="base" aria-label="К базе" data-i18n-aria="static.touch.base"><span data-i18n="static.touch.baseLabel">БАЗА</span></button>
+        <button class="tc-btn tc-right" data-touch="right" aria-label="Камера вправо" data-i18n-aria="static.touch.right">▶</button>
+        <button class="tc-btn tc-down" data-touch="down" aria-label="Камера вниз" data-i18n-aria="static.touch.down">▼</button>
       </div>
       <div class="tc-tools">
-        <button class="tc-btn" data-touch="zoomin" aria-label="Приблизить">+</button>
-        <button class="tc-btn" data-touch="zoomout" aria-label="Отдалить">−</button>
-        <button class="tc-btn" data-touch="rotl" aria-label="Повернуть камеру влево">⟲</button>
-        <button class="tc-btn" data-touch="rotr" aria-label="Повернуть камеру вправо">⟳</button>
-        <button class="tc-btn tc-deselect" data-touch="deselect" aria-label="Снять выделение">✕</button>
+        <button class="tc-btn" data-touch="zoomin" aria-label="Приблизить" data-i18n-aria="static.touch.zoomin">+</button>
+        <button class="tc-btn" data-touch="zoomout" aria-label="Отдалить" data-i18n-aria="static.touch.zoomout">−</button>
+        <button class="tc-btn" data-touch="rotl" aria-label="Повернуть камеру влево" data-i18n-aria="static.touch.rotl">⟲</button>
+        <button class="tc-btn" data-touch="rotr" aria-label="Повернуть камеру вправо" data-i18n-aria="static.touch.rotr">⟳</button>
+        <button class="tc-btn tc-deselect" data-touch="deselect" aria-label="Снять выделение" data-i18n-aria="static.touch.deselect">✕</button>
       </div>
       <div class="tc-place">
-        <button class="tc-btn" data-touch="rotpl" aria-label="Повернуть здание влево">⟲</button>
-        <button class="tc-btn" data-touch="rotpr" aria-label="Повернуть здание вправо">⟳</button>
+        <button class="tc-btn" data-touch="rotpl" aria-label="Повернуть здание влево" data-i18n-aria="static.touch.rotpl">⟲</button>
+        <button class="tc-btn" data-touch="rotpr" aria-label="Повернуть здание вправо" data-i18n-aria="static.touch.rotpr">⟳</button>
       </div>
-      <button id="touchCancel" class="tc-cancel" data-touch="cancel">ОТМЕНА</button>
+      <button id="touchCancel" class="tc-cancel" data-touch="cancel" data-i18n="static.touch.cancel">ОТМЕНА</button>
     </div>
 
     <div id="overlay" class="overlay">
