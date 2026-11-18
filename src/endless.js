@@ -4,6 +4,7 @@
 
 import { MAP } from './config.js';
 import { clamp } from './utils.js';
+import { t } from './i18n/index.js';
 
 const TAU = Math.PI * 2;
 
@@ -30,10 +31,10 @@ const DEFAULTS = {
 // Сюжетные перехваты по времени: голос с той стороны всё чаще говорит
 // приказами «Беты», а к финалу перестаёт различать оригинал и копию.
 const MILESTONES = [
-  { at: 120, text: 'Радиоперехват: «Дублёр подтверждает существование. Задача — стирание».' },
-  { at: 300, text: 'Радиоперехват: «Оригинал требует удаления копии».' },
-  { at: 600, text: 'Радиоперехват: «Сектор объявлен чистым. Копия ещё отвечает».' },
-  { at: 900, text: 'Радиоперехват: «Связь с реестром потеряна. Обе колонии — „Гелиос-7“».' },
+  { at: 120, text: t('endless.radio.1') },
+  { at: 300, text: t('endless.radio.2') },
+  { at: 600, text: t('endless.radio.3') },
+  { at: 900, text: t('endless.radio.4') },
 ];
 
 export class WaveDirector {
@@ -120,8 +121,8 @@ export class WaveDirector {
     const first = this.waveIndex === 1;
     this.game.notify(
       first
-        ? 'Автозаводы «Беты» активированы: в сектор идёт первая волна.'
-        : `Волна ${this.waveIndex}: автозаводы выводят новое подразделение.`,
+        ? t('endless.wave.first')
+        : t('endless.wave.next', { wave: this.waveIndex }),
       'danger',
       `endless-wave-${this.waveIndex}`,
       0,
