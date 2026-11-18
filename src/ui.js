@@ -45,7 +45,7 @@ import {
   trialDoneCount,
 } from './missions.js';
 import { LANGS, getLang, setLang, t } from './i18n/index.js';
-import { GRAPHICS_LABELS, GRAPHICS_OPTIONS, AUDIO_LABELS } from './settings.js';
+import { GRAPHICS_OPTIONS, AUDIO_DEFAULTS } from './settings.js';
 import { clamp, formatTime, plural, mulberry32, esc } from './utils.js';
 
 export class UI {
@@ -94,9 +94,9 @@ export class UI {
     this.minimapBg = null;
     this.buildMinimapBackground();
     this.el.mmSector.textContent = this.game.map.label;
-    this.el.mmSector.title = `Карта ${this.game.map.label} · ${this.game.map.style.name}`;
+    this.el.mmSector.title = t('hud.mapTitle', { label: this.game.map.label, style: this.game.map.style.name });
     if (this.el.brandSector) {
-      this.el.brandSector.textContent = `СЕТЬ «БЛИЗНЕЦЫ» / СЕКТОР ${this.game.map.label}`;
+      this.el.brandSector.textContent = t('hud.brandSector', { label: this.game.map.label });
     }
     this.showStart();
     this.renderHeader();
@@ -110,6 +110,7 @@ export class UI {
       army: this.$('#army'),
       clock: this.$('#clock'),
       resPower: this.$('#resPower'),
+      powerLabel: this.$('#resPower .res-copy small'),
       gridStatus: this.$('#gridStatus'),
       commands: this.$('#commands'),
       cmdStatus: this.$('#cmdStatus'),
@@ -253,7 +254,7 @@ export class UI {
       const cmd = this.commandMap.get(btn.dataset.cmdId);
       if (!cmd) return;
       if (cmd.disabled) {
-        this.game.notify(cmd.reason || 'Недоступно.', 'warn', `cmd-${cmd.id}`, 0, 3);
+        this.game.notify(cmd.reason || t('notify.unavailable'), 'warn', `cmd-${cmd.id}`, 0, 3);
         return;
       }
       cmd.action(e.shiftKey ? 5 : 1);
@@ -357,39 +358,39 @@ export class UI {
     const map = this.game.map;
     const html = `
       <div class="overlay-top">
-        <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // ГЛАВНОЕ МЕНЮ</div>
-        <h1>ГЕЛИОС<span>-7</span></h1>
-        <p class="tagline">Две колонии-близнеца. Один сектор. Контракт достанется одному.</p>
+        <div class="eyebrow"><i></i> ${t('menu.eyebrow')}</div>
+        <h1>${t('menu.brand')}<span>-7</span></h1>
+        <p class="tagline">${t('menu.tagline')}</p>
       </div>
       <div class="mode-grid mode-grid--modes">
         <button type="button" class="mode-card mode-card--active" data-action="campaign">
           <span class="mode-mark">${icon('flag')}</span>
-          <span class="mode-copy"><b>КАМПАНИЯ</b><small>Пять сюжетных операций за колонию «Гелиос-7»: брифинги, задания и постепенное открытие техники.</small></span>
+          <span class="mode-copy"><b>${t('menu.mode.campaign')}</b><small>${t('menu.mode.campaignDesc')}</small></span>
           <span class="mode-badge">${campaignDoneCount()} / ${CAMPAIGN.length}</span>
         </button>
         <button type="button" class="mode-card mode-card--active" data-action="trials">
           <span class="mode-mark">${icon('target')}</span>
-          <span class="mode-copy"><b>ИСПЫТАНИЯ</b><small>Шесть фиксированных сценариев без сюжета: сложные партии на время и тактику.</small></span>
+          <span class="mode-copy"><b>${t('menu.mode.trials')}</b><small>${t('menu.mode.trialsDesc')}</small></span>
           <span class="mode-badge">${trialDoneCount()} / ${TRIALS.length}</span>
         </button>
         <button type="button" class="mode-card mode-card--active" data-action="lobby">
           <span class="mode-mark">${icon('hq')}</span>
-          <span class="mode-copy"><b>ЛОББИ</b><small>Свободная партия: сложность противника, сид карты и другие параметры матча.</small></span>
+          <span class="mode-copy"><b>${t('menu.mode.lobby')}</b><small>${t('menu.mode.lobbyDesc')}</small></span>
           <span class="mode-arrow">→</span>
         </button>
       </div>
       <div class="overlay-actions">
         <div class="menu-links">
-          <button class="btn-ghost" data-action="help">КАК ИГРАТЬ</button>
-          <button class="btn-ghost" data-action="settings">НАСТРОЙКИ</button>
-          <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
-          <button class="btn-ghost" data-action="credits">АВТОРЫ</button>
+          <button class="btn-ghost" data-action="help">${t('menu.help')}</button>
+          <button class="btn-ghost" data-action="settings">${t('menu.settings')}</button>
+          <button class="btn-ghost" data-action="changelog">${t('menu.changelog')}</button>
+          <button class="btn-ghost" data-action="credits">${t('menu.credits')}</button>
         </div>
       </div>
-      <p class="overlay-note start-note">Кампания открывает технику за победы, испытания не связаны с сюжетом. Свободная партия настраивается в лобби.</p>
+      <p class="overlay-note start-note">${t('menu.startNote')}</p>
       <div class="overlay-footer">
-        <span>ГЕЛИОС-7 // ГЛАВНОЕ МЕНЮ // ВЕРСИЯ ${GAME_VERSION}</span>
-        <span>СЕКТОР ${map.label} · ${map.symmetry.name.toUpperCase()} · ${map.style.name}</span>
+        <span>${t('menu.footerStart', { version: GAME_VERSION })}</span>
+        <span>${t('menu.footerMap', { label: map.label, symmetry: map.symmetry.name.toUpperCase(), style: map.style.name })}</span>
       </div>
     `;
     this.setOverlay(html, 'overlay--start');
@@ -413,13 +414,13 @@ export class UI {
       const locked = state === 'locked';
       const best = isCampaign ? null : trialBest(mission);
       const badge = isCampaign
-        ? (state === 'done' ? 'ПРОЙДЕНО' : state === 'open' ? 'ДОСТУПНО' : 'ЗАКРЫТО')
-        : (best != null ? `РЕКОРД ${formatTime(best)}` : 'НЕ ПРОЙДЕНО');
+        ? (state === 'done' ? t('menu.badgeDone') : state === 'open' ? t('menu.badgeOpen') : t('menu.badgeLocked'))
+        : (best != null ? t('menu.badgeRecord', { time: formatTime(best) }) : t('menu.badgeNotDone'));
       const classes = `mode-card ${locked ? 'mode-card--locked' : 'mode-card--active'}${state === 'done' || best != null ? ' is-done' : ''}`;
       return `
         <button type="button" class="${classes}" data-action="mission:${mission.id}"
           ${locked ? 'disabled aria-disabled="true"' : ''}
-          title="${locked ? 'Сначала пройдите предыдущую операцию' : esc(mission.subtitle)}">
+          title="${locked ? t('menu.lockedTitle') : esc(mission.subtitle)}">
           <span class="mode-mark mission-num">${String(mission.index).padStart(2, '0')}</span>
           <span class="mode-copy"><b>${esc(mission.title.toUpperCase())}</b><small>${esc(mission.subtitle)}</small></span>
           <span class="mode-badge">${badge}</span>
@@ -435,10 +436,10 @@ export class UI {
       const title = unlocked && mission ? mission.title.toUpperCase() : '??? ??? ???';
       const note = unlocked && mission
         ? mission.subtitle
-        : 'Секретная операция. Пройдите все пять операций кампании, чтобы открыть её.';
+        : t('menu.secretNote');
       const badge = unlocked
-        ? (best ? `РЕКОРД ${formatTime(best.time)}` : 'БЕЗ КОНЦА')
-        : 'СЕКРЕТ';
+        ? (best ? t('menu.badgeRecord', { time: formatTime(best.time) }) : t('menu.badgeEndless'))
+        : t('menu.badgeSecret');
       secret = `
         <button type="button" class="mode-card ${unlocked ? 'mode-card--active' : 'mode-card--locked'}"
           ${unlocked ? `data-action="mission:${mission.id}"` : 'disabled aria-disabled="true"'}
@@ -449,31 +450,29 @@ export class UI {
         </button>`;
     }
     const done = isCampaign ? campaignDoneCount() : trialDoneCount();
-    const label = isCampaign ? 'КАМПАНИЯ' : 'ИСПЫТАНИЯ';
+    const label = isCampaign ? t('menu.mode.campaign') : t('menu.mode.trials');
     const html = `
       <div class="overlay-top">
-        <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // ${label}</div>
-        <h1>${isCampaign ? 'ОПЕРАЦИИ' : 'ИСПЫТАНИЯ'}</h1>
-        <p class="tagline">${isCampaign
-          ? 'Пять операций за колонию «Гелиос-7». Победа открывает следующую миссию и новую технику. После пятой операции открывается секретный протокол без конца.'
-          : 'Шесть фиксированных сценариев. Сюжет не нужен: только карта, противник и условие победы.'}</p>
+        <div class="eyebrow"><i></i> ${t('menu.network')} // ${label}</div>
+        <h1>${isCampaign ? t('menu.missionsCampaign') : t('menu.mode.trials')}</h1>
+        <p class="tagline">${isCampaign ? t('menu.campaignTagline') : t('menu.trialsTagline')}</p>
       </div>
       <div class="mode-grid mode-grid--missions">${cards}${secret}</div>
       <div class="overlay-actions">
-        <button class="btn-primary" data-action="back">← В ГЛАВНОЕ МЕНЮ</button>
+        <button class="btn-primary" data-action="back">${t('menu.backToMain')}</button>
         <div class="menu-links">
-          <button class="btn-ghost" data-action="help">КАК ИГРАТЬ</button>
-          <button class="btn-ghost" data-action="settings">НАСТРОЙКИ</button>
-          <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
-          <button class="btn-ghost" data-action="credits">АВТОРЫ</button>
+          <button class="btn-ghost" data-action="help">${t('menu.help')}</button>
+          <button class="btn-ghost" data-action="settings">${t('menu.settings')}</button>
+          <button class="btn-ghost" data-action="changelog">${t('menu.changelog')}</button>
+          <button class="btn-ghost" data-action="credits">${t('menu.credits')}</button>
         </div>
       </div>
       <p class="overlay-note start-note">${isCampaign
-        ? `Пройдено операций: ${done} из ${CAMPAIGN.length}. Прогресс сохраняется в браузере.`
-        : `Пройдено испытаний: ${done} из ${TRIALS.length}. Лучшее время сохраняется отдельно для каждого сценария.`}</p>
+        ? t('menu.campaignProgress', { done, total: CAMPAIGN.length })
+        : t('menu.trialsProgress', { done, total: TRIALS.length })}</p>
       <div class="overlay-footer">
-        <span>ГЕЛИОС-7 // ${label} // ВЕРСИЯ ${GAME_VERSION}</span>
-        <span>${isCampaign ? 'СЮЖЕТНЫЙ РЕЖИМ' : 'СВОБОДНЫЕ СЦЕНАРИИ'}</span>
+        <span>${t('menu.footerMissions', { label, version: GAME_VERSION })}</span>
+        <span>${isCampaign ? t('menu.footerStory') : t('menu.footerScenarios')}</span>
       </div>
     `;
     this.setOverlay(html, 'overlay--missions');
@@ -495,8 +494,8 @@ export class UI {
     const map = this.game.map;
     const isCampaign = current.kind === 'campaign';
     const isEndless = current.kind === 'endless';
-    const kindLabel = isEndless ? 'ПРОТОКОЛ' : isCampaign ? 'КАМПАНИЯ' : 'ИСПЫТАНИЯ';
-    const kindWord = isEndless ? 'ПРОТОКОЛ' : isCampaign ? 'ОПЕРАЦИЯ' : 'СЦЕНАРИЙ';
+    const kindLabel = isEndless ? t('overlay.kindProtocol') : isCampaign ? t('overlay.kindCampaign') : t('overlay.kindTrials');
+    const kindWord = isEndless ? t('overlay.wordProtocol') : isCampaign ? t('overlay.wordOperation') : t('overlay.wordScenario');
     const buildings = (current.buildings ?? []).map((type) => BUILDINGS[type]?.name).filter(Boolean);
     const units = (current.units ?? []).map((type) => UNITS[type]?.name).filter(Boolean);
     const brief = (current.briefing ?? []).map((text) => `<p>${esc(text)}</p>`).join('');
@@ -507,24 +506,24 @@ export class UI {
         <p class="tagline">${esc(current.subtitle)}</p>
       </div>
       <div class="map-strip">
-        <div class="map-strip-item"><span>СИД КАРТЫ</span><b>#${map.label}</b></div>
-        <div class="map-strip-item"><span>СИММЕТРИЯ</span><b>${map.symmetry.name} · ${map.symmetry.tag}</b></div>
-        <div class="map-strip-item"><span>ЛАНДШАФТ</span><b>${map.style.name}</b></div>
+        <div class="map-strip-item"><span>${t('menu.seedLabel')}</span><b>#${map.label}</b></div>
+        <div class="map-strip-item"><span>${t('overlay.symmetry')}</span><b>${map.symmetry.name} · ${map.symmetry.tag}</b></div>
+        <div class="map-strip-item"><span>${t('overlay.landscape')}</span><b>${map.style.name}</b></div>
       </div>
       <div class="brief-grid">
         <div class="brief-copy">
           ${brief}
-          <p class="accent-copy">Доступно: ${buildings.join(', ')}. Войска: ${units.join(', ')}.</p>
+          <p class="accent-copy">${t('overlay.briefRoster', { buildings: esc(buildings.join(', ')), units: esc(units.join(', ')) })}</p>
         </div>
         ${this.objectivesHtml(current, false)}
       </div>
       <div class="overlay-actions">
-        <button class="btn-primary" data-action="beginmission">НАЧАТЬ ${isEndless ? 'ПРОТОКОЛ' : isCampaign ? 'ОПЕРАЦИЮ' : 'ИСПЫТАНИЕ'} <span>→</span></button>
-        <button class="btn-ghost" data-action="back">← НАЗАД</button>
+        <button class="btn-primary" data-action="beginmission">${isEndless ? t('overlay.beginProtocol') : isCampaign ? t('overlay.beginOperation') : t('overlay.beginTrial')} <span>→</span></button>
+        <button class="btn-ghost" data-action="back">${t('overlay.back')}</button>
       </div>
       <div class="overlay-footer">
-        <span>ГЕЛИОС-7 // ${kindLabel} · ${esc(current.title.toUpperCase())}</span>
-        <span>ПРОТИВНИК: ${AI_DIFFICULTY[current.difficulty]?.name ?? 'ОБЫЧНЫЙ'}</span>
+        <span>${t('overlay.footerMission', { kind: kindLabel, title: esc(current.title.toUpperCase()) })}</span>
+        <span>${t('overlay.enemy', { name: esc(AI_DIFFICULTY[current.difficulty]?.name ?? t('menu.difficultyDefault')) })}</span>
       </div>
     `;
     this.setOverlay(html, 'overlay--briefing');
@@ -544,7 +543,7 @@ export class UI {
         </div>`;
     }).join('');
     const body = items || (mission.endless
-      ? `<div class="objective"><b>∞</b><span><strong>Продержаться как можно дольше</strong><small>Волны идут без конца, победы нет. Поражение — потеря командного центра.</small></span></div>`
+      ? `<div class="objective"><b>∞</b><span><strong>${t('overlay.endlessObjectiveTitle')}</strong><small>${t('overlay.endlessObjectiveDesc')}</small></span></div>`
       : '');
     return `<div class="objectives">${body}</div>`;
   }
@@ -590,14 +589,14 @@ export class UI {
     const map = this.game.map;
     const html = `
       <div class="overlay-top">
-        <div class="eyebrow"><i></i> ЛОББИ // СЕКТОР <span id="lobbySector">${map.label}</span></div>
-        <h1>ГЕЛИОС<span>-7</span></h1>
-        <p class="tagline">Параметры операции: сложность противника, туман войны и карта. Выбор действует до начала боя.</p>
+        <div class="eyebrow"><i></i> ${t('menu.lobbyEyebrow')} <span id="lobbySector">${map.label}</span></div>
+        <h1>${t('menu.brand')}<span>-7</span></h1>
+        <p class="tagline">${t('menu.lobbyTagline')}</p>
       </div>
       <div class="map-strip lobby-map-strip" id="lobbyMapStrip">
-        <div class="map-strip-item"><span>СИД КАРТЫ</span><b id="lobbySeed">#${map.label}</b></div>
-        <div class="map-strip-item"><span>СИММЕТРИЯ</span><b id="lobbySymmetry">${map.symmetry.name} · ${map.symmetry.tag}</b></div>
-        <div class="map-strip-item"><span>ЛАНДШАФТ</span><b id="lobbyStyle">${map.style.name}</b></div>
+        <div class="map-strip-item"><span>${t('menu.seedLabel')}</span><b id="lobbySeed">#${map.label}</b></div>
+        <div class="map-strip-item"><span>${t('overlay.symmetry')}</span><b id="lobbySymmetry">${map.symmetry.name} · ${map.symmetry.tag}</b></div>
+        <div class="map-strip-item"><span>${t('overlay.landscape')}</span><b id="lobbyStyle">${map.style.name}</b></div>
       </div>
       <div class="lobby-panel">
         ${this.difficultyBlock()}
@@ -605,29 +604,29 @@ export class UI {
         ${this.seedBlock()}
       </div>
       <div class="overlay-actions">
-        <button class="btn-primary" data-action="start">НАЧАТЬ ОПЕРАЦИЮ <span>→</span></button>
-        <button class="btn-ghost" data-action="back">← В ГЛАВНОЕ МЕНЮ</button>
+        <button class="btn-primary" data-action="start">${t('menu.start')} <span>→</span></button>
+        <button class="btn-ghost" data-action="back">${t('menu.backToMain')}</button>
         <div class="menu-links">
-          <button class="btn-ghost" data-action="help">КАК ИГРАТЬ</button>
-          <button class="btn-ghost" data-action="settings">НАСТРОЙКИ</button>
-          <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
-          <button class="btn-ghost" data-action="credits">АВТОРЫ</button>
+          <button class="btn-ghost" data-action="help">${t('menu.help')}</button>
+          <button class="btn-ghost" data-action="settings">${t('menu.settings')}</button>
+          <button class="btn-ghost" data-action="changelog">${t('menu.changelog')}</button>
+          <button class="btn-ghost" data-action="credits">${t('menu.credits')}</button>
         </div>
       </div>
       <div class="brief-grid">
         <div class="brief-copy">
-          <p id="lobbyBrief">Программа «Гелиос-7» отправила в этот сектор два одинаковых семенных корабля — так задумывалась страховка: если одна колония погибнет, работу продолжит вторая. Связь между ними потеряна, а последний принятый пакет приказа одинаков для обеих сторон: сектор останется за выжившей. ${map.symmetry.hint} Рельеф, месторождения и техника у обеих сторон совпадают до последнего винта — по ту сторону фронта стоит ваша копия.</p>
-          <p class="accent-copy">Развивайте экономику, разведайте сектор и уничтожьте дублёра, пока он не сделал то же самое с вами.</p>
+          <p id="lobbyBrief">${t('menu.lobbyBrief', { hint: map.symmetry.hint })}</p>
+          <p class="accent-copy">${t('menu.lobbyAccent')}</p>
         </div>
         <div class="objectives">
-          <div class="objective"><b>01</b><span><strong>Нефть — это жизнь</strong><small>Разведайте месторождения и займите их вышками: они приносят кредиты.</small></span></div>
-          <div class="objective"><b>02</b><span><strong>Соберите армию</strong><small>Постройте казармы. Пехота, скауты, танки и РСЗО — ваша сила. Инженеры возводят здания.</small></span></div>
-          <div class="objective"><b>03</b><span><strong>Уничтожьте дублёра</strong><small>Сравняйте с землёй второй командный центр. Копия не должна пережить оригинал.</small></span></div>
+          <div class="objective"><b>01</b><span><strong>${t('menu.lobbyObj1Title')}</strong><small>${t('menu.lobbyObj1Desc')}</small></span></div>
+          <div class="objective"><b>02</b><span><strong>${t('menu.lobbyObj2Title')}</strong><small>${t('menu.lobbyObj2Desc')}</small></span></div>
+          <div class="objective"><b>03</b><span><strong>${t('menu.lobbyObj3Title')}</strong><small>${t('menu.lobbyObj3Desc')}</small></span></div>
         </div>
       </div>
-      <p class="overlay-note start-note" id="lobbyNote">Каждая карта строится из сида: ссылку вида <b>?seed=${map.code}</b> можно сохранить и сыграть на той же карте снова.</p>
+      <p class="overlay-note start-note" id="lobbyNote">${t('menu.lobbyNoteSeed', { seed: map.code })}</p>
       <div class="overlay-footer">
-        <span id="lobbyFooterMap">ГЕЛИОС-7 // КАРТА #${map.label} // ВЕРСИЯ ${GAME_VERSION}</span>
+        <span id="lobbyFooterMap">${t('menu.footerMapSeed', { label: map.label, version: GAME_VERSION })}</span>
         <span id="lobbyFooterMeta">${map.symmetry.name.toUpperCase()} · ${map.style.name} · BABYLON.JS</span>
       </div>
     `;
@@ -649,7 +648,7 @@ export class UI {
     return `
       <div class="lobby-row">
         <div class="lobby-row-head">
-          <span class="lobby-label">СЛОЖНОСТЬ ПРОТИВНИКА</span>
+          <span class="lobby-label">${t('menu.difficultyLabel')}</span>
           <span class="lobby-status" id="difficultyStatus">${esc(preset.desc)}</span>
         </div>
         <div class="difficulty-options">${buttons}</div>
@@ -660,8 +659,8 @@ export class UI {
   fogBlock() {
     const enabled = this.game.fogEnabled !== false;
     const options = [
-      { value: 'on', label: 'ВКЛ.', title: 'Карта открывается разведкой.' },
-      { value: 'off', label: 'ВЫКЛ.', title: 'Вся карта и противник видны сразу.' },
+      { value: 'on', label: t('menu.fogOn'), title: t('menu.fogHintOn') },
+      { value: 'off', label: t('menu.fogOff'), title: t('menu.fogTitleOff') },
     ];
     const buttons = options.map((option) => {
       const active = (option.value === 'on') === enabled;
@@ -672,8 +671,8 @@ export class UI {
     return `
       <div class="lobby-row">
         <div class="lobby-row-head">
-          <span class="lobby-label">ТУМАН ВОЙНЫ</span>
-          <span class="lobby-status" id="fogStatus">${enabled ? 'Карта открывается разведкой.' : 'Вся карта видна сразу.'}</span>
+          <span class="lobby-label">${t('menu.fogLabel')}</span>
+          <span class="lobby-status" id="fogStatus">${enabled ? t('menu.fogHintOn') : t('menu.fogHintOff')}</span>
         </div>
         <div class="difficulty-options">${buttons}</div>
       </div>`;
@@ -687,7 +686,7 @@ export class UI {
       btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
     const status = this.el.overlay.querySelector('#fogStatus');
-    if (status) status.textContent = enabled ? 'Карта открывается разведкой.' : 'Вся карта видна сразу.';
+    if (status) status.textContent = enabled ? t('menu.fogHintOn') : t('menu.fogHintOff');
   }
 
   /** Сид карты: случайный (по умолчанию) или ручной. */
@@ -696,22 +695,22 @@ export class UI {
     return `
       <div class="lobby-row lobby-row--seed">
         <div class="lobby-row-head">
-          <span class="lobby-label">СИД КАРТЫ</span>
-          <div class="seed-modes" role="group" aria-label="Способ выбора сида">
+          <span class="lobby-label">${t('menu.seedLabel')}</span>
+          <div class="seed-modes" role="group" aria-label="${t('menu.seedAria')}">
             <button type="button" class="graphics-opt${mode === 'random' ? ' is-active' : ''}"
-              data-seedmode="random" aria-pressed="${mode === 'random'}">СЛУЧАЙНЫЙ</button>
+              data-seedmode="random" aria-pressed="${mode === 'random'}">${t('menu.seedRandom')}</button>
             <button type="button" class="graphics-opt${mode === 'manual' ? ' is-active' : ''}"
-              data-seedmode="manual" aria-pressed="${mode === 'manual'}">ВРУЧНУЮ</button>
+              data-seedmode="manual" aria-pressed="${mode === 'manual'}">${t('menu.seedManual')}</button>
           </div>
         </div>
         <div class="seed-body">
           <div class="seed-controls">
             <div class="seed-panel" data-seed-panel="random"${mode === 'random' ? '' : ' hidden'}>
-              <div class="seed-value"><span>ВЫБРАННЫЙ СИД</span><b id="seedValue">#${formatSeedLabel(this.lobbySeedValue)}</b></div>
-              <button type="button" class="btn-ghost btn-seed" data-action="reroll">СГЕНЕРИРОВАТЬ ДРУГУЮ</button>
+              <div class="seed-value"><span>${t('menu.seedChosen')}</span><b id="seedValue">#${formatSeedLabel(this.lobbySeedValue)}</b></div>
+              <button type="button" class="btn-ghost btn-seed" data-action="reroll">${t('menu.seedReroll')}</button>
             </div>
             <div class="seed-panel" data-seed-panel="manual"${mode === 'manual' ? '' : ' hidden'}>
-              <label class="seed-input-label" for="seedInput">ВВЕДИТЕ СИД</label>
+              <label class="seed-input-label" for="seedInput">${t('menu.seedInput')}</label>
               <input id="seedInput" class="seed-input" data-seed-input type="text"
                 value="${esc(this.manualSeedText)}" placeholder="7A3F91C2"
                 inputmode="text" autocomplete="off" autocapitalize="characters"
@@ -720,8 +719,8 @@ export class UI {
             <p class="seed-hint" id="seedHint"></p>
           </div>
           <div class="seed-preview">
-            <canvas id="lobbyPreview" width="180" height="180" role="img" aria-label="Предпросмотр выбранной карты"></canvas>
-            <span class="seed-preview-tag" id="seedPreviewTag">СЛУЧАЙНЫЙ СИД</span>
+            <canvas id="lobbyPreview" width="180" height="180" role="img" aria-label="${t('menu.seedPreviewAria')}"></canvas>
+            <span class="seed-preview-tag" id="seedPreviewTag">${t('menu.seedTagRandom')}</span>
           </div>
         </div>
       </div>`;
@@ -796,10 +795,10 @@ export class UI {
     this.lobbySeedValue = usable ? seed : this.game.map.seed;
     this.lobbyPreview = map;
     this.updateLobbyMapInfo(map, preview);
-    let tag = 'СЛУЧАЙНЫЙ СИД';
-    if (!usable) tag = 'ВВЕДИТЕ СИД';
-    else if (preview) tag = 'ПРЕДПРОСМОТР';
-    else if (this.seedMode === 'manual') tag = 'РУЧНОЙ СИД';
+    let tag = t('menu.seedTagRandom');
+    if (!usable) tag = t('menu.seedTagEnter');
+    else if (preview) tag = t('menu.seedTagPreview');
+    else if (this.seedMode === 'manual') tag = t('menu.seedTagManual');
     this.drawLobbyPreview(map, tag);
     this.updateSeedHint();
   }
@@ -814,19 +813,19 @@ export class UI {
     set('#lobbySymmetry', `${map.symmetry.name} · ${map.symmetry.tag}`);
     set('#lobbyStyle', map.style.name);
     set('#seedValue', `#${map.label}`);
-    set('#lobbyFooterMap', `ГЕЛИОС-7 // КАРТА #${map.label} // ВЕРСИЯ ${GAME_VERSION}`);
+    set('#lobbyFooterMap', t('menu.footerMapSeed', { label: map.label, version: GAME_VERSION }));
     set('#lobbyFooterMeta', `${map.symmetry.name.toUpperCase()} · ${map.style.name} · BABYLON.JS`);
     const strip = this.el.overlay.querySelector('#lobbyMapStrip');
     strip?.classList.toggle('is-preview', preview);
     const brief = this.el.overlay.querySelector('#lobbyBrief');
     if (brief) {
-      brief.textContent = `Программа «Гелиос-7» отправила в этот сектор два одинаковых семенных корабля — так задумывалась страховка: если одна колония погибнет, работу продолжит вторая. Связь между ними потеряна, а последний принятый пакет приказа одинаков для обеих сторон: сектор останется за выжившей. ${map.symmetry.hint} Рельеф, месторождения и техника у обеих сторон совпадают до последнего винта — по ту сторону фронта стоит ваша копия.`;
+      brief.textContent = t('menu.lobbyBrief', { hint: map.symmetry.hint });
     }
     const note = this.el.overlay.querySelector('#lobbyNote');
     if (note) {
       note.innerHTML = preview
-        ? `Карта <b>#${map.label}</b> будет создана из выбранного сида при начале операции.`
-        : `Каждая карта строится из сида: ссылку вида <b>?seed=${map.code}</b> можно сохранить и сыграть на той же карте снова.`;
+        ? t('menu.lobbyNotePreview', { label: map.label })
+        : t('menu.lobbyNoteSeed', { seed: map.code });
     }
   }
 
@@ -835,16 +834,16 @@ export class UI {
     if (!hint) return;
     hint.classList.remove('is-warn');
     if (this.seedMode === 'random') {
-      hint.textContent = 'Игра подберёт сид сама. «Сгенерировать другую» покажет другую карту до начала операции.';
+      hint.textContent = t('menu.seedHintRandom');
       return;
     }
     const seed = this.parseManualSeed();
     if (seed == null) {
-      hint.textContent = 'Введите сид: до 8 hex-символов (например, 7A3F91C2) или любое слово. Enter — начать.';
+      hint.textContent = t('menu.seedHintEmpty');
       hint.classList.add('is-warn');
       return;
     }
-    hint.textContent = `Сид #${formatSeedLabel(seed)}. Одинаковый сид всегда создаёт одну и ту же карту. Enter — начать.`;
+    hint.textContent = t('menu.seedHintManual', { seed: formatSeedLabel(seed) });
   }
 
   /** Мини-карта в лобби: рельеф, базы, месторождения и руины выбранного сида. */
@@ -983,9 +982,9 @@ export class UI {
     </tr>`).join('');
     return `
       <div class="end-detail">
-        <div class="end-detail-title">ПО ТИПАМ</div>
+        <div class="end-detail-title">${t('overlay.detailTitle')}</div>
         <table class="end-detail-table">
-          <thead><tr><th>ТИП</th><th>УНИЧТ.</th><th>ПОТЕРИ</th><th>УРОН</th></tr></thead>
+          <thead><tr><th>${t('overlay.detailType')}</th><th>${t('overlay.detailKills')}</th><th>${t('overlay.detailLosses')}</th><th>${t('overlay.detailDamage')}</th></tr></thead>
           <tbody>${body}</tbody>
         </table>
       </div>`;
@@ -1003,31 +1002,27 @@ export class UI {
     const map = this.game.map;
     const html = `
       <div class="end-head ${victory ? 'win' : 'lose'}">
-        <div class="eyebrow"><i></i> ${victory ? 'ОПЕРАЦИЯ ЗАВЕРШЕНА' : 'СИГНАЛ ПОТЕРЯН'}</div>
-        <h1>${victory ? 'СЕКТОР ВЫСТОЯЛ' : 'КОЛОНИЯ СПИСАНА'}</h1>
-        <p class="tagline">${victory
-          ? 'Второй «Гелиос-7» уничтожен. Контракт на сектор достался вам — вместе с вопросом, кто из двух был копией.'
-          : 'Ваш командный центр пал. Дублёр остался единственным «Гелиосом-7» в секторе.'}</p>
+        <div class="eyebrow"><i></i> ${victory ? t('overlay.endEyebrowWin') : t('overlay.endEyebrowLose')}</div>
+        <h1>${victory ? t('overlay.endTitleWin') : t('overlay.endTitleLose')}</h1>
+        <p class="tagline">${victory ? t('overlay.endTaglineWin') : t('overlay.endTaglineLose')}</p>
       </div>
       <div class="end-stats">
-        <div><b>${formatTime(s.time ?? this.game.elapsed)}</b><span>ВРЕМЯ ОПЕРАЦИИ</span></div>
-        <div><b>${s.kills}</b><span>УНИЧТОЖЕНО</span></div>
-        <div><b>${s.losses}</b><span>ПОТЕРЯНО</span></div>
-        <div><b>${Math.floor(s.gathered)}</b><span>ДОБЫТО КРЕДИТОВ</span></div>
+        <div><b>${formatTime(s.time ?? this.game.elapsed)}</b><span>${t('overlay.statTime')}</span></div>
+        <div><b>${s.kills}</b><span>${t('overlay.statKills')}</span></div>
+        <div><b>${s.losses}</b><span>${t('overlay.statLosses')}</span></div>
+        <div><b>${Math.floor(s.gathered)}</b><span>${t('overlay.statGathered')}</span></div>
       </div>
       ${this.endDetailHtml()}
-      <div class="end-map">КАРТА <b>#${map.label}</b> · ${map.symmetry.name.toUpperCase()} ${map.symmetry.tag} · ${map.style.name}</div>
-      <div class="end-note">${victory
-        ? 'Связь с Землёй так и не восстановилась. Одна из двух колоний вычеркнута из реестра — и уже неважно, какая.'
-        : 'В следующий раз начните с вышек, не оставляйте казармы без прикрытия и постарайтесь первыми найти дублёра.'}</div>
+      <div class="end-map">${t('overlay.endMap', { label: map.label, symmetry: map.symmetry.name.toUpperCase(), tag: map.symmetry.tag, style: map.style.name })}</div>
+      <div class="end-note">${victory ? t('overlay.endNoteWin') : t('overlay.endNoteLose')}</div>
       <div class="overlay-actions">
-        <button class="btn-primary" data-action="newmap">НОВАЯ КАРТА <span>↻</span></button>
-        <button class="btn-ghost" data-action="restart">ПОВТОРИТЬ ЭТУ КАРТУ</button>
-        <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
+        <button class="btn-primary" data-action="newmap">${t('overlay.newMap')} <span>↻</span></button>
+        <button class="btn-ghost" data-action="restart">${t('overlay.repeatMap')}</button>
+        <button class="btn-ghost" data-action="changelog">${t('menu.changelog')}</button>
       </div>
       <div class="overlay-footer">
-        <span>ГЕЛИОС-7 // ИТОГИ</span>
-        <span>${victory ? 'СТАТУС: КОНТРАКТ ЗАКРЫТ' : 'СТАТУС: ЭВАКУАЦИЯ НЕВОЗМОЖНА'}</span>
+        <span>${t('overlay.footerResults')}</span>
+        <span>${victory ? t('overlay.statusClosed') : t('overlay.statusEvac')}</span>
       </div>
     `;
     this.setOverlay(html, `overlay--end ${victory ? 'is-win' : 'is-lose'}`);
@@ -1044,32 +1039,32 @@ export class UI {
     const next = isCampaign && victory ? nextCampaignMission(mission) : null;
     const best = isEndless ? endlessBest(mission) : isCampaign ? null : trialBest(mission);
     const record = isEndless ? this.game.record : null;
-    const kindLabel = isEndless ? 'ПРОТОКОЛ' : isCampaign ? 'КАМПАНИЯ' : 'ИСПЫТАНИЯ';
+    const kindLabel = isEndless ? t('overlay.kindProtocol') : isCampaign ? t('overlay.kindCampaign') : t('overlay.kindTrials');
     const title = isEndless
-      ? 'ПРОТОКОЛ ОСТАНОВЛЕН'
+      ? t('overlay.protocolHalted')
       : victory
         ? isCampaign
-          ? (next ? 'ОПЕРАЦИЯ ВЫПОЛНЕНА' : 'КОНТРАКТ ЗАКРЫТ')
-          : 'ИСПЫТАНИЕ ПРОЙДЕНО'
-        : isCampaign ? 'СИГНАЛ ПОТЕРЯН' : 'ИСПЫТАНИЕ ПРОВАЛЕНО';
+          ? (next ? t('overlay.operationDone') : t('overlay.contractClosed'))
+          : t('overlay.trialDone')
+        : isCampaign ? t('overlay.endEyebrowLose') : t('overlay.trialFailed');
     const tagline = isEndless
-      ? 'Командный центр потерян. Автозаводы «Беты» продолжают работу — попробуйте продержаться дольше.'
+      ? t('overlay.endlessTagline')
       : victory
         ? (mission.outro ?? mission.subtitle)
-        : 'Командный центр потерян. Попробуйте другую тактику или вернитесь к списку.';
+        : t('overlay.loseTagline');
     let primary;
     let showRepeat = true;
     let showList = true;
     if (isEndless) {
-      primary = '<button class="btn-primary" data-action="restart">ЕЩЁ ОДНА ПОПЫТКА <span>↻</span></button>';
+      primary = `<button class="btn-primary" data-action="restart">${t('overlay.again')} <span>↻</span></button>`;
       showRepeat = false;
     } else if (victory && next) {
-      primary = `<button class="btn-primary" data-action="mission:${next.id}">СЛЕДУЮЩАЯ ОПЕРАЦИЯ <span>→</span></button>`;
+      primary = `<button class="btn-primary" data-action="mission:${next.id}">${t('overlay.nextOperation')} <span>→</span></button>`;
     } else if (victory) {
-      primary = `<button class="btn-primary" data-action="missionlist">К СПИСКУ ${isCampaign ? 'ОПЕРАЦИЙ' : 'ИСПЫТАНИЙ'} <span>→</span></button>`;
+      primary = `<button class="btn-primary" data-action="missionlist">${isCampaign ? t('overlay.toListCampaign') : t('overlay.toListTrials')} <span>→</span></button>`;
       showList = false;
     } else {
-      primary = '<button class="btn-primary" data-action="restart">ПОВТОРИТЬ <span>↻</span></button>';
+      primary = `<button class="btn-primary" data-action="restart">${t('overlay.repeat')} <span>↻</span></button>`;
       showRepeat = false;
     }
     const html = `
@@ -1079,28 +1074,28 @@ export class UI {
         <p class="tagline">${esc(tagline)}</p>
       </div>
       <div class="end-stats">
-        <div><b>${formatTime(s.time ?? this.game.elapsed)}</b><span>ВРЕМЯ</span></div>
-        <div><b>${s.kills}</b><span>УНИЧТОЖЕНО</span></div>
-        <div><b>${s.losses}</b><span>ПОТЕРЯНО</span></div>
-        <div><b>${Math.floor(s.gathered)}</b><span>ДОБЫТО КРЕДИТОВ</span></div>
-        ${isEndless ? `<div><b>${s.waves ?? 0}</b><span>ВОЛН ОТБИТО</span></div>` : ''}
+        <div><b>${formatTime(s.time ?? this.game.elapsed)}</b><span>${t('overlay.statTimeShort')}</span></div>
+        <div><b>${s.kills}</b><span>${t('overlay.statKills')}</span></div>
+        <div><b>${s.losses}</b><span>${t('overlay.statLosses')}</span></div>
+        <div><b>${Math.floor(s.gathered)}</b><span>${t('overlay.statGathered')}</span></div>
+        ${isEndless ? `<div><b>${s.waves ?? 0}</b><span>${t('overlay.statWaves')}</span></div>` : ''}
       </div>
       ${this.objectivesHtml(mission, true)}
       ${this.endDetailHtml()}
-      <div class="end-map">КАРТА <b>#${map.label}</b> · ${map.symmetry.name.toUpperCase()} ${map.symmetry.tag} · ${map.style.name}</div>
+      <div class="end-map">${t('overlay.endMap', { label: map.label, symmetry: map.symmetry.name.toUpperCase(), tag: map.symmetry.tag, style: map.style.name })}</div>
       <div class="overlay-actions">
         ${primary}
-        ${showRepeat ? '<button class="btn-ghost" data-action="restart">ПОВТОРИТЬ</button>' : ''}
-        ${showList ? '<button class="btn-ghost" data-action="missionlist">К СПИСКУ</button>' : ''}
-        <button class="btn-ghost" data-action="mainmenu">В ГЛАВНОЕ МЕНЮ</button>
+        ${showRepeat ? `<button class="btn-ghost" data-action="restart">${t('overlay.repeat')}</button>` : ''}
+        ${showList ? `<button class="btn-ghost" data-action="missionlist">${t('overlay.toListShort')}</button>` : ''}
+        <button class="btn-ghost" data-action="mainmenu">${t('overlay.mainMenu')}</button>
       </div>
       <div class="overlay-footer">
-        <span>ГЕЛИОС-7 // ${kindLabel} · ${esc(mission.title.toUpperCase())}</span>
+        <span>${t('overlay.footerMission', { kind: kindLabel, title: esc(mission.title.toUpperCase()) })}</span>
         <span>${isEndless
           ? (best
-            ? `${record?.isRecord ? 'НОВЫЙ РЕКОРД' : 'РЕКОРД'}: ${formatTime(best.time)} · ${best.waves} ВОЛН`
-            : 'СТАТУС: ПРОТОКОЛ АКТИВЕН')
-          : best != null ? `ЛУЧШЕЕ ВРЕМЯ: ${formatTime(best)}` : victory ? 'СТАТУС: ЗАДАЧИ ВЫПОЛНЕНЫ' : 'СТАТУС: ЗАДАЧИ ПРОВАЛЕНЫ'}</span>
+            ? t('overlay.recordWaves', { label: record?.isRecord ? t('overlay.newRecord') : t('overlay.record'), time: formatTime(best.time), waves: best.waves })
+            : t('overlay.statusProtocol'))
+          : best != null ? t('overlay.bestTime', { time: formatTime(best) }) : victory ? t('overlay.statusDone') : t('overlay.statusFailed')}</span>
       </div>
     `;
     this.setOverlay(html, `overlay--end ${victory ? 'is-win' : 'is-lose'}`);
@@ -1137,7 +1132,7 @@ export class UI {
     const active = this.fullscreenActive();
     const span = btn.querySelector('span');
     if (span) span.innerHTML = icon(active ? 'compress' : 'expand');
-    btn.title = active ? 'Выйти из полноэкранного режима' : 'Полноэкранный режим';
+    btn.title = active ? t('overlay.fullscreenExit') : t('static.fullscreen');
     btn.setAttribute('aria-label', btn.title);
     btn.setAttribute('aria-pressed', String(active));
   }
@@ -1161,44 +1156,44 @@ export class UI {
     const mission = this.game.mission;
     const isCampaign = mission?.kind === 'campaign';
     const isEndless = mission?.kind === 'endless';
-    const kindLabel = isEndless ? 'ПРОТОКОЛ' : isCampaign ? 'КАМПАНИЯ' : 'ИСПЫТАНИЕ';
+    const kindLabel = isEndless ? t('overlay.kindProtocol') : isCampaign ? t('overlay.kindCampaign') : t('overlay.kindTrial');
     const html = `
       <div class="overlay-top">
-        <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // ПАУЗА${mission ? ` // ${kindLabel}` : ''}</div>
-        <h1 class="pause-title">${mission ? esc(mission.title.toUpperCase()) : 'ОПЕРАЦИЯ'}<br><span>ПРИОСТАНОВЛЕНА</span></h1>
-        <p class="tagline">${mission ? esc(mission.subtitle) : 'Камера и интерфейс остаются доступны. Продолжите, когда будете готовы.'}</p>
+        <div class="eyebrow"><i></i> ${t('overlay.pauseEyebrow')}${mission ? ` // ${kindLabel}` : ''}</div>
+        <h1 class="pause-title">${mission ? esc(mission.title.toUpperCase()) : t('overlay.pauseOperation')}<br><span>${t('overlay.paused')}</span></h1>
+        <p class="tagline">${mission ? esc(mission.subtitle) : t('overlay.pauseTagline')}</p>
       </div>
       <div class="pause-stats">
-        <div><b>${Math.floor(this.game.credits)}</b><span>КРЕДИТЫ</span></div>
-        <div><b>${this.game.getArmyUsed('player')} / ${this.game.getArmyCap('player')}</b><span>ЛИМИТ АРМИИ</span></div>
-        <div><b>${formatTime(this.game.elapsed)}</b><span>ВРЕМЯ</span></div>
+        <div><b>${Math.floor(this.game.credits)}</b><span>${t('static.credits')}</span></div>
+        <div><b>${this.game.getArmyUsed('player')} / ${this.game.getArmyCap('player')}</b><span>${t('overlay.armyLimit')}</span></div>
+        <div><b>${formatTime(this.game.elapsed)}</b><span>${t('overlay.statTimeShort')}</span></div>
       </div>
       ${mission ? `<div class="pause-objectives">${this.objectivesHtml(mission, true)}</div>` : ''}
       <div class="graphics-row pause-speed">
-        <span class="graphics-label">СКОРОСТЬ БОЯ</span>
+        <span class="graphics-label">${t('overlay.combatSpeed')}</span>
         <div class="graphics-options">
           ${[0.5, 1, 2].map((v) => `<button type="button" class="graphics-opt${this.game.speed === v ? ' is-active' : ''}" data-speed="${v}" aria-pressed="${this.game.speed === v}">${v}×</button>`).join('')}
         </div>
       </div>
       <div class="overlay-actions">
-        <button class="btn-primary" data-action="resume">ПРОДОЛЖИТЬ <span>→</span></button>
+        <button class="btn-primary" data-action="resume">${t('overlay.resume')} <span>→</span></button>
         <div class="menu-links">
-          <button class="btn-ghost" data-action="settings">НАСТРОЙКИ</button>
-          <button class="btn-ghost" data-action="help">КАК ИГРАТЬ</button>
-          <button class="btn-ghost" data-action="changelog">ЖУРНАЛ ИЗМЕНЕНИЙ</button>
-          <button class="btn-ghost" data-action="credits">АВТОРЫ</button>
+          <button class="btn-ghost" data-action="settings">${t('menu.settings')}</button>
+          <button class="btn-ghost" data-action="help">${t('menu.help')}</button>
+          <button class="btn-ghost" data-action="changelog">${t('menu.changelog')}</button>
+          <button class="btn-ghost" data-action="credits">${t('menu.credits')}</button>
         </div>
       </div>
       <div class="overlay-actions overlay-actions--minor">
-        <button class="btn-ghost" data-action="restart">ЗАНОВО</button>
+        <button class="btn-ghost" data-action="restart">${t('overlay.restart')}</button>
         ${mission
-          ? `<button class="btn-ghost" data-action="missionlist">К СПИСКУ</button>
-             <button class="btn-ghost" data-action="mainmenu">В ГЛАВНОЕ МЕНЮ</button>`
-          : '<button class="btn-ghost" data-action="newmap">НОВАЯ КАРТА</button>'}
+          ? `<button class="btn-ghost" data-action="missionlist">${t('overlay.toListShort')}</button>
+             <button class="btn-ghost" data-action="mainmenu">${t('overlay.mainMenu')}</button>`
+          : `<button class="btn-ghost" data-action="newmap">${t('overlay.newMap')}</button>`}
       </div>
       <div class="overlay-footer">
-        <span>ГЕЛИОС-7 // ПАУЗА · КАРТА #${map.label}${mission ? ` · ${esc(mission.title.toUpperCase())}` : ''}</span>
-        <span>СИМУЛЯЦИЯ ОСТАНОВЛЕНА</span>
+        <span>${t('overlay.pauseFooter', { label: map.label })}${mission ? ` · ${esc(mission.title.toUpperCase())}` : ''}</span>
+        <span>${t('overlay.simPaused')}</span>
       </div>
     `;
     this.setOverlay(html, 'overlay--pause');
@@ -1361,75 +1356,75 @@ export class UI {
   showHelp() {
     const html = `
       <div class="overlay-top">
-        <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // ПОЛЕВАЯ ПАМЯТКА</div>
-        <h1 class="help-title">КАК ИГРАТЬ</h1>
-        <p class="tagline">Камера, приказы и быстрые команды. Пауза не блокирует управление — меню можно открыть в любой момент.</p>
+        <div class="eyebrow"><i></i> ${t('help.eyebrow')}</div>
+        <h1 class="help-title">${t('menu.help')}</h1>
+        <p class="tagline">${t('help.tagline')}</p>
       </div>
       <div class="controls-block help-controls">
-        <div class="controls-title">КЛАВИАТУРА И МЫШЬ <span>ПК</span></div>
+        <div class="controls-title">${t('help.kbd.title')} <span>${t('help.kbd.pc')}</span></div>
         <div class="controls-grid">
-          <div><kbd>ЛКМ</kbd><span>выбор, рамка</span></div>
-          <div><kbd>ПКМ</kbd><span>приказ, атака</span></div>
-          <div><kbd>WASD</kbd><span>камера; Shift — быстрее</span></div>
-          <div><kbd>Q / E</kbd><span>поворот камеры</span></div>
-          <div><kbd>Колесо</kbd><span>зум</span></div>
-          <div><kbd>СКМ</kbd><span>тащить камеру</span></div>
-          <div><kbd>Z X C V B N M</kbd><span>команды</span></div>
-          <div><kbd>F</kbd><span>атака по площади</span></div>
-          <div><kbd>H</kbd><span>стоп</span></div>
-          <div><kbd>P</kbd><span>держать позицию</span></div>
-          <div><kbd>T</kbd><span>патруль</span></div>
-          <div><kbd>I</kbd><span>свободные инженеры</span></div>
-          <div><kbd>K</kbd><span>продать здание</span></div>
-          <div><kbd>R</kbd><span>ремонт здания</span></div>
-          <div><kbd>Shift</kbd><span>добавить к выбору</span></div>
-          <div><kbd>Shift + ПКМ</kbd><span>точка маршрута в очередь</span></div>
-          <div><kbd>Shift + ЛКМ</kbd><span>несколько построек подряд</span></div>
-          <div><kbd>Shift + 1…9</kbd><span>запомнить отряд</span></div>
-          <div><kbd>1…9</kbd><span>вызвать отряд</span></div>
-          <div><kbd>Пробел</kbd><span>на базу</span></div>
-          <div><kbd>Esc</kbd><span>пауза / меню</span></div>
-          <div><kbd>ЛКМ</kbd><span>по миникарте — камера</span></div>
+          <div><kbd>${t('static.kbd.lmb')}</kbd><span>${t('help.kbd.lmb')}</span></div>
+          <div><kbd>${t('static.kbd.rmb')}</kbd><span>${t('help.kbd.rmb')}</span></div>
+          <div><kbd>WASD</kbd><span>${t('help.kbd.wasd')}</span></div>
+          <div><kbd>Q / E</kbd><span>${t('help.kbd.rotate')}</span></div>
+          <div><kbd>${t('help.kbd.wheelKey')}</kbd><span>${t('help.kbd.zoom')}</span></div>
+          <div><kbd>${t('help.kbd.mmbKey')}</kbd><span>${t('help.kbd.drag')}</span></div>
+          <div><kbd>Z X C V B N M</kbd><span>${t('help.kbd.commands')}</span></div>
+          <div><kbd>F</kbd><span>${t('help.kbd.areaAttack')}</span></div>
+          <div><kbd>H</kbd><span>${t('help.kbd.stop')}</span></div>
+          <div><kbd>P</kbd><span>${t('help.kbd.hold')}</span></div>
+          <div><kbd>T</kbd><span>${t('help.kbd.patrol')}</span></div>
+          <div><kbd>I</kbd><span>${t('help.kbd.idleEngineers')}</span></div>
+          <div><kbd>K</kbd><span>${t('help.kbd.sell')}</span></div>
+          <div><kbd>R</kbd><span>${t('help.kbd.repair')}</span></div>
+          <div><kbd>Shift</kbd><span>${t('help.kbd.add')}</span></div>
+          <div><kbd>Shift + ${t('static.kbd.rmb')}</kbd><span>${t('help.kbd.waypoint')}</span></div>
+          <div><kbd>Shift + ${t('static.kbd.lmb')}</kbd><span>${t('help.kbd.multiBuild')}</span></div>
+          <div><kbd>Shift + 1…9</kbd><span>${t('help.kbd.assignGroup')}</span></div>
+          <div><kbd>1…9</kbd><span>${t('help.kbd.recallGroup')}</span></div>
+          <div><kbd>${t('help.kbd.spaceKey')}</kbd><span>${t('help.kbd.toBase')}</span></div>
+          <div><kbd>Esc</kbd><span>${t('help.kbd.pauseMenu')}</span></div>
+          <div><kbd>${t('static.kbd.lmb')}</kbd><span>${t('help.kbd.minimapCam')}</span></div>
         </div>
       </div>
       <div class="controls-block">
-        <div class="controls-title">СЕНСОРНЫЙ ЭКРАН <span>СМАРТФОН И ПЛАНШЕТ</span></div>
+        <div class="controls-title">${t('help.touch.title')} <span>${t('help.touch.sub')}</span></div>
         <div class="controls-grid help-touch-grid">
-          <div><kbd>Тап</kbd><span>выбрать или отдать приказ</span></div>
-          <div><kbd>Двойной тап</kbd><span>все объекты этого типа на экране</span></div>
-          <div><kbd>Один палец</kbd><span>панорама камеры</span></div>
-          <div><kbd>Два пальца</kbd><span>рамка выбора по пальцам</span></div>
-          <div><kbd>Щипок</kbd><span>зум</span></div>
-          <div><kbd>Слот отряда</kbd><span>тап — вызвать, удержание — запомнить</span></div>
-          <div><kbd>Кнопки справа</kbd><span>камера, зум, поворот, «База», отмена</span></div>
-          <div><kbd>Миникарта</kbd><span>тап — переместить камеру</span></div>
+          <div><kbd>${t('help.touch.tap')}</kbd><span>${t('help.touch.tapDesc')}</span></div>
+          <div><kbd>${t('help.touch.doubleTap')}</kbd><span>${t('help.touch.doubleTapDesc')}</span></div>
+          <div><kbd>${t('help.touch.oneFinger')}</kbd><span>${t('help.touch.oneFingerDesc')}</span></div>
+          <div><kbd>${t('help.touch.twoFingers')}</kbd><span>${t('help.touch.twoFingersDesc')}</span></div>
+          <div><kbd>${t('help.touch.pinch')}</kbd><span>${t('help.kbd.zoom')}</span></div>
+          <div><kbd>${t('help.touch.slot')}</kbd><span>${t('help.touch.slotDesc')}</span></div>
+          <div><kbd>${t('help.touch.buttons')}</kbd><span>${t('help.touch.buttonsDesc')}</span></div>
+          <div><kbd>${t('help.touch.minimap')}</kbd><span>${t('help.touch.minimapDesc')}</span></div>
         </div>
       </div>
       <div class="controls-block">
-        <div class="controls-title">ГЕЙМПАД <span>ПОДКЛЮЧАЕТСЯ АВТОМАТИЧЕСКИ</span></div>
+        <div class="controls-title">${t('help.pad.title')} <span>${t('help.pad.sub')}</span></div>
         <div class="controls-grid">
-          <div><kbd>Левый стик</kbd><span>камера</span></div>
-          <div><kbd>RT</kbd><span>ускорение камеры</span></div>
-          <div><kbd>Правый стик</kbd><span>прицел</span></div>
-          <div><kbd>LT + стик</kbd><span>рамка выделения</span></div>
-          <div><kbd>Крестовина ↑ / ↓</kbd><span>зум</span></div>
-          <div><kbd>Крестовина ← / →</kbd><span>поворот камеры</span></div>
-          <div><kbd>R3</kbd><span>командная панель</span></div>
-          <div><kbd>A</kbd><span>выбрать / нажать</span></div>
-          <div><kbd>X</kbd><span>приказ / атака</span></div>
-          <div><kbd>Y</kbd><span>атака по площади</span></div>
-          <div><kbd>B</kbd><span>отмена / снять выделение</span></div>
-          <div><kbd>Start</kbd><span>пауза / меню</span></div>
-          <div><kbd>Back</kbd><span>вернуться на базу</span></div>
+          <div><kbd>${t('help.pad.lstick')}</kbd><span>${t('help.pad.camera')}</span></div>
+          <div><kbd>RT</kbd><span>${t('help.pad.rt')}</span></div>
+          <div><kbd>${t('help.pad.rstick')}</kbd><span>${t('help.pad.reticle')}</span></div>
+          <div><kbd>${t('help.pad.lt')}</kbd><span>${t('help.pad.selectBox')}</span></div>
+          <div><kbd>${t('help.pad.dpadUD')}</kbd><span>${t('help.kbd.zoom')}</span></div>
+          <div><kbd>${t('help.pad.dpadLR')}</kbd><span>${t('help.kbd.rotate')}</span></div>
+          <div><kbd>R3</kbd><span>${t('help.pad.panel')}</span></div>
+          <div><kbd>A</kbd><span>${t('help.pad.a')}</span></div>
+          <div><kbd>X</kbd><span>${t('help.pad.x')}</span></div>
+          <div><kbd>Y</kbd><span>${t('help.kbd.areaAttack')}</span></div>
+          <div><kbd>B</kbd><span>${t('help.pad.b')}</span></div>
+          <div><kbd>Start</kbd><span>${t('help.kbd.pauseMenu')}</span></div>
+          <div><kbd>Back</kbd><span>${t('help.pad.back')}</span></div>
         </div>
-        <p class="help-note">Наведите прицел на кнопку командной панели и нажмите A. Для плиток приказов, найма и исследований нажмите R3: крестовина листает плитки, A нажимает, B возвращает управление камере. В меню: крестовина или левый стик — навигация, A — выбор, B — назад. Если геймпад не реагирует, нажмите любую его кнопку — браузер выдаст устройство только после действия.</p>
+        <p class="help-note">${t('help.pad.note')}</p>
       </div>
       <div class="overlay-actions">
-        <button class="btn-primary" data-action="back">НАЗАД <span>→</span></button>
+        <button class="btn-primary" data-action="back">${t('help.back')} <span>→</span></button>
       </div>
       <div class="overlay-footer">
-        <span>ГЕЛИОС-7 // ПОЛЕВАЯ ПАМЯТКА</span>
-        <span>ESC — НАЗАД</span>
+        <span>${t('help.eyebrow')}</span>
+        <span>${t('help.escBack')}</span>
       </div>
     `;
     this.setOverlay(html, 'overlay--help');
@@ -1469,8 +1464,8 @@ export class UI {
         </div>`).join('');
       const dateLabel = release.date ?? release.tag ?? '';
       const kindLabel = release.version === 'ОБНОВЛЕНИЕ'
-        ? 'ОБНОВЛЕНИЕ'
-        : `ВЕРСИЯ ${release.version}`;
+        ? t('ui.changelog.update')
+        : t('ui.changelog.version', { version: release.version });
       return `
         <article class="log-release${release.current ? ' is-current' : ''}">
           <div class="log-head">
@@ -1482,17 +1477,17 @@ export class UI {
     }).join('');
     const html = `
       <div class="overlay-top">
-        <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // ЖУРНАЛ ИЗМЕНЕНИЙ</div>
-        <h1 class="log-title">ЧТО НОВОГО</h1>
-        <p class="tagline">История обновлений «Гелиос-7»: даты — это даты сборок. Текущая версия — ${esc(GAME_VERSION)}.</p>
+        <div class="eyebrow"><i></i> ${t('ui.changelog.eyebrow')}</div>
+        <h1 class="log-title">${t('ui.changelog.title')}</h1>
+        <p class="tagline">${t('ui.changelog.tagline', { version: esc(GAME_VERSION) })}</p>
       </div>
       <div class="log-body">${releases}</div>
       <div class="overlay-actions">
-        <button class="btn-primary" data-action="back">НАЗАД <span>→</span></button>
+        <button class="btn-primary" data-action="back">${t('help.back')} <span>→</span></button>
       </div>
       <div class="overlay-footer">
-        <span>ГЕЛИОС-7 // ЖУРНАЛ ИЗМЕНЕНИЙ</span>
-        <span>ПОЛНАЯ ИСТОРИЯ — CHANGELOG.MD В РЕПОЗИТОРИИ</span>
+        <span>${t('ui.changelog.eyebrow')}</span>
+        <span>${t('ui.changelog.history')}</span>
       </div>
     `;
     this.setOverlay(html, 'overlay--changelog');
@@ -1509,34 +1504,34 @@ export class UI {
   showCredits() {
     const html = `
       <div class="overlay-top">
-        <div class="eyebrow"><i></i> КОМАНДНАЯ СЕТЬ // ДОСЬЕ АВТОРСТВА</div>
-        <h1 class="credits-title">АВТОРЫ</h1>
-        <p class="tagline">Кто сделал «Гелиос-7»: автор проекта и основа, на которой держится игра.</p>
+        <div class="eyebrow"><i></i> ${t('credits.eyebrow')}</div>
+        <h1 class="credits-title">${t('menu.credits')}</h1>
+        <p class="tagline">${t('credits.tagline')}</p>
       </div>
       <div class="credits-block">
-        <div class="credits-label">АВТОР ПРОЕКТА</div>
+        <div class="credits-label">${t('credits.authorLabel')}</div>
         <div class="credits-author">
-          <b>Максим Безрукавников</b>
-          <span>дизайн · код · интерфейс · баланс · тексты</span>
+          <b>${t('credits.author')}</b>
+          <span>${t('credits.authorRoles')}</span>
         </div>
         <div class="credits-links">
           <a class="credits-link" href="https://github.com/DEMENT0R" target="_blank" rel="noopener noreferrer">github.com/DEMENT0R</a>
         </div>
       </div>
       <div class="credits-block">
-        <div class="credits-label">КАК СДЕЛАНО</div>
-        <p class="credits-note">Игра написана Максимом Безрукавниковым в паре с ИИ-ассистентом DeepSeek: ассистент помогал с кодом, рефакторингом и текстами, все решения и приёмка — на авторе.</p>
+        <div class="credits-label">${t('credits.howLabel')}</div>
+        <p class="credits-note">${t('credits.how')}</p>
       </div>
       <div class="credits-block">
-        <div class="credits-label">ОСНОВА</div>
-        <p class="credits-note">Движок — <a class="credits-link" href="https://github.com/BabylonJS/Babylon.js" target="_blank" rel="noopener noreferrer">Babylon.js</a> под лицензией Apache 2.0 (<a class="credits-link" href="vendor/LICENSE-babylon.md" target="_blank" rel="noopener noreferrer">текст лицензии</a>). Модели, звук и карты генерируются кодом: внешних ассетов нет.</p>
+        <div class="credits-label">${t('credits.baseLabel')}</div>
+        <p class="credits-note">${t('credits.base')}</p>
       </div>
       <div class="overlay-actions">
-        <button class="btn-primary" data-action="back">НАЗАД <span>→</span></button>
+        <button class="btn-primary" data-action="back">${t('help.back')} <span>→</span></button>
       </div>
       <div class="overlay-footer">
-        <span>ГЕЛИОС-7 // ДОСЬЕ АВТОРСТВА</span>
-        <span>ВЕРСИЯ ${esc(GAME_VERSION)} · <a class="credits-link" href="https://github.com/DEMENT0R/babylonjs-rts-game" target="_blank" rel="noopener noreferrer">РЕПОЗИТОРИЙ</a></span>
+        <span>${t('credits.eyebrow')}</span>
+        <span>${t('credits.versionRepo', { version: esc(GAME_VERSION) })} <a class="credits-link" href="https://github.com/DEMENT0R/babylonjs-rts-game" target="_blank" rel="noopener noreferrer">${t('credits.repo')}</a></span>
       </div>
     `;
     this.setOverlay(html, 'overlay--credits');
@@ -1564,10 +1559,10 @@ export class UI {
   graphicsBlock() {
     const values = this.game.graphics?.get?.() ?? {};
     const rows = Object.entries(GRAPHICS_OPTIONS).map(([key, options]) => {
-      const label = GRAPHICS_LABELS[key] ?? key;
+      const label = t(`settings.label.${key}`);
       const buttons = options.map((option) => {
         const active = values[key] === option.value;
-        return `<button type="button" class="graphics-opt${active ? ' is-active' : ''}" data-graphics="${key}" data-value="${option.value}" aria-pressed="${active}">${option.label}</button>`;
+        return `<button type="button" class="graphics-opt${active ? ' is-active' : ''}" data-graphics="${key}" data-value="${option.value}" aria-pressed="${active}">${option.label ?? t(`settings.opt.${key}.${option.value}`)}</button>`;
       }).join('');
       return `
         <div class="graphics-row">
@@ -1599,7 +1594,8 @@ export class UI {
   // ------------------------------------------------------------------ звук
   audioBlock() {
     const values = this.game.audioSettings?.get?.() ?? {};
-    const rows = Object.entries(AUDIO_LABELS).map(([key, label]) => {
+    const rows = Object.entries(AUDIO_DEFAULTS).map(([key]) => {
+      const label = t(`settings.label.${key}`);
       const value = Number(values[key] ?? 0);
       return `
         <div class="audio-row">
@@ -1669,42 +1665,42 @@ export class UI {
       const commands = [
         {
           id: 'attackmove',
-          label: 'Атака по площади',
-          short: 'АТАКА',
+          label: t('cmd.attackmove'),
+          short: t('cmd.attackmoveShort'),
           icon: 'attack',
           hotkey: 'F',
-          desc: 'Двигаться к точке, атакуя всех врагов на пути.',
+          desc: t('cmd.attackmoveDesc'),
           action: () => {
             if (game.input) game.input.setAttackMove(true);
           },
         },
         {
           id: 'patrol',
-          label: 'Патруль',
-          short: 'ПАТРУЛЬ',
+          label: t('cmd.patrol'),
+          short: t('cmd.patrolShort'),
           icon: 'move',
           hotkey: 'T',
-          desc: 'Ходить между текущей позицией и указанной точкой, атакуя врагов на маршруте.',
+          desc: t('cmd.patrolDesc'),
           action: () => {
             if (game.input) game.input.setPatrol(true);
           },
         },
         {
           id: 'hold',
-          label: 'Держать позицию',
-          short: 'ДЕРЖАТЬ',
+          label: t('cmd.hold'),
+          short: t('cmd.holdShort'),
           icon: 'hold',
           hotkey: 'P',
-          desc: 'Остановиться на месте и стрелять только по врагам в радиусе поражения. Отряд не будет преследовать отступающих.',
+          desc: t('cmd.holdDesc'),
           action: () => game.commandHold(),
         },
         {
           id: 'stop',
-          label: 'Стоп',
-          short: 'СТОП',
+          label: t('cmd.stop'),
+          short: t('cmd.stopShort'),
           icon: 'stop',
           hotkey: 'H',
-          desc: 'Остановить выбранных юнитов и сбросить приказ.',
+          desc: t('cmd.stopDesc'),
           action: () => game.commandStop(),
         },
       ];
@@ -1722,11 +1718,11 @@ export class UI {
     if (!b.complete && b.faction === 'player') {
       return [{
         id: 'cancelbuild',
-        label: 'Отменить постройку',
-        short: 'ОТМЕНА',
+        label: t('cmd.cancelBuild'),
+        short: t('cmd.cancelBuildShort'),
         icon: 'close',
         hotkey: 'X',
-        desc: `Отменить строительство «${b.def.name}» и вернуть 60% стоимости.`,
+        desc: t('cmd.cancelBuildDesc', { name: b.def.name }),
         action: () => b.cancelConstruction(true),
       }];
     }
@@ -1778,11 +1774,11 @@ export class UI {
   idleEngineersCommand() {
     return {
       id: 'idleengineers',
-      label: 'Свободные инженеры',
-      short: 'ИНЖЕНЕРЫ',
+      label: t('cmd.idleEngineers'),
+      short: t('cmd.idleEngineersShort'),
       icon: 'engineer',
       hotkey: 'I',
-      desc: 'Выделить всех инженеров, у которых нет текущего задания.',
+      desc: t('cmd.idleEngineersDesc'),
       action: () => this.game.selectIdleEngineers(),
     };
   }
@@ -1796,11 +1792,11 @@ export class UI {
     const refund = Math.floor((building.def.cost ?? 0) * SELL.refund);
     return {
       id: 'sell',
-      label: 'Продать здание',
-      short: 'ПРОДАТЬ',
+      label: t('cmd.sell'),
+      short: t('cmd.sellShort'),
       icon: 'close',
       hotkey: 'K',
-      desc: `${building.def.name}: вернуть ${refund} кредитов и освободить место.`,
+      desc: t('cmd.sellDesc', { name: building.def.name, refund }),
       action: () => this.game.sellBuilding(building),
     };
   }
@@ -1823,10 +1819,10 @@ export class UI {
       kind: 'build',
       disabled,
       reason: missing.length
-        ? `Требуется: ${missingNames}.`
+        ? t('cmd.requires', { names: missingNames })
         : freePatch
-          ? 'Нет свободных нефтяных месторождений.'
-          : `Недостаточно кредитов. Нужно ${def.cost}.`,
+          ? t('cmd.noFreePatches')
+          : t('cmd.needCredits', { cost: def.cost }),
       action: () => game.startPlacement(type),
       tip: this.buildTip(def),
     };
@@ -1845,10 +1841,10 @@ export class UI {
     const locked = def.requires && !game.upgrades.player.has(def.requires);
     const disabled = locked || ready.length === 0 || capReached || game.credits < def.cost;
     const reason = locked
-      ? `Требуется исследование «${UPGRADES[def.requires]?.name ?? def.requires}».`
+      ? t('cmd.requiresResearch', { name: UPGRADES[def.requires]?.name ?? def.requires })
       : list.length === 0 || ready.length === 0 ? MESSAGES.notReady
         : capReached ? MESSAGES.capReached
-          : `Недостаточно кредитов. Нужно ${def.cost}.`;
+          : t('cmd.needCredits', { cost: def.cost });
     return {
       id: `train:${type}`,
       label: def.name,
@@ -1886,7 +1882,7 @@ export class UI {
           game.notify(reason, 'warn', `train-${type}`, 0, 3);
         } else if (queued < batch) {
           game.notify(
-            `Заказано ${queued} из ${batch}: не хватает кредитов или лимита армии.`,
+            t('cmd.trainPartial', { queued, batch }),
             'info',
             `train-partial-${type}`,
             0,
@@ -1907,9 +1903,9 @@ export class UI {
     const queued = nextKey ? game.hasPendingUpgrade('player', nextKey) : false;
     const disabled = !building.complete || done || queued || game.credits < def.cost;
     const reason = !building.complete ? MESSAGES.notReady
-      : done ? 'Улучшение уже изучено.'
-        : queued ? 'Улучшение уже исследуется.'
-          : `Недостаточно кредитов. Нужно ${def.cost}.`;
+      : done ? t('cmd.upgradeDone')
+        : queued ? t('cmd.upgradeQueued')
+          : t('cmd.needCredits', { cost: def.cost });
     return {
       id: `research:${nextKey ?? lineKey}`,
       label: def.name,
@@ -1932,28 +1928,7 @@ export class UI {
   }
 
   upgradeTip(def, done, queued) {
-    const labels = {
-      damage: 'УРОН',
-      hp: 'ПРОЧНОСТЬ',
-      range: 'ДАЛЬНОСТЬ',
-      speed: 'СКОРОСТЬ',
-      armor: 'БРОНЯ',
-      pierce: 'ПРОБИТИЕ',
-      visionAdd: 'ОБЗОР',
-      cooldown: 'ПЕРЕЗАРЯДКА',
-      splash: 'СПЛЕШ',
-      salvoAdd: 'РАКЕТЫ',
-      healRate: 'ЛЕЧЕНИЕ',
-      healRadius: 'РАДИУС ЛЕЧЕНИЯ',
-      repairRate: 'РЕМОНТ',
-      buildSpeed: 'СТРОЙКА',
-      income: 'ДОХОД',
-      repairCost: 'ЦЕНА РЕМОНТА',
-      trainTime: 'НАЁМ',
-      buildTime: 'СТРОЙКА',
-      armyCap: 'ЛИМИТ',
-      powerProduce: 'ЭНЕРГООТДАЧА',
-    };
+
     const flat = new Set(['armor', 'pierce', 'visionAdd', 'salvoAdd', 'armyCap']);
     const lower = new Set(['cooldown', 'trainTime', 'buildTime', 'repairCost']);
     const unlocks = (def.unlocks ?? [])
@@ -1968,15 +1943,15 @@ export class UI {
           ? `−${Math.round((1 - value) * 100)}%`
           : `+${Math.round((value - 1) * 100)}%`;
       } else text = `+${Math.round((value - 1) * 100)}%`;
-      return `<span><i>${labels[stat] ?? stat.toUpperCase()}</i>${text}</span>`;
+      return `<span><i>${t(`tooltip.stat.${stat}`)}</i>${text}</span>`;
     }).join('');
     const levels = UPGRADE_LINE_KEYS[def.line]?.length ?? 1;
-    const state = done ? 'уже изучено' : queued ? 'уже в очереди' : `уровень ${def.tier}/${levels}`;
+    const state = done ? t('tooltip.researchDone') : queued ? t('tooltip.researchQueued') : t('tooltip.researchLevel', { tier: def.tier, levels });
     return `
-      <div class="tip-head"><span class="tip-role">ИССЛЕДОВАНИЕ</span><b>${def.name}</b></div>
+      <div class="tip-head"><span class="tip-role">${t('tooltip.research')}</span><b>${def.name}</b></div>
       <p>${def.desc}</p>
-      <div class="tip-stats">${effects}${unlocks ? `<span><i>ОТКРЫВАЕТ</i>${unlocks}</span>` : ''}</div>
-      <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.time} с · ${state}</span></div>
+      <div class="tip-stats">${effects}${unlocks ? `<span><i>${t('tooltip.unlocks')}</i>${unlocks}</span>` : ''}</div>
+      <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.time} ${t('tooltip.seconds')} · ${state}</span></div>
     `;
   }
 
@@ -1986,11 +1961,11 @@ export class UI {
     const repairing = damaged.some((b) => b.repairing);
     return {
       id: 'repair',
-      label: repairing ? 'Остановить ремонт' : 'Ремонт',
-      short: repairing ? 'СТОП РЕМОНТ' : 'РЕМОНТ',
+      label: repairing ? t('cmd.repairStop') : t('cmd.repair'),
+      short: repairing ? t('cmd.repairStopShort') : t('cmd.repairShort'),
       icon: 'repair',
       hotkey: 'R',
-      desc: 'Восстанавливать прочность здания за кредиты. Пока ремонт идёт, кредиты расходуются постепенно.',
+      desc: t('cmd.repairDesc'),
       kind: 'repair',
       disabled: false,
       action: () => this.game.toggleRepair(damaged),
@@ -2006,14 +1981,14 @@ export class UI {
     const full = buildings.reduce((sum, item) => sum + game.repairFullCost(item), 0);
     const repairing = buildings.some((item) => item.repairing);
     return `
-      <div class="tip-head"><span class="tip-role">ИНЖЕНЕРНАЯ СЛУЖБА</span><b>Ремонт</b></div>
-      <p>Восстанавливает прочность выбранных зданий. Кредиты списываются только за реально полученные HP, ремонт можно остановить в любой момент.</p>
+      <div class="tip-head"><span class="tip-role">${t('tooltip.repair.role')}</span><b>${t('cmd.repair')}</b></div>
+      <p>${t('tooltip.repair.body')}</p>
       <div class="tip-stats">
-        <span><i>+HP/С</i>${rate.toFixed(1)}</span>
-        <span><i>ЦЕНА/HP</i>${perHp.toFixed(2)}</span>
-        <span><i>ПОЛНОСТЬЮ</i>${full}</span>
+        <span><i>${t('tooltip.repair.rate')}</i>${rate.toFixed(1)}</span>
+        <span><i>${t('tooltip.repair.perHp')}</i>${perHp.toFixed(2)}</span>
+        <span><i>${t('tooltip.repair.full')}</i>${full}</span>
       </div>
-      <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${full}</span><span>${repairing ? 'ремонт идёт' : 'горячая клавиша R'}</span></div>
+      <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${full}</span><span>${repairing ? t('tooltip.repair.active') : t('tooltip.repair.hotkey')}</span></div>
     `;
   }
 
@@ -2024,21 +1999,21 @@ export class UI {
     const range = Math.round(def.range * mods.range);
     const speed = (def.speed * mods.speed).toFixed(1);
     const support = def.healer
-      ? `<span><i>ЛЕЧЕНИЕ</i>${(FIELD_SUPPORT.medicRate * mods.healRate).toFixed(1)}/с</span><span><i>РАДИУС</i>${Math.round(FIELD_SUPPORT.medicSeekRadius * mods.healRadius)}</span>`
+      ? `<span><i>${t('tooltip.stat.healRate')}</i>${(FIELD_SUPPORT.medicRate * mods.healRate).toFixed(1)}/${t('tooltip.seconds')}</span><span><i>${t('tooltip.stat.healRadius')}</i>${Math.round(FIELD_SUPPORT.medicSeekRadius * mods.healRadius)}</span>`
       : def.repairer
-        ? `<span><i>РЕМОНТ ТЕХНИКИ</i>${(FIELD_SUPPORT.engineerRate * mods.repairRate).toFixed(1)}/с</span>`
+        ? `<span><i>${t('tooltip.stat.repairTech')}</i>${(FIELD_SUPPORT.engineerRate * mods.repairRate).toFixed(1)}/${t('tooltip.seconds')}</span>`
         : '';
     return `
       <div class="tip-head"><span class="tip-role">${def.role}</span><b>${def.name}</b></div>
       <p>${def.desc}</p>
       <div class="tip-stats">
-        <span><i>HP</i>${hp}</span><span><i>УРОН</i>${damage}</span>
-        <span><i>ДАЛЬНОСТЬ</i>${range}</span><span><i>СКОРОСТЬ</i>${speed}</span>
-        <span><i>ЛИМИТ АРМИИ</i>${def.supply ?? 1}</span>
-        ${def.builder ? '<span><i>СТРОЙКА</i>до ×4</span>' : ''}
+        <span><i>HP</i>${hp}</span><span><i>${t('tooltip.stat.damage')}</i>${damage}</span>
+        <span><i>${t('tooltip.stat.range')}</i>${range}</span><span><i>${t('tooltip.stat.speed')}</i>${speed}</span>
+        <span><i>${t('tooltip.stat.armySupply')}</i>${def.supply ?? 1}</span>
+        ${def.builder ? `<span><i>${t('tooltip.stat.buildSpeed')}</i>${t('tooltip.unit.buildsUpTo')}</span>` : ''}
         ${support}
       </div>
-      <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.buildTime} с · ${BUILDINGS[def.from]?.name?.toLowerCase() ?? 'штаб'} · Shift+клик — ×5</span></div>
+      <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.buildTime} ${t('tooltip.seconds')} · ${BUILDINGS[def.from]?.name?.toLowerCase() ?? t('tooltip.unit.fromHq')} · ${t('tooltip.unit.batch')}</span></div>
     `;
   }
 
@@ -2065,12 +2040,12 @@ export class UI {
       <div class="tip-head"><span class="tip-role">${def.role}</span><b>${def.name}</b></div>
       <p>${def.desc}</p>
       <div class="tip-stats">
-        <span><i>HP</i>${hp}</span>${power ? `<span><i>ЭНЕРГИЯ</i>${power}</span>` : ''}
-        ${income ? `<span><i>ДОХОД</i>${income}/с</span>` : ''}
-        ${def.armyCap ? `<span><i>ЛИМИТ АРМИИ</i>+${def.armyCap}</span>` : ''}
-        ${defense ? `<span><i>УРОН</i>${defense.damage}</span><span><i>ДАЛЬНОСТЬ</i>${defense.range}</span>` : ''}
+        <span><i>HP</i>${hp}</span>${power ? `<span><i>${t('static.power')}</i>${power}</span>` : ''}
+        ${income ? `<span><i>${t('tooltip.stat.income')}</i>${income}/${t('tooltip.seconds')}</span>` : ''}
+        ${def.armyCap ? `<span><i>${t('tooltip.stat.armySupply')}</i>+${def.armyCap}</span>` : ''}
+        ${defense ? `<span><i>${t('tooltip.stat.damage')}</i>${defense.damage}</span><span><i>${t('tooltip.stat.range')}</i>${defense.range}</span>` : ''}
       </div>
-      <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.buildTime} с${requires ? ` · требует: ${requires}` : ' · нужны инженеры рядом'}</span></div>
+      <div class="tip-foot"><span class="tip-cost">${icon('credits')} ${def.cost}</span><span>${def.buildTime} ${t('tooltip.seconds')}${requires ? ` · ${t('tooltip.build.requires', { names: requires })}` : ` · ${t('tooltip.build.needsEngineers')}`}</span></div>
     `;
   }
 
@@ -2111,14 +2086,14 @@ export class UI {
             <span class="cmd-key">${cmd.hotkey}</span>
             <span class="cmd-icon">${icon(cmd.icon)}</span>
             <span class="cmd-label">${label}</span>
-            ${cmd.cost ? `<span class="cmd-cost">${icon('credits')} ${cmd.cost}</span>` : `<span class="cmd-cost cmd-cost--free">${cmd.kind === 'train' ? 'НАЁМ' : 'ПРИКАЗ'}</span>`}
+            ${cmd.cost ? `<span class="cmd-cost">${icon('credits')} ${cmd.cost}</span>` : `<span class="cmd-cost cmd-cost--free">${cmd.kind === 'train' ? t('cmd.costTrain') : t('cmd.costOrder')}</span>`}
           </button>`;
         } else {
           html += `<div class="cmd cmd--empty" aria-hidden="true"><span class="cmd-empty-mark">+</span></div>`;
         }
       }
       if (!this.commands.length) {
-        html = `<div class="cmd-empty-state"><span class="ce-icon">${icon('target')}</span><b>НЕТ ДОСТУПНЫХ КОМАНД</b><small>Выберите командный центр или казармы,<br>либо группу юнитов.</small></div>`;
+        html = `<div class="cmd-empty-state"><span class="ce-icon">${icon('target')}</span><b>${t('cmd.emptyTitle')}</b><small>${t('cmd.emptyHint')}</small></div>`;
       }
       this.el.commands.innerHTML = html;
       this.hideTooltip();
@@ -2134,11 +2109,11 @@ export class UI {
     });
 
     const status = this.commands.length
-      ? (this.commands[0].kind === 'train' ? 'ПРОИЗВОДСТВО'
-        : this.commands[0].kind === 'build' ? 'СТРОИТЕЛЬСТВО'
-          : this.commands[0].kind === 'research' ? 'ИССЛЕДОВАНИЯ'
-            : 'ПРИКАЗЫ')
-      : 'ОЖИДАНИЕ';
+      ? (this.commands[0].kind === 'train' ? t('cmd.statusTrain')
+        : this.commands[0].kind === 'build' ? t('cmd.statusBuild')
+          : this.commands[0].kind === 'research' ? t('cmd.statusResearch')
+            : t('cmd.statusOrder'))
+      : t('cmd.statusIdle');
     if (this.el.cmdStatus.textContent !== status) this.el.cmdStatus.textContent = status;
   }
 
@@ -2146,7 +2121,7 @@ export class UI {
     const cmd = this.commands.find((c) => c.hotkey === key);
     if (!cmd) return false;
     if (cmd.disabled) {
-      this.game.notify(cmd.reason || 'Недоступно.', 'warn', `cmd-${cmd.id}`, 0, 3);
+      this.game.notify(cmd.reason || t('notify.unavailable'), 'warn', `cmd-${cmd.id}`, 0, 3);
       return true;
     }
     cmd.action();
@@ -2211,8 +2186,8 @@ export class UI {
         return `
       <button type="button" class="squad-slot is-empty"
         data-group="${index}"
-        title="Отряд ${index}: пусто. Удерживайте, чтобы запомнить выделение."
-        aria-label="Отряд ${index}: пусто">
+        title="${t('sel.groupEmptyTitle', { index })}"
+        aria-label="${t('sel.groupEmptyAria', { index })}">
         <span class="squad-key">${index}</span>
         <span class="squad-plus">+</span>
       </button>`;
@@ -2220,8 +2195,8 @@ export class UI {
       return `
       <button type="button" class="squad-slot${active ? ' is-active' : ''}"
         data-group="${index}"
-        title="Отряд ${index}: ${esc(types)}. Нажмите, чтобы выделить; двойное нажатие — камера; удержание — запомнить выделение."
-        aria-label="Отряд ${index}: ${esc(types)}">
+        title="${t('sel.groupTitle', { index, types: esc(types) })}"
+        aria-label="${t('sel.groupAria', { index, types: esc(types) })}">
         <span class="squad-key">${index}</span>
         ${icon(def?.icon ?? 'army')}
         <span class="squad-count">×${entities.length}</span>
@@ -2255,12 +2230,12 @@ export class UI {
     const body = this.el.selectionBody;
 
     if (!units.length && !buildings.length) {
-      this.el.selTitle.textContent = 'НЕТ ВЫБОРА';
+      this.el.selTitle.textContent = t('static.noSelection');
       this.el.selTag.textContent = '—';
       body.innerHTML = `
         <div class="sel-empty">
           <div class="sel-empty-icon">${icon('target')}</div>
-          <div><b>Сектор не выбран</b><p>Выберите юнита или здание левой кнопкой мыши. Рамкой можно выделить группу.</p></div>
+          <div><b>${t('sel.emptyTitle')}</b><p>${t('sel.emptyHint')}</p></div>
         </div>`;
       this.lastSignature = 'empty';
       return;
@@ -2276,11 +2251,11 @@ export class UI {
       const totalMax = units.reduce((s, u) => s + u.maxHp, 0);
       const totalKills = units.reduce((s, u) => s + (u.kills ?? 0), 0);
       const same = types.length === 1;
-      const name = same ? def.name : 'Смешанная группа';
+      const name = same ? def.name : t('sel.mixed');
       const count = units.length;
       const pct = clamp((totalHp / totalMax) * 100, 0, 100);
-      this.el.selTitle.textContent = same ? `${def.name}${count > 1 ? ` ×${count}` : ''}` : `Группа ×${count}`;
-      this.el.selTag.textContent = `${count} ${plural(count, 'ЮНИТ', 'ЮНИТА', 'ЮНИТОВ')}`;
+      this.el.selTitle.textContent = same ? `${def.name}${count > 1 ? ` ×${count}` : ''}` : t('sel.group', { count });
+      this.el.selTag.textContent = `${count} ${plural(count, t('sel.unitOne'), t('sel.unitFew'), t('sel.unitMany'))}`;
       const chips = types.length > 1
         ? `<div class="type-chips">${types.map((t) => `<span class="type-chip">${icon(UNITS[t].icon)} ${UNITS[t].name} <b>×${counts.get(t)}</b></span>`).join('')}</div>`
         : '';
@@ -2298,30 +2273,31 @@ export class UI {
           <div class="portrait" style="--accent:${FACTIONS.player.color}">
             ${icon(def.icon)}
             ${count > 1 ? `<span class="portrait-count">×${count}</span>` : ''}
-            <span class="portrait-faction">ГЕЛИОС-7</span>
+            <span class="portrait-faction">${t('static.brand')}</span>
           </div>
           <div class="sel-info">
-            <div class="sel-role">${same ? def.role : 'СМЕШАННЫЙ ОТРЯД'} · <span class="sel-owner">ИГРОК</span></div>
+            <div class="sel-role">${same ? def.role : t('sel.mixedSquad')} · <span class="sel-owner">${t('sel.ownerPlayer')}</span></div>
             <div class="sel-name">${name}${same && count > 1 ? ` <em>×${count}</em>` : ''}</div>
             <div class="hpbar"><i style="width:${pct}%"></i><b>${Math.ceil(totalHp)} / ${totalMax}</b></div>
             ${same ? this.vetBlock(primary) : ''}
             ${same ? `<div class="sel-stats">
               ${def.healer
-                ? `<span>ЛЕЧЕНИЕ <b>${(primary.healRate ?? FIELD_SUPPORT.medicRate).toFixed(1)}/с</b></span>
-                   <span>РАДИУС <b>${Math.round(primary.healSeek ?? FIELD_SUPPORT.medicSeekRadius)}</b></span>`
-                : `<span>УРОН <b>${Math.round(primary.damage ?? def.damage)}</b></span>
-                   <span>ДАЛЬНОСТЬ <b>${Math.round(primary.range ?? def.range)}</b></span>`}
-              <span>СКОРОСТЬ <b>${(primary.speed ?? def.speed).toFixed(1)}</b></span>
-              <span>ЛИМИТ <b>${def.supply ?? 1}</b></span>
-              <span>УБИЙСТВ <b>${totalKills}</b></span>
-              ${def.repairer ? `<span>РЕМОНТ ТЕХНИКИ <b>${(primary.repairRate ?? FIELD_SUPPORT.engineerRate).toFixed(1)}/с</b></span>` : ''}
-            </div>` : `<div class="sel-note">В отряде несколько типов юнитов. Наведите на карточку найма для характеристик.</div>`}
+                ? `<span>${t('tooltip.stat.healRate')} <b>${(primary.healRate ?? FIELD_SUPPORT.medicRate).toFixed(1)}/${t('tooltip.seconds')}</b></span>
+                   <span>${t('tooltip.stat.healRadius')} <b>${Math.round(primary.healSeek ?? FIELD_SUPPORT.medicSeekRadius)}</b></span>`
+                : `<span>${t('tooltip.stat.damage')} <b>${Math.round(primary.damage ?? def.damage)}</b></span>
+                   <span>${t('tooltip.stat.range')} <b>${Math.round(primary.range ?? def.range)}</b></span>`}
+              <span>${t('tooltip.stat.speed')} <b>${(primary.speed ?? def.speed).toFixed(1)}</b></span>
+              <span>${t('tooltip.stat.armyCap')} <b>${def.supply ?? 1}</b></span>
+              <span>${t('sel.kills')} <b>${totalKills}</b></span>
+              ${def.repairer ? `<span>${t('tooltip.stat.repairTech')} <b>${(primary.repairRate ?? FIELD_SUPPORT.engineerRate).toFixed(1)}/${t('tooltip.seconds')}</b></span>` : ''}
+            </div>` : `<div class="sel-note">${t('sel.multiNote')}</div>`}
+
             ${chips}
             ${upgradeChip}
           </div>
           ${this.sideStatus()}
         </div>
-        <div class="sel-foot"><span class="dot"></span> ЛКМ — уточнить · ПКМ — приказ · F — атака · T — патруль</div>
+        <div class="sel-foot"><span class="dot"></span> ${t('sel.footUnits')}</div>
       `;
       this.live = {
         kind: 'units',
@@ -2342,22 +2318,22 @@ export class UI {
     const constructionCount = b.builderCount ?? 0;
     const status = !b.complete
       ? (constructionCount
-        ? { text: `СТРОИТСЯ ${Math.floor(b.construction * 100)}% · ИНЖ. ${constructionCount}`, cls: 'warn' }
-        : { text: `ЖДЁТ ИНЖЕНЕРОВ ${Math.floor(b.construction * 100)}%`, cls: 'accent' })
+        ? { text: t('hud.building', { pct: Math.floor(b.construction * 100), count: constructionCount }), cls: 'warn' }
+        : { text: t('hud.awaitingBuilders', { pct: Math.floor(b.construction * 100) }), cls: 'accent' })
       : b.repairing
-        ? { text: 'РЕМОНТ', cls: 'accent' }
+        ? { text: t('hud.repair'), cls: 'accent' }
         : b.type === 'turret'
-          ? (b.defenseTarget?.alive ? { text: 'ВЕДЁТ ОГОНЬ', cls: 'warn' } : { text: 'ОХРАНА', cls: 'ok' })
+          ? (b.defenseTarget?.alive ? { text: t('hud.firing'), cls: 'warn' } : { text: t('hud.guard'), cls: 'ok' })
           : b.queue.length
             ? {
               text: b.def.research
-                ? `ИССЛЕДОВАНИЕ ${Math.floor((1 - b.queue[0].remaining / b.queue[0].total) * 100)}%`
-                : `ОЧЕРЕДЬ ${b.queue.length}`,
+                ? t('hud.researching', { pct: Math.floor((1 - b.queue[0].remaining / b.queue[0].total) * 100) })
+                : t('hud.queueCount', { count: b.queue.length }),
               cls: 'accent',
             }
-            : { text: 'ГОТОВО', cls: 'ok' };
+            : { text: t('hud.ready'), cls: 'ok' };
     this.el.selTitle.textContent = def.name + (buildings.length > 1 ? ` ×${buildings.length}` : '');
-    this.el.selTag.textContent = b.faction === 'player' ? 'ЗДАНИЕ' : 'ПРОТИВНИК';
+    this.el.selTag.textContent = b.faction === 'player' ? t('sel.building') : t('sel.enemyOwner');
 
     const powerOut = def.powerProduce
       ? Math.round(def.powerProduce * this.game.buildingModifiers(b.faction, b.type).powerProduce)
@@ -2369,21 +2345,21 @@ export class UI {
         : '';
     const defense = b.defense ?? def.defense;
     const incomeChip = def.income
-      ? `<span class="chip chip--income">${icon('credits')} ${(def.income * this.game.globalModifiers(b.faction).income).toFixed(1)}/с</span>`
+      ? `<span class="chip chip--income">${icon('credits')} ${(def.income * this.game.globalModifiers(b.faction).income).toFixed(1)}/${t('tooltip.seconds')}</span>`
       : '';
-    const armyChip = def.armyCap ? `<span class="chip chip--army">${icon('army')} +${def.armyCap} ЛИМИТ</span>` : '';
+    const armyChip = def.armyCap ? `<span class="chip chip--army">${icon('army')} +${def.armyCap} ${t('tooltip.stat.armyCap')}</span>` : '';
     const defenseChip = defense
-      ? `<span class="chip chip--defense">${icon('turret')} ${Math.round(defense.damage)} УРОН · ${Math.round(defense.range)} ДАЛЬН.</span>`
+      ? `<span class="chip chip--defense">${icon('turret')} ${Math.round(defense.damage)} ${t('tooltip.stat.damage')} · ${Math.round(defense.range)} ${t('sel.rangeShort')}</span>`
       : '';
     const repairChip = b.repairing
-      ? `<span class="chip chip--repair">${icon('repair')} +${this.game.repairRate(b).toFixed(1)} HP/с</span>`
+      ? `<span class="chip chip--repair">${icon('repair')} +${this.game.repairRate(b).toFixed(1)} HP/${t('tooltip.seconds')}</span>`
       : '';
     const researchChip = b.def.research && b.faction === 'player'
-      ? `<span class="chip chip--research">${icon('research')} ИЗУЧЕНО ${this.game.upgrades.player.size}/${Object.keys(UPGRADES).length}</span>`
+      ? `<span class="chip chip--research">${icon('research')} ${t('sel.researched', { done: this.game.upgrades.player.size, total: Object.keys(UPGRADES).length })}</span>`
       : '';
     const queueHTML = this.renderQueue(b);
     const buildHTML = !b.complete
-      ? `<button class="btn-small btn-cancel-build" data-cancel-build>ОТМЕНИТЬ ПОСТРОЙКУ · ВОЗВРАТ 60%</button>`
+      ? `<button class="btn-small btn-cancel-build" data-cancel-build>${t('sel.cancelBuild')}</button>`
       : '';
 
     body.innerHTML = `
@@ -2411,12 +2387,12 @@ export class UI {
       ${UNIT_PRODUCTION[b.type] || b.def.research ? queueHTML : ''}
       ${buildHTML}
       <div class="sel-foot"><span class="dot"></span> ${UNIT_PRODUCTION[b.type] && b.type !== 'hq'
-        ? 'ПКМ по земле — точка сбора · клик по очереди — отмена · R — ремонт'
+        ? t('sel.footGround')
         : b.type === 'hq'
-          ? 'ПКМ по месторождению — быстрая нефтяная вышка · R — ремонт'
+          ? t('sel.footHq')
           : b.def.research
-            ? 'Исследования — на панели команд · клик по очереди — отмена · R — ремонт'
-            : 'Пассивное строение · R — ремонт'}</div>
+            ? t('sel.footResearch')
+            : t('sel.footPassive')}</div>
     `;
     this.live = {
       kind: 'building',
@@ -2438,7 +2414,7 @@ export class UI {
     const pct = next ? clamp(((unit.xp - prev) / (next - prev)) * 100, 0, 100) : 100;
     const text = next
       ? `${Math.round(unit.xp)} / ${next} XP`
-      : 'МАКСИМАЛЬНЫЙ РАНГ';
+      : t('sel.maxRank');
     return `
       <div class="vet-block">
         <span class="chip chip--rank">${icon('flag')} ${VETERANCY.names[rank]}</span>
@@ -2454,7 +2430,7 @@ export class UI {
     return {
       rank,
       pct: next ? clamp(((unit.xp - prev) / (next - prev)) * 100, 0, 100) : 100,
-      text: next ? `${Math.round(unit.xp)} / ${next} XP` : 'МАКСИМАЛЬНЫЙ РАНГ',
+      text: next ? `${Math.round(unit.xp)} / ${next} XP` : t('sel.maxRank'),
     };
   }
 
@@ -2464,16 +2440,16 @@ export class UI {
     const deficit = s.power.used > s.power.produced;
     return `
       <div class="sel-side">
-        <div><span>ДОХОД</span><b>+${income.toFixed(1)}/с</b></div>
-        <div><span>СЕТЬ</span><b class="${deficit ? 'bad' : ''}">${s.power.produced}/${s.power.used}</b></div>
-        <div><span>ЛИМИТ</span><b>${s.army}/${s.cap}</b></div>
+        <div><span>${t('sel.sideIncome')}</span><b>+${income.toFixed(1)}/${t('tooltip.seconds')}</b></div>
+        <div><span>${t('sel.sideGrid')}</span><b class="${deficit ? 'bad' : ''}">${s.power.produced}/${s.power.used}</b></div>
+        <div><span>${t('tooltip.stat.armyCap')}</span><b>${s.army}/${s.cap}</b></div>
       </div>`;
   }
 
   renderQueue(b) {
     if (!b.queue.length) {
-      const emptyLabel = b.def.research ? 'ВЫБЕРИТЕ УЛУЧШЕНИЕ' : 'ГОТОВ К НАЙМУ';
-      return `<div class="queue queue--empty"><span>Очередь производства пуста</span><span>${b.complete ? emptyLabel : 'ИДЁТ СТРОЙКА'}</span></div>`;
+      const emptyLabel = b.def.research ? t('sel.queuePick') : t('sel.queueReady');
+      return `<div class="queue queue--empty"><span>${t('sel.queueEmpty')}</span><span>${b.complete ? emptyLabel : t('sel.queueBuilding')}</span></div>`;
     }
     const slots = [];
     for (let i = 0; i < b.queue.length; i++) {
@@ -2483,7 +2459,7 @@ export class UI {
       const time = i === 0 ? item.remaining : item.total;
       slots.push(`
         <button class="queue-tile${i === 0 ? ' is-active' : ''}" data-cancel-queue="${i}"
-          title="Отменить: ${esc(def.name)}" aria-label="Отменить: ${esc(def.name)}">
+          title="${t('sel.cancelItem', { name: esc(def.name) })}" aria-label="${t('sel.cancelItem', { name: esc(def.name) })}">
           <span class="q-x" aria-hidden="true">×</span>
           <span class="q-icon">${icon(def.icon)}</span>
           <span class="q-name">${esc(def.name)}</span>
@@ -2493,7 +2469,7 @@ export class UI {
     }
     return `
       <div class="queue">
-        <div class="queue-head"><span>ОЧЕРЕДЬ ПРОИЗВОДСТВА</span><span>В ОЧЕРЕДИ: ${b.queue.length}</span></div>
+        <div class="queue-head"><span>${t('sel.queueTitle')}</span><span>${t('sel.queueCount', { count: b.queue.length })}</span></div>
         <div class="queue-list">${slots.join('')}</div>
       </div>`;
   }
@@ -2504,40 +2480,43 @@ export class UI {
     this.el.credits.textContent = s.credits;
     this.el.power.textContent = `${s.power.produced} / ${s.power.used}`;
     this.el.army.textContent = `${s.army} / ${s.cap}`;
-    this.el.army.parentElement.title = `Лимит армии: занято ${s.army} из ${s.cap}. Юнитов: ${s.units}.`;
+    this.el.army.parentElement.title = t('hud.armyTitle', { used: s.army, cap: s.cap, units: s.units });
     this.el.clock.textContent = formatTime(s.time);
     const deficit = s.power.used > s.power.produced;
     this.el.resPower.classList.toggle('is-deficit', deficit);
-    this.el.gridStatus.textContent = deficit ? 'ДЕФИЦИТ ЭНЕРГИИ' : 'СЕТЬ В НОРМЕ';
+    this.el.powerLabel.textContent = deficit ? `${t('static.power')} · ${t('hud.deficit')}` : t('static.power');
+    this.el.gridStatus.textContent = deficit ? t('hud.powerDeficit') : t('static.gridStatus');
     this.el.gridStatus.classList.toggle('is-deficit', deficit);
-    this.el.resPower.title = `Энергия: произведено ${s.power.produced}, потреблено ${s.power.used}${deficit ? '. Производство замедлено.' : '.'}`;
+    this.el.resPower.title = deficit
+      ? t('hud.powerTitleDeficit', { produced: s.power.produced, used: s.power.used })
+      : t('hud.powerTitle', { produced: s.power.produced, used: s.power.used });
 
     const mission = this.game.mission;
     if (mission?.kind === 'endless' && this.game.endless) {
       const endless = this.game.endless;
       const best = endlessBest(mission);
-      this.el.missionLabel.textContent = `ПРОТОКОЛ · ВОЛНА ${endless.waveIndex}`;
+      this.el.missionLabel.textContent = t('hud.endlessWave', { wave: endless.waveIndex });
       this.el.missionText.textContent =
-        `Следующая через ${formatTime(Math.ceil(endless.nextWaveIn))} · в секторе ${formatTime(this.game.elapsed)}`;
+        t('hud.endlessNext', { in: formatTime(Math.ceil(endless.nextWaveIn)), elapsed: formatTime(this.game.elapsed) });
       this.el.missionCard.title = best
-        ? `Рекорд: ${formatTime(best.time)}, ${best.waves} волн`
-        : 'Продержитесь как можно дольше';
+        ? t('hud.endlessBest', { time: formatTime(best.time), waves: best.waves })
+        : t('hud.endlessHint');
     } else if (mission && this.el.missionText) {
       const total = this.game.objectives.length;
       const done = this.game.objectives.filter((objective) => objective.done).length;
       const active = this.game.activeObjective();
       this.el.missionLabel.textContent = mission.kind === 'campaign'
-        ? `ЗАДАЧА ${Math.min(done + 1, total)}/${total}`
-        : `ИСПЫТАНИЕ ${done}/${total}`;
+        ? t('hud.taskProgress', { done: Math.min(done + 1, total), total })
+        : t('hud.trialProgress', { done, total });
       this.el.missionText.textContent = active
         ? `${active.title}${active.progressText ? ` · ${active.progressText}` : ''}`
-        : 'Все задачи выполнены';
+        : t('hud.tasksDone');
       this.el.missionCard.title = this.game.objectives
         .map((objective) => `${objective.done ? '✓' : '—'} ${objective.title}${objective.progressText ? ` (${objective.progressText})` : ''}`)
         .join('\n');
     } else if (this.el.missionText) {
-      this.el.missionLabel.textContent = 'ЗАДАЧА';
-      this.el.missionText.textContent = 'Уничтожить командный центр противника';
+      this.el.missionLabel.textContent = t('static.missionLabel');
+      this.el.missionText.textContent = t('static.missionDefault');
       this.el.missionCard.title = '';
     }
   }
@@ -2574,17 +2553,17 @@ export class UI {
             const builders = b.builderCount ?? 0;
             const text = !b.complete
               ? (builders
-                ? `СТРОИТСЯ ${Math.floor(b.construction * 100)}% · ИНЖ. ${builders}`
-                : `ЖДЁТ ИНЖЕНЕРОВ ${Math.floor(b.construction * 100)}%`)
+                ? t('hud.building', { pct: Math.floor(b.construction * 100), count: builders })
+                : t('hud.awaitingBuilders', { pct: Math.floor(b.construction * 100) }))
               : b.repairing
-                ? 'РЕМОНТ'
+                ? t('hud.repair')
                 : b.type === 'turret'
-                  ? (b.defenseTarget?.alive ? 'ВЕДЁТ ОГОНЬ' : 'ОХРАНА')
+                  ? (b.defenseTarget?.alive ? t('hud.firing') : t('hud.guard'))
                   : b.queue.length
                     ? (b.def.research
-                      ? `ИССЛЕДОВАНИЕ ${Math.floor((1 - b.queue[0].remaining / b.queue[0].total) * 100)}%`
-                      : `ОЧЕРЕДЬ ${b.queue.length}`)
-                    : 'ГОТОВО';
+                      ? t('hud.researching', { pct: Math.floor((1 - b.queue[0].remaining / b.queue[0].total) * 100) })
+                      : t('hud.queueCount', { count: b.queue.length }))
+                    : t('hud.ready');
             const dot = this.live.statusChip.querySelector('i');
             this.live.statusChip.innerHTML = `<i></i>${text}`;
           }

@@ -226,10 +226,7 @@ body.mode-patrol #scene {
   text-shadow: 0 0 14px rgba(255, 91, 60, 0.55);
 }
 
-#resPower.is-deficit .res-copy small::after {
-  content: " · ДЕФИЦИТ";
-  color: var(--red);
-}
+
 
 .top-right {
   margin-left: auto;

@@ -16,32 +16,28 @@ export const GRAPHICS_DEFAULTS = Object.freeze({
   hpBars: 'auto',
 });
 
-export const GRAPHICS_LABELS = {
-  shadows: 'ТЕНИ',
-  glow: 'СВЕЧЕНИЕ',
-  renderScale: 'РАЗРЕШЕНИЕ',
-  hpBars: 'ПОЛОСКИ HP',
-};
+
 
 export const GRAPHICS_OPTIONS = {
   shadows: [
-    { value: 'high', label: 'ВЫСОКОЕ' },
-    { value: 'medium', label: 'СРЕДНЕЕ' },
-    { value: 'low', label: 'НИЗКОЕ' },
-    { value: 'off', label: 'ВЫКЛ.' },
+    { value: 'high' },
+    { value: 'medium' },
+    { value: 'low' },
+    { value: 'off' },
   ],
   glow: [
-    { value: 'on', label: 'ВКЛ.' },
-    { value: 'off', label: 'ВЫКЛ.' },
+    { value: 'on' },
+    { value: 'off' },
   ],
+  // Числовые подписи остаются литералами: проценты одинаковы на всех языках.
   renderScale: [
     { value: '1', label: '100%' },
     { value: '0.85', label: '85%' },
     { value: '0.7', label: '70%' },
   ],
   hpBars: [
-    { value: 'auto', label: 'ПО УМОЛЧАНИЮ' },
-    { value: 'always', label: 'ВСЕГДА' },
+    { value: 'auto' },
+    { value: 'always' },
   ],
 };
 
@@ -120,11 +116,7 @@ export const AUDIO_DEFAULTS = Object.freeze({
   ambient: '55',
 });
 
-export const AUDIO_LABELS = {
-  master: 'ОБЩАЯ ГРОМКОСТЬ',
-  sfx: 'ЭФФЕКТЫ',
-  ambient: 'ОКРУЖЕНИЕ',
-};
+
 
 /** Звук живёт в процентах: 0 — тишина, 100 — полная громкость. */
 export class AudioSettings {
