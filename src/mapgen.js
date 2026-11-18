@@ -11,6 +11,7 @@
 
 import { MAP, MAP_DENSITY, MAP_LAYOUT, START } from './config.js';
 import { segmentDistance } from './nav.js';
+import { t } from './i18n/index.js';
 import { mulberry32 } from './utils.js';
 
 const TAU = Math.PI * 2;
@@ -42,36 +43,36 @@ const rotate = (v, angle) => ({
 export const MAP_SYMMETRIES = [
   {
     key: 'rot180',
-    name: 'Центральная',
+    name: t('map.style.rot180.name'),
     tag: '180°',
-    hint: 'Вторая половина карты — поворот первой на 180°.',
+    hint: t('map.style.rot180.hint'),
     transform: (x, z) => [-x, -z],
     mirrorYaw: (yaw) => yaw,
     selfPoint: () => ({ x: 0, z: 0 }),
   },
   {
     key: 'axis-x',
-    name: 'Зеркальная',
-    tag: 'ОСЬ X',
-    hint: 'Базы стоят зеркально относительно оси X.',
+    name: t('map.style.axis-x.name'),
+    tag: t('map.style.axis-x.tag'),
+    hint: t('map.style.axis-x.hint'),
     transform: (x, z) => [x, -z],
     mirrorYaw: (yaw) => -yaw,
     selfPoint: (rng) => ({ x: range(rng, -40, 40), z: 0 }),
   },
   {
     key: 'axis-z',
-    name: 'Зеркальная',
-    tag: 'ОСЬ Z',
-    hint: 'Базы стоят зеркально относительно оси Z.',
+    name: t('map.style.axis-z.name'),
+    tag: t('map.style.axis-z.tag'),
+    hint: t('map.style.axis-z.hint'),
     transform: (x, z) => [-x, z],
     mirrorYaw: (yaw) => Math.PI - yaw,
     selfPoint: (rng) => ({ x: 0, z: range(rng, -40, 40) }),
   },
   {
     key: 'diagonal',
-    name: 'Диагональная',
+    name: t('map.style.diagonal.name'),
     tag: 'X = Z',
-    hint: 'Базы стоят зеркально относительно диагонали X = Z.',
+    hint: t('map.style.diagonal.hint'),
     transform: (x, z) => [z, x],
     mirrorYaw: (yaw) => Math.PI / 2 - yaw,
     selfPoint: (rng) => {
@@ -81,9 +82,9 @@ export const MAP_SYMMETRIES = [
   },
   {
     key: 'anti-diagonal',
-    name: 'Диагональная',
+    name: t('map.style.anti-diagonal.name'),
     tag: 'X = −Z',
-    hint: 'Базы стоят зеркально относительно диагонали X = −Z.',
+    hint: t('map.style.anti-diagonal.hint'),
     transform: (x, z) => [-z, -x],
     mirrorYaw: (yaw) => -Math.PI / 2 - yaw,
     selfPoint: (rng) => {
@@ -106,7 +107,7 @@ const SYMMETRY_WEIGHTS = {
 export const MAP_STYLES = [
   {
     key: 'rust',
-    name: 'РЖАВАЯ ПУСТОШЬ',
+    name: t('map.palette.rust.name'),
     ground: '#6f5c45',
     patchDark: 'rgba(48,39,29,0.30)',
     patchLight: 'rgba(142,120,92,0.20)',
@@ -127,7 +128,7 @@ export const MAP_STYLES = [
   },
   {
     key: 'basalt',
-    name: 'БАЗАЛЬТОВЫЕ ПОЛЯ',
+    name: t('map.palette.basalt.name'),
     ground: '#565a5b',
     patchDark: 'rgba(28,32,34,0.32)',
     patchLight: 'rgba(118,126,128,0.18)',
@@ -148,7 +149,7 @@ export const MAP_STYLES = [
   },
   {
     key: 'ochre',
-    name: 'ОХРИСТЫЕ ДЮНЫ',
+    name: t('map.palette.ochre.name'),
     ground: '#8a6a3f',
     patchDark: 'rgba(72,50,24,0.30)',
     patchLight: 'rgba(196,160,104,0.20)',
@@ -169,7 +170,7 @@ export const MAP_STYLES = [
   },
   {
     key: 'ash',
-    name: 'ПЕПЕЛЬНАЯ ЗОНА',
+    name: t('map.palette.ash.name'),
     ground: '#6a6660',
     patchDark: 'rgba(40,38,36,0.30)',
     patchLight: 'rgba(150,144,136,0.18)',

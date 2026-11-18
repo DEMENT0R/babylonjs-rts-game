@@ -20,6 +20,7 @@ import {
   SELL,
 } from './config.js';
 import { clamp, dist, formatTime, plural } from './utils.js';
+import { t } from './i18n/index.js';
 import { Unit, Building } from './entities.js';
 import { NavGrid, segmentDistance } from './nav.js';
 import { AIController } from './ai.js';
@@ -241,13 +242,13 @@ export class Game {
         const alive = this.buildings.some(
           (b) => b.alive && b.faction === 'enemy' && b.type === 'hq',
         );
-        return { progress: alive ? 0 : 1, text: alive ? 'КП цел' : 'КП уничтожен' };
+        return { progress: alive ? 0 : 1, text: alive ? t('game.objective.hq.intact') : t('game.objective.hq.destroyed') };
       }
       case 'survive': {
         const seconds = Math.max(1, objective.seconds ?? 0);
         return {
           progress: count(this.elapsed / seconds),
-          text: `${formatTime(Math.max(0, seconds - this.elapsed))} осталось`,
+          text: t('game.objective.timeLeft', { time: formatTime(Math.max(0, seconds - this.elapsed)) }),
         };
       }
       case 'derricks': {
@@ -281,7 +282,7 @@ export class Game {
       if (!objective.done && state.progress >= 1) {
         objective.done = true;
         if (!silent) {
-          this.notify(`Задача выполнена: ${objective.title}.`, 'success', `objective-${objective.index}`, 0, 5);
+          this.notify(t('game.objective.done', { title: objective.title }), 'success', `objective-${objective.index}`, 0, 5);
         }
       }
       if (!objective.done) allDone = false;
@@ -300,10 +301,10 @@ export class Game {
     if (hq) this.selectOnly([hq]);
     if (this.mission) {
       const kind = this.mission.kind === 'campaign'
-        ? 'Операция'
-        : this.mission.kind === 'endless' ? 'Протокол' : 'Испытание';
+        ? t('game.kind.campaign')
+        : this.mission.kind === 'endless' ? t('game.kind.endless') : t('game.kind.trial');
       this.notify(
-        `${kind} «${this.mission.title}». ${this.mission.subtitle}`,
+        t('game.mission.begin', { kind, title: this.mission.title, subtitle: this.mission.subtitle }),
         'info',
         'mission-begin',
         0,
@@ -311,12 +312,12 @@ export class Game {
       );
       const first = this.activeObjective();
       if (first) {
-        this.notify(`Задача: ${first.title}. ${first.desc}`, 'hint', 'mission-first', 0, 10);
+        this.notify(t('game.mission.first', { title: first.title, desc: first.desc }), 'hint', 'mission-first', 0, 10);
       }
       return;
     }
-    this.notify('Связь установлена. Командование колонией за вами.', 'info', 'begin', 0);
-    this.notify('Постройте казармы и держите инженеров под рукой: без них стройка стоит.', 'hint', 'hint-build', 0, 10);
+    this.notify(t('game.begin.link'), 'info', 'begin', 0);
+    this.notify(t('game.begin.hint'), 'hint', 'hint-build', 0, 10);
   }
 
   setPaused(value) {
@@ -416,13 +417,13 @@ export class Game {
     if (!this.mission) {
       if (this.tutorialStep === 0 && this.elapsed > 18) {
         this.tutorialStep = 1;
-        this.notify('Нефтяные вышки приносят кредиты. Захватывайте нейтральные месторождения.', 'hint', 'hint-oil', 0, 12);
+        this.notify(t('game.hint.oil'), 'hint', 'hint-oil', 0, 12);
       } else if (this.tutorialStep === 1 && this.elapsed > 42) {
         this.tutorialStep = 2;
-        this.notify('Здания строятся только рядом с инженерами. Чем их больше, тем быстрее.', 'hint', 'hint-engineer', 0, 12);
+        this.notify(t('game.hint.engineer'), 'hint', 'hint-engineer', 0, 12);
       } else if (this.tutorialStep === 2 && this.elapsed > 70) {
         this.tutorialStep = 3;
-        this.notify('Сенсоры фиксируют активность противника. Укрепляйте оборону.', 'warn', 'hint-enemy', 0, 14);
+        this.notify(t('game.hint.enemy'), 'warn', 'hint-enemy', 0, 14);
       }
     }
 
@@ -477,7 +478,7 @@ export class Game {
       return;
     }
     this.alertCd = 10;
-    this.notify('Наша база под атакой!', 'danger', 'base-attack', 0, 9);
+    this.notify(t('game.alert.base'), 'danger', 'base-attack', 0, 9);
     this.audio?.ui('alert');
     if (this.ui) {
       this.ui.alert();
@@ -702,7 +703,7 @@ export class Game {
     if (start) {
       const cost = list.reduce((sum, b) => sum + this.repairFullCost(b), 0);
       this.notify(
-        `${MESSAGES.repairStarted} Полный ремонт: ${cost} кредитов.`,
+        t('game.repair.fullCost', { started: MESSAGES.repairStarted, cost }),
         'info',
         'repair-start',
         0,
@@ -742,7 +743,7 @@ export class Game {
     this.refreshNav();
     if (!opts.silent) {
       this.notify(
-        `Начато строительство: ${def.name}`,
+        t('game.build.started', { name: def.name }),
         'info',
         `build_${b.id}`,
         0,
@@ -965,12 +966,16 @@ export class Game {
   assignGroup(index) {
     const entities = this.selectedEntities();
     if (!entities.length) {
-      this.notify('Сначала выберите юнитов или постройки для отряда.', 'warn', 'group-empty', 0, 3);
+      this.notify(t('game.group.empty'), 'warn', 'group-empty', 0, 3);
       return false;
     }
     this.groups.set(index, new Set(entities));
     this.notify(
-      `Отряд ${index}: ${entities.length} ${plural(entities.length, 'объект', 'объекта', 'объектов')}.`,
+      t('game.group.set', {
+        index,
+        count: entities.length,
+        units: plural(entities.length, t('game.word.object'), t('game.word.object.few'), t('game.word.object.many')),
+      }),
       'info',
       `group-set-${index}`,
       0,
@@ -1056,12 +1061,15 @@ export class Game {
       return !(site && site.alive && !site.complete);
     });
     if (!list.length) {
-      this.notify('Свободных инженеров нет.', 'warn', 'idle-engineers', 0, 3);
+      this.notify(t('game.idle.none'), 'warn', 'idle-engineers', 0, 3);
       return false;
     }
     this.selectOnly(list);
     this.notify(
-      `Свободные инженеры: ${list.length} ${plural(list.length, 'юнит', 'юнита', 'юнитов')}.`,
+      t('game.idle.count', {
+        count: list.length,
+        units: plural(list.length, t('game.word.unit'), t('game.word.unit.few'), t('game.word.unit.many')),
+      }),
       'info',
       'idle-engineers',
       0,
@@ -1158,7 +1166,7 @@ export class Game {
     if (!units.length) return;
     this.issueFormationMove(units, point, 'patrol');
     this.notify(
-      'Патруль: отряд будет ходить между текущей позицией и указанной точкой.',
+      t('game.order.patrol'),
       'info',
       'patrol-order',
       0,
@@ -1193,7 +1201,7 @@ export class Game {
     const cx = units.reduce((sum, u) => sum + u.position.x, 0) / units.length;
     const cz = units.reduce((sum, u) => sum + u.position.z, 0) / units.length;
     this.fx.orderMarker(new Vector3(cx, 0, cz), 'hold');
-    this.notify('Отряд держит позицию и не будет преследовать врага.', 'info', 'hold-order', 1.5, 3);
+    this.notify(t('game.order.hold'), 'info', 'hold-order', 1.5, 3);
     this.audio?.order('hold');
   }
 
@@ -1300,14 +1308,14 @@ export class Game {
     const credits = wallet ? wallet.credits : this.credits;
     if (!def || def.cost <= 0) return null;
     if (faction === 'player' && !this.missionAllowsBuilding(type)) {
-      this.notify('В этой операции такая постройка недоступна.', 'warn', 'mission-build', 0, 3);
+      this.notify(t('game.mission.buildBlocked'), 'warn', 'mission-build', 0, 3);
       return null;
     }
     const missing = this.missingBuildingRequirements(faction, type);
     if (missing.length) {
       if (faction === 'player') {
         const names = missing.map((req) => BUILDINGS[req]?.name ?? req).join(', ');
-        this.notify(`Сначала постройте: ${names}.`, 'warn', `build-requires-${type}`, 0, 4);
+        this.notify(t('game.build.requires', { names }), 'warn', `build-requires-${type}`, 0, 4);
       }
       return null;
     }
@@ -1372,7 +1380,7 @@ export class Game {
     building.alive = false;
     building.disposeVisual();
     this.recomputePower();
-    this.notify('Строительство отменено. Возвращено 60% стоимости.', 'info', `cancel_${building.id}`, 0, 2);
+    this.notify(t('game.build.cancelled'), 'info', `cancel_${building.id}`, 0, 2);
     if (this.ui) this.ui.onSelectionChanged();
   }
 
@@ -1396,7 +1404,7 @@ export class Game {
     this.recomputePower();
     this.refreshArmyCap();
     this.notify(
-      `${building.def.name}: продано. Возвращено ${refund} кредитов.`,
+      t('game.build.sold', { name: building.def.name, refund }),
       'info',
       `sell_${building.id}`,
       0,
@@ -1539,19 +1547,19 @@ export class Game {
     const faction = building.faction;
     if (this.upgrades[faction]?.has(key)) {
       if (faction === 'player') {
-        this.notify('Это улучшение уже изучено.', 'hint', `research_done_${key}`, 0, 3);
+        this.notify(t('game.research.alreadyDone'), 'hint', `research_done_${key}`, 0, 3);
       }
       return false;
     }
     if (this.hasPendingUpgrade(faction, key)) {
       if (faction === 'player') {
-        this.notify('Это улучшение уже исследуется.', 'hint', `research_queue_${key}`, 0, 3);
+        this.notify(t('game.research.alreadyQueued'), 'hint', `research_queue_${key}`, 0, 3);
       }
       return false;
     }
     if (def.requires && !this.upgrades[faction]?.has(def.requires)) {
       if (faction === 'player') {
-        this.notify('Сначала изучите предыдущий уровень.', 'hint', `research_requires_${key}`, 0, 3);
+        this.notify(t('game.research.requiresLevel'), 'hint', `research_requires_${key}`, 0, 3);
       }
       return false;
     }
@@ -1562,7 +1570,7 @@ export class Game {
     this.spend(faction, def.cost);
     building.enqueueUpgrade(key);
     if (faction === 'player') {
-      this.notify(`Исследование начато: ${def.name}.`, 'info', `research_start_${key}`, 0, 4);
+      this.notify(t('game.research.started', { name: def.name }), 'info', `research_start_${key}`, 0, 4);
     }
     if (this.ui) this.ui.onQueueChanged(building);
     return true;
@@ -1601,12 +1609,12 @@ export class Game {
     }
     if (first && faction === 'player') {
       const tail = def.scope === 'unit'
-        ? 'Отряд усилен.'
+        ? t('game.research.scopeUnit')
         : def.scope === 'building'
-          ? 'Постройки усилены.'
-          : 'Эффект действует на всю колонию.';
+          ? t('game.research.scopeBuilding')
+          : t('game.research.scopeGlobal');
       this.notify(
-        `Исследование завершено: ${def.name}. ${tail}`,
+        t('game.research.complete', { name: def.name, tail }),
         'success',
         `research_done_${key}`,
         0,
@@ -1622,11 +1630,11 @@ export class Game {
     if (!def) return false;
     if (def.requires && !this.upgrades.player?.has(def.requires)) {
       const name = UPGRADES[def.requires]?.name ?? def.requires;
-      this.notify(`Требуется исследование «${name}».`, 'warn', `train-locked-${type}`, 0, 4);
+      this.notify(t('game.train.locked', { name }), 'warn', `train-locked-${type}`, 0, 4);
       return false;
     }
     if (!this.missionAllowsUnit(type)) {
-      this.notify('В этой операции такой юнит недоступен.', 'warn', 'mission-train', 0, 3);
+      this.notify(t('game.mission.unitBlocked'), 'warn', 'mission-train', 0, 3);
       return false;
     }
     if (!building || !building.alive) return false;
@@ -1749,7 +1757,7 @@ export class Game {
       this.ai?.onPlayerLoss?.(entity, source);
       if (source?.faction === 'player' && source.def?.friendlyFire) {
         this.notify(
-          'Залп РСЗО накрыл своих. Не стреляйте по своим войскам и зданиям.',
+          t('game.friendlyFire'),
           'danger',
           'friendly-fire',
           8,
@@ -1762,14 +1770,14 @@ export class Game {
       entity.oilPatch.derrick = null;
       entity.oilPatch = null;
       if (entity.faction === 'enemy') {
-        this.notify('Нефтяная вышка противника уничтожена. Доход врага снижен.', 'success', `ed_${entity.id}`, 0, 4);
+        this.notify(t('game.derrick.enemyDown'), 'success', `ed_${entity.id}`, 0, 4);
       } else {
-        this.notify('Наша нефтяная вышка уничтожена.', 'danger', `pd_${entity.id}`, 0, 4);
+        this.notify(t('game.derrick.ownDown'), 'danger', `pd_${entity.id}`, 0, 4);
       }
     } else if (entity.isBuilding && entity.faction === 'player') {
-      this.notify(`Потеряно: ${entity.def.name}`, 'danger', `lost_${entity.id}`, 0, 4);
+      this.notify(t('game.lost', { name: entity.def.name }), 'danger', `lost_${entity.id}`, 0, 4);
     } else if (entity.isBuilding && entity.faction === 'enemy' && entity.type !== 'hq') {
-      this.notify(`Уничтожено: ${entity.def.name} противника`, 'success', `killed_${entity.id}`, 0, 3);
+      this.notify(t('game.killed', { name: entity.def.name }), 'success', `killed_${entity.id}`, 0, 3);
     }
 
     const wasHQ = entity.isBuilding && entity.type === 'hq';
@@ -1820,17 +1828,17 @@ export class Game {
 
   startPlacement(type) {
     if (!this.missionAllowsBuilding(type)) {
-      this.notify('В этой операции такая постройка недоступна.', 'warn', 'mission-build', 0, 3);
+      this.notify(t('game.mission.buildBlocked'), 'warn', 'mission-build', 0, 3);
       return;
     }
     const missing = this.missingBuildingRequirements('player', type);
     if (missing.length) {
       const names = missing.map((req) => BUILDINGS[req]?.name ?? req).join(', ');
-      this.notify(`Сначала постройте: ${names}.`, 'warn', `build-requires-${type}`, 0, 4);
+      this.notify(t('game.build.requires', { names }), 'warn', `build-requires-${type}`, 0, 4);
       return;
     }
     if (this.input) this.input.startPlacement(type);
-    else this.notify('Нет связи с системой строительства.', 'warn');
+    else this.notify(t('game.build.noLink'), 'warn');
   }
 
   focusOn(x, z) {

@@ -1,5 +1,7 @@
 // Небольшие математические и DOM-хелперы.
 
+import { t } from './i18n/index.js';
+
 export const TAU = Math.PI * 2;
 
 export const clamp = (v, min, max) => (v < min ? min : v > max ? max : v);
@@ -49,8 +51,8 @@ export const formatTime = (seconds) => {
 };
 
 export const formatNum = (value) => {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)} млн`;
-  if (value >= 10_000) return `${Math.round(value / 1000)} тыс`;
+  if (value >= 1_000_000) return t('game.fmt.million', { n: (value / 1_000_000).toFixed(1) });
+  if (value >= 10_000) return t('game.fmt.thousand', { n: Math.round(value / 1000) });
   return String(Math.floor(value));
 };
 

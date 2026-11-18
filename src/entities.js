@@ -14,6 +14,7 @@ import {
 } from './config.js';
 import { clamp, dist, turnTowards, damp, angleDiff } from './utils.js';
 import { segmentDistance } from './nav.js';
+import { t } from './i18n/index.js';
 
 let nextId = 1;
 
@@ -426,7 +427,7 @@ export class Unit extends Entity {
     this.updateBar?.();
     if (this.faction === 'player') {
       this.game.notify(
-        `${this.def.name}: ранг «${VETERANCY.names[rank]}».`,
+        t('entity.rank', { name: this.def.name, rank: VETERANCY.names[rank] }),
         'success',
         `rank-${this.id}`,
         0,
@@ -1591,7 +1592,7 @@ export class Building extends Entity {
     }
     this.game.fx.buildDust(this.position, 1.2 + this.radius * 0.1);
     if (this.faction === 'player') {
-      this.game.notify(`Строительство завершено: ${this.def.name}`, 'success', `done_${this.id}`);
+      this.game.notify(t('entity.build.done', { name: this.def.name }), 'success', `done_${this.id}`);
     }
     this.builderCount = 0;
     this.game.recomputePower();

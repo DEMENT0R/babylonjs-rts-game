@@ -1,9 +1,11 @@
 // Babylon.js подключается как UMD-бандл в index.html и доступен глобально.
 // Здесь собираем нужные классы в одном месте.
 
+import { t } from './i18n/index.js';
+
 const B = globalThis.BABYLON;
 if (!B) {
-  throw new Error('Babylon.js не загружен. Проверьте vendor/babylon.js в index.html.');
+  throw new Error(t('fatal.babylon'));
 }
 
 export { B };

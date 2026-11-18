@@ -6,6 +6,8 @@ import {
 } from './config.js';
 import { clamp, dist, distToSegment, shuffle, TAU } from './utils.js';
 
+import { t } from './i18n/index.js';
+
 export class AIController {
   constructor(game, difficulty = 'normal', options = null) {
     this.game = game;
@@ -636,7 +638,7 @@ export class AIController {
     if (this.game.elapsed - this.lastBuildNoticeAt > 90) {
       this.lastBuildNoticeAt = this.game.elapsed;
       this.game.notify(
-        'Сенсоры фиксируют новые постройки противника: он застраивает сектор.',
+        t('ai.msg.build'),
         'warn',
         'ai-build',
         0,
@@ -826,7 +828,7 @@ export class AIController {
     }
     if (game.elapsed - this.lastScoutNoticeAt > 150) {
       this.lastScoutNoticeAt = game.elapsed;
-      game.notify('Разведка противника прощупывает сектор.', 'warn', 'ai-scout', 0, 4);
+      game.notify(t('ai.msg.scoutSector'), 'warn', 'ai-scout', 0, 4);
     }
   }
 
@@ -1861,8 +1863,8 @@ export class AIController {
     this.finishWave(record, 'retreated');
     this.game.notify(
       reason === 'outgunned'
-        ? 'Отряд противника отходит: встретил превосходящие силы.'
-        : 'Отряд противника отступает: пробить оборону не удалось.',
+        ? t('ai.msg.retreatOutgunned')
+        : t('ai.msg.retreatFailed'),
       'success',
       'ai-retreat',
       90,
@@ -2442,7 +2444,7 @@ export class AIController {
     if (this.isStarved()) {
       this.waveTimer = AI.regroupDelay * (0.8 + Math.random() * 0.6);
       this.game.notify(
-        'Противник экономит силы: его войска держатся у базы.',
+        t('ai.msg.starved'),
         'warn',
         'ai-economy',
         150,
@@ -2461,7 +2463,7 @@ export class AIController {
       if (this.game.elapsed - this.lastAttackHoldNoticeAt > 120) {
         this.lastAttackHoldNoticeAt = this.game.elapsed;
         this.game.notify(
-          'Противник оценил наши войска как более сильные и не решается наступать.',
+          t('ai.msg.hold'),
           'success',
           'ai-hold',
           120,
@@ -2577,7 +2579,7 @@ export class AIController {
       this.postponedRuns++;
       if (this.postponedRuns >= 2) {
         this.game.notify(
-          'Противник стягивает силы: похоже, готовится крупный удар.',
+          t('ai.msg.gather'),
           'warn',
           'ai-gather',
           120,
@@ -2716,11 +2718,11 @@ export class AIController {
 
     const messages = {
       assault: this.waveIndex === 1
-        ? 'Противник начал наступление на нашу базу!'
-        : `Волна противника №${this.waveIndex} приближается!`,
-      raid: 'Отряд противника идёт на наши постройки!',
-      split: 'Противник атакует с двух направлений!',
-      probe: 'Разведка противника прощупывает оборону.',
+        ? t('ai.msg.waveFirst')
+        : t('ai.msg.waveNext', { index: this.waveIndex }),
+      raid: t('ai.msg.raid'),
+      split: t('ai.msg.split'),
+      probe: t('ai.msg.probe'),
     };
     this.game.notify(messages[tactic], 'danger', `wave_${this.waveIndex}`, 0, 6);
     if (this.game.ui) {

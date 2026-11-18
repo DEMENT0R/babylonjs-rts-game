@@ -7,6 +7,7 @@ import {
 } from './babylon.js';
 import { BUILDINGS, CAMERA, MAP } from './config.js';
 import { clamp, damp, dist } from './utils.js';
+import { t } from './i18n/index.js';
 
 const NEUTRAL_GHOST = '#4fd2ff';
 
@@ -119,7 +120,7 @@ export class Input {
       const action = btn.dataset.touch;
       if (action === 'base') {
         this.focusBase();
-        this.game.notify('Камера возвращена к базе.', 'hint', 'touch-base', 4, 2);
+        this.game.notify(t('input.camera.base'), 'hint', 'touch-base', 4, 2);
         return;
       }
       if (action === 'cancel') {
@@ -585,7 +586,7 @@ export class Input {
     if (picked.ghost) {
       // Силуэт — разведданные, а не живая цель: выбирать его нельзя.
       this.game.notify(
-        'Последнее известное положение постройки. Данные могли устареть.',
+        t('input.ghost.hint'),
         'hint',
         'fog-ghost',
         4,
@@ -602,7 +603,7 @@ export class Input {
       return;
     }
     if (picked.oil) {
-      this.game.notify('Нефтяное месторождение. Постройте вышку, чтобы качать кредиты.', 'hint', 'oil-info', 0, 5);
+      this.game.notify(t('input.oil.info'), 'hint', 'oil-info', 0, 5);
       return;
     }
     if (!additive) this.game.clearSelection();
@@ -675,7 +676,7 @@ export class Input {
       if (builders.length) {
         this.game.assignBuildersTo(picked.entity, builders);
         this.game.fx.orderMarker(picked.entity.position, 'move');
-        this.game.notify('Инженеры направлены к стройплощадке.', 'hint', 'builders-manual', 0, 3);
+        this.game.notify(t('input.builders.sent'), 'hint', 'builders-manual', 0, 3);
         return;
       }
     }
@@ -695,7 +696,7 @@ export class Input {
       return;
     }
     if (picked.oil) {
-      this.game.notify('Нефтяное месторождение. Постройте вышку, чтобы качать кредиты.', 'hint', 'oil-info', 0, 5);
+      this.game.notify(t('input.oil.info'), 'hint', 'oil-info', 0, 5);
       return;
     }
     if (!additive) this.game.clearSelection();
@@ -770,7 +771,7 @@ export class Input {
       if (builders.length) {
         this.game.assignBuildersTo(picked.entity, builders);
         this.game.fx.orderMarker(picked.entity.position, 'move');
-        this.game.notify('Инженеры направлены к стройплощадке.', 'hint', 'builders-manual', 0, 3);
+        this.game.notify(t('input.builders.sent'), 'hint', 'builders-manual', 0, 3);
         return;
       }
     }
@@ -793,13 +794,13 @@ export class Input {
       const hq = buildings.find((b) => b.type === 'hq');
       if (hq) {
         if (this.game.credits < BUILDINGS.derrick.cost) {
-          this.game.notify('Недостаточно кредитов для вышки.', 'warn', 'no-credits', 0, 3);
+          this.game.notify(t('input.oil.noCredits'), 'warn', 'no-credits', 0, 3);
           return;
         }
         const b = this.game.tryBuild('derrick', picked.oil.x, picked.oil.z);
         if (b) {
           this.game.selectOnly([hq]);
-          this.game.notify('Нефтяная вышка заложена.', 'success', 'derrick-shortcut', 0, 3);
+          this.game.notify(t('input.oil.laid'), 'success', 'derrick-shortcut', 0, 3);
         }
         return;
       }
@@ -1006,7 +1007,7 @@ export class Input {
       const hasHQ = this.game.playerBuildings().some((b) => b.type === 'hq');
       if (!hasHQ) {
         this.cancelPlacement();
-        this.game.notify('Командный центр уничтожен. Строительство невозможно.', 'danger', 'no-hq', 0, 4);
+        this.game.notify(t('input.hq.destroyed'), 'danger', 'no-hq', 0, 4);
       }
     }
   }
@@ -1017,7 +1018,7 @@ export class Input {
     if (enabled && this.patrolMode) this.setPatrolModeVisual(false);
     this.setAttackModeVisual(enabled);
     if (enabled) {
-      this.game.notify('Укажите точку атаки. ЛКМ — приказ, ПКМ — отмена.', 'hint', 'attack-mode', 0, 3);
+      this.game.notify(t('input.mode.attack'), 'hint', 'attack-mode', 0, 3);
     }
   }
 
@@ -1032,7 +1033,7 @@ export class Input {
     if (enabled && this.attackMode) this.setAttackModeVisual(false);
     this.setPatrolModeVisual(enabled);
     if (enabled) {
-      this.game.notify('Укажите точку патруля. ЛКМ — приказ, ПКМ — отмена.', 'hint', 'patrol-mode', 0, 3);
+      this.game.notify(t('input.mode.patrol'), 'hint', 'patrol-mode', 0, 3);
     }
   }
 
@@ -1134,7 +1135,7 @@ export class Input {
     };
     document.body.classList.add('mode-place');
     this.game.notify(
-      `Разместите: ${BUILDINGS[type].name}. ЛКМ — построить, Shift+ЛКМ — ещё одно, ПКМ — отмена, R — повернуть.`,
+      t('input.place.hint', { name: BUILDINGS[type].name }),
       'hint',
       'placing',
       0,
