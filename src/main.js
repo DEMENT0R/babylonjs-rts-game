@@ -9,6 +9,7 @@ import {
   GlowLayer,
 } from './babylon.js';
 import { CAMERA } from './config.js';
+import { loadLang, applyStatic, t } from './i18n/index.js';
 import { createMap, formatSeed, randomSeed, seedFromLocation } from './mapgen.js';
 import { findMission } from './missions.js';
 import { ModelFactory } from './models.js';
@@ -30,18 +31,20 @@ function fatal(err) {
   if (card) {
     card.innerHTML = `
       <div class="overlay-top">
-        <div class="eyebrow"><i></i> СБОЙ СИСТЕМЫ</div>
-        <h1>НЕТ СИГНАЛА</h1>
-        <p class="tagline">Не удалось инициализировать 3D-движок. Проверьте, что браузер поддерживает WebGL2, а файлы игры загружены с сервера (локального или GitHub Pages).</p>
+        <div class="eyebrow"><i></i> ${t('fatal.eyebrow')}</div>
+        <h1>${t('fatal.title')}</h1>
+        <p class="tagline">${t('fatal.tagline')}</p>
       </div>
       <div class="end-note">${String(err?.message ?? err)}</div>
       <div class="overlay-actions">
-        <button class="btn-primary" onclick="location.reload()">ПЕРЕЗАГРУЗИТЬ</button>
+        <button class="btn-primary" onclick="location.reload()">${t('fatal.reload')}</button>
       </div>`;
   }
 }
 
 function boot() {
+  loadLang();
+  applyStatic();
   const params = new URLSearchParams(window.location.search);
   // Лобби может попросить сразу начать партию на выбранном сиде: так ручной
   // сид применяется без второго клика «Начать операцию».
