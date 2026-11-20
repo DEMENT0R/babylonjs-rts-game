@@ -3,7 +3,7 @@
 
 export const ru = {
   'meta.title': 'ГЕЛИОС-7 — тактическая RTS',
-  'meta.description': 'ГЕЛИОС-7 — маленькая 3D-RTS в стиле StarCraft на Babylon.js: база, энергия, нефть, инженеры, ремонт и пять типов юнитов.',
+  'meta.description': 'ГЕЛИОС-7 — небольшая 3D-RTS в духе StarCraft на Babylon.js: база, энергия, нефть, инженеры, ремонт и шесть типов юнитов.',
 
   'static.attractHint': 'ЛЮБОЕ ДЕЙСТВИЕ — МЕНЮ',
   'static.brand': 'ГЕЛИОС-7',
@@ -55,7 +55,7 @@ export const ru = {
 
   'settings.network': 'КОМАНДНАЯ СЕТЬ // НАСТРОЙКИ',
   'settings.title': 'НАСТРОЙКИ',
-  'settings.tagline': 'Графика, звук и язык. Изменения применяются сразу и сохраняются в браузере.',
+  'settings.tagline': 'Графика и звук применяются сразу. Язык интерфейса — после перезагрузки. Настройки сохраняются в браузере.',
   'settings.tabsAria': 'Разделы настроек',
   'settings.tab.graphics': 'ГРАФИКА',
   'settings.tab.audio': 'ЗВУК',
@@ -153,7 +153,7 @@ export const ru = {
   'menu.seedTagPreview': 'ПРЕДПРОСМОТР',
   'menu.seedTagManual': 'РУЧНОЙ СИД',
   'menu.seedHintRandom': 'Игра подберёт сид сама. «Сгенерировать другую» покажет другую карту до начала операции.',
-  'menu.seedHintEmpty': 'Введите сид: до 8 hex-символов (например, 7A3F91C2) или любое слово. Enter — начать.',
+  'menu.seedHintEmpty': 'Введите сид: до 8 шестнадцатеричных символов (например, 7A3F91C2) или любое слово. Enter — начать.',
   'menu.seedHintManual': 'Сид #{seed}. Одинаковый сид всегда создаёт одну и ту же карту. Enter — начать.',
   'menu.start': 'НАЧАТЬ ОПЕРАЦИЮ',
   'menu.lobbyBrief': 'Программа «Гелиос-7» отправила в этот сектор два одинаковых семенных корабля — так задумывалась страховка: если одна колония погибнет, работу продолжит вторая. Связь между ними потеряна, а последний принятый пакет приказа одинаков для обеих сторон: сектор останется за выжившей. {hint} Рельеф, месторождения и техника у обеих сторон совпадают до последнего винта — по ту сторону фронта стоит ваша копия.',
@@ -386,7 +386,7 @@ export const ru = {
   'tooltip.stat.pierce': 'ПРОБИТИЕ',
   'tooltip.stat.visionAdd': 'ОБЗОР',
   'tooltip.stat.cooldown': 'ПЕРЕЗАРЯДКА',
-  'tooltip.stat.splash': 'СПЛЕШ',
+  'tooltip.stat.splash': 'РАДИУС ПОРАЖЕНИЯ',
   'tooltip.stat.salvoAdd': 'РАКЕТЫ',
   'tooltip.stat.healRate': 'ЛЕЧЕНИЕ',
   'tooltip.stat.healRadius': 'РАДИУС ЛЕЧЕНИЯ',
@@ -468,7 +468,7 @@ export const ru = {
 
 export const en = {
   'meta.title': 'GELIOS-7 — TACTICAL RTS',
-  'meta.description': 'GELIOS-7 — a tiny 3D RTS in the spirit of StarCraft on Babylon.js: base, power, oil, engineers, repairs and five unit types.',
+  'meta.description': 'GELIOS-7 — a small 3D RTS in the spirit of StarCraft on Babylon.js: base, power, oil, engineers, repairs and six unit types.',
 
   'static.attractHint': 'ANY INPUT — MENU',
   'static.brand': 'GELIOS-7',
@@ -520,7 +520,7 @@ export const en = {
 
   'settings.network': 'COMMAND NETWORK // SETTINGS',
   'settings.title': 'SETTINGS',
-  'settings.tagline': 'Graphics, sound and language. Changes apply instantly and are stored in your browser.',
+  'settings.tagline': 'Graphics and sound apply instantly. The interface language takes effect after a page reload. Settings are stored in your browser.',
   'settings.tabsAria': 'Settings sections',
   'settings.tab.graphics': 'GRAPHICS',
   'settings.tab.audio': 'AUDIO',
@@ -851,7 +851,7 @@ export const en = {
   'tooltip.stat.pierce': 'PIERCE',
   'tooltip.stat.visionAdd': 'VISION',
   'tooltip.stat.cooldown': 'COOLDOWN',
-  'tooltip.stat.splash': 'SPLASH',
+  'tooltip.stat.splash': 'SPLASH RADIUS',
   'tooltip.stat.salvoAdd': 'MISSILES',
   'tooltip.stat.healRate': 'HEALING',
   'tooltip.stat.healRadius': 'HEAL RADIUS',
